@@ -134,7 +134,7 @@ SD Card Root/
 2. Copy to Arduino libraries folder
 
 **Upload Firmware**:
-1. Open `firmware/TallyCCUPro.ino` in Arduino IDE
+1. Open `Arduino/TallyCCUPro.ino` in Arduino IDE
 2. Select Board: `Arduino Mega or Mega 2560`
 3. Select Port: Your Arduino's COM port
 4. Click Upload
@@ -236,7 +236,7 @@ PONG                            Ping response
 
 ```
 TallyCCUPro/
-|-- firmware/               Arduino source code
+|-- Arduino/               Arduino source code
 |-- sdcard/                 Web interface files  
 |-- companion-module/       Bitfocus Companion module
 |-- tools/                  Serial configurator
