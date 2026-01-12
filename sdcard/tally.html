@@ -218,6 +218,14 @@
 
   <script>
     const NUM_CAMERAS = 10;
+    let isEditingVmixIp = false;
+
+    // Track when user is editing the IP field
+    document.addEventListener('DOMContentLoaded', () => {
+      const ipInput = document.getElementById('vmixIp');
+      ipInput.addEventListener('focus', () => { isEditingVmixIp = true; });
+      ipInput.addEventListener('blur', () => { isEditingVmixIp = false; });
+    });
 
     function showStatus(message, type = 'info') {
       const existing = document.getElementById('statusElement');
@@ -271,7 +279,7 @@
             const statusText = document.getElementById('vmixStatusText');
             const ipInput = document.getElementById('vmixIp');
             
-            if (data.vmixIP) {
+            if (data.vmixIP && !isEditingVmixIp) {
               ipInput.value = data.vmixIP;
             }
             
