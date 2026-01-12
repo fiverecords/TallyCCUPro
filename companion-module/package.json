@@ -1,0 +1,18 @@
+{
+  "name": "tallyccu-pro",
+  "version": "3.0.0",
+  "description": "Blackmagic Design camera control via TallyCCU Pro",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Joaquin Villodre",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "@companion-module/base": "^1.10.0",
+    "axios": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
