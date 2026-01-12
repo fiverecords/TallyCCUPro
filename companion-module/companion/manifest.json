@@ -1,0 +1,35 @@
+{
+  "id": "tallyccu-pro",
+  "name": "TallyCCU Pro",
+  "shortname": "TallyCCU_Pro",
+  "description": "Blackmagic camera control via TallyCCU Pro",
+  "version": "3.0.0",
+  "license": "GPL-3.0",
+  "repository": "https://github.com/fiverecords/TallyCCUPro",
+  "bugs": "https://github.com/fiverecords/TallyCCUPro/issues",
+  "maintainers": [
+    {
+      "name": "Joaquin Villodre",
+      "email": "fiverecords@gmail.com"
+    }
+  ],
+  "runtime": {
+    "type": "node18",
+    "api": "nodejs-ipc",
+    "apiVersion": "1.12.0",
+    "entrypoint": "../index.js"
+  },
+  "legacyIds": [],
+  "manufacturer": "Fiverecords",
+  "products": [
+    "TallyCCU Pro"
+  ],
+  "keywords": [
+    "Camera",
+    "Video",
+    "Control",
+    "Blackmagic",
+    "CCU",
+    "Tally"
+  ]
+}
