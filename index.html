@@ -1,0 +1,2615 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TallyCCU Pro</title>
+<style>
+
+/* === RESET Y LAYOUT BASE === */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: Arial, sans-serif;
+  background: #1a1a1a;
+  color: #DDD;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* === ENCABEZADO === */
+.encabezado-fijo {
+  background: #222;
+  border-bottom: 1px solid #444;
+  padding: 8px 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.titulo-container { display: flex; align-items: center; }
+.encabezado-fijo h1 { font-size: 24px; margin: 0; color: #FFF; }
+.subtitulo { font-size: 14px; font-weight: normal; color: #888; margin-left: 12px; }
+.nav-buttons { display: flex; gap: 8px; }
+
+/* === BOTONES === */
+.btn {
+  background: #3a3a3a;
+  color: #DDD;
+  border: 1px solid #555;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.btn:hover { background: #4a4a4a; }
+
+/* === FIELDSET Y LEGEND === */
+fieldset {
+  border: 1px solid #444;
+  padding: 8px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+legend { font-weight: bold; color: #EEE; font-size: 13px; padding: 0 5px; }
+
+/* === CONTENIDO PRINCIPAL === */
+.main-content { flex: 1 1 auto; overflow-y: auto; }
+.contenido-desplazable { padding: 10px; }
+
+/* === BOTONES DE CÃƒÆ’Ã‚ÂMARA === */
+.camera-buttons { display: flex; flex-wrap: wrap; gap: 5px; }
+.camera-buttons button {
+  flex: 1 1 calc(12.5% - 5px);
+  background: #2d2d2d;
+  color: #DDD;
+  border: 1px solid #444;
+  padding: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+.camera-buttons button:hover { background: #3d3d3d; }
+.camera-buttons button.active-camera {
+  background: #0066cc;
+  border-color: #0088ff;
+  color: #FFF;
+}
+
+/* === PRESETS === */
+.preset-buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+.preset-item {
+  flex: 0 0 auto;
+  min-width: 200px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+}
+.preset-name {
+  flex: 1;
+  min-width: 80px;
+  font-size: 12px;
+  padding: 4px 6px;
+  background: #333;
+  border: 1px solid #555;
+  color: #DDD;
+  border-radius: 3px;
+}
+.preset-buttons button {
+  background: #3a3a3a;
+  color: #DDD;
+  border: 1px solid #555;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.preset-buttons button:hover { background: #4a4a4a; }
+.preset-buttons button.btn-load { background: #2a5a2a; }
+.preset-buttons button.btn-load:hover { background: #3a6a3a; }
+
+/* === TABS === */
+.tabs-container { margin-bottom: 8px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tabs button {
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: #2d2d2d;
+  color: #DDD;
+  border: 1px solid #444;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+.tabs button:hover { background: #3d3d3d; }
+.tabs button.active-tab {
+  background: #0066cc;
+  border-color: #0088ff;
+  color: #FFF;
+}
+.tabcontent { display: none; }
+
+/* === PARÃƒÆ’Ã‚ÂMETROS === */
+.parameters-contenedor {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.parametro-item {
+  background: #262626;
+  padding: 10px;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+}
+.param-block { margin-bottom: 5px; }
+.param-block > label { 
+  display: block; 
+  margin-bottom: 6px; 
+  font-weight: bold; 
+  color: #EEE; 
+  font-size: 12px; 
+}
+.sub-label { font-size: 11px; color: #AAA; margin-bottom: 3px; display: block; }
+
+/* === CONTROLES === */
+input[type='range'] { width: 100%; cursor: pointer; }
+.value-label { display: inline-block; margin-left: 8px; font-size: 12px; color: #0af; min-width: 50px; }
+.step-buttons { display: flex; gap: 4px; margin-top: 4px; }
+.step-buttons button {
+  background: #3a3a3a;
+  color: #DDD;
+  border: 1px solid #555;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.step-buttons button:hover { background: #4a4a4a; }
+.reset-button {
+  background: #4a3a3a;
+  border: 1px solid #655;
+  margin-left: auto;
+}
+.reset-button:hover { background: #5a4a4a; }
+
+input[type='text'], select {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: #333;
+  border: 1px solid #555;
+  color: #DDD;
+  border-radius: 3px;
+}
+input[type='checkbox'] { cursor: pointer; }
+
+/* === MEMORY PRESET (PTZ) === */
+.memory-preset-container {
+  border: 1px solid #444;
+  padding: 8px;
+  border-radius: 4px;
+}
+.memory-preset-container label { font-size: 11px; margin-bottom: 3px; display: block; }
+.memory-preset-container button {
+  background: #3a3a3a;
+  color: #DDD;
+  border: 1px solid #555;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin: 2px;
+}
+.memory-preset-container button:hover { background: #4a4a4a; }
+.memory-preset-container button.active-memory-preset {
+  background: #0066cc !important;
+  border: 1px solid #0088ff !important;
+  color: #FFF !important;
+}
+
+/* === CONTROLES GLOBALES === */
+.overrides-container { margin: 8px 0; }
+.overrides-container button {
+  background: #2d2d2d;
+  color: #DDD;
+  border: 1px solid #444;
+  padding: 6px 10px;
+  margin-right: 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.overrides-container button:hover { background: #3d3d3d; }
+
+/* === SELECTOR DE GRUPOS PARA PRESETS === */
+.group-selector { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.group-selector label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  cursor: pointer;
+}
+.group-selector input { margin-right: 4px; }
+
+/* === ESTADO DE GUARDADO === */
+.save-status {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 20px 30px;
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 8px;
+  z-index: 9999;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.save-status .progress {
+  margin-top: 10px;
+  height: 4px;
+  background: #444;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.save-status .progress-bar {
+  height: 100%;
+  background: #0af;
+  transition: width 0.3s;
+}
+.save-status.success { border-color: #0a0; }
+.save-status.error { border-color: #a00; }
+</style>
+<script>
+
+// === ESTADO GLOBAL ===
+let currentCamera = 1;
+const MAX_CAMERAS = 8;
+const MAX_PRESETS = 5;
+
+// CachÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© de valores por cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡mara: cameraValues[camId][paramKey] = valor
+// Almacena los valores actuales de cada control para cada cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡mara
+const cameraValues = {};
+for (let i = 1; i <= MAX_CAMERAS; i++) {
+    cameraValues[i] = {};
+}
+
+// Valores multi-subÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­ndice
+let multiSubValues = {};
+
+// Groups seleccionados para presets
+let selectedParamGroups = {};
+
+// === FUNCIONES DE CACHÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â° ===
+
+// Save valor en cachÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© para la cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡mara actual
+function cacheValue(paramKey, value, subIndex = null) {
+    const key = subIndex !== null ? `${paramKey}[${subIndex}]` : paramKey;
+    cameraValues[currentCamera][key] = value;
+}
+
+// Obtener valor de cachÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© para una cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡mara
+function getCachedValue(camId, paramKey, subIndex = null) {
+    const key = subIndex !== null ? `${paramKey}[${subIndex}]` : paramKey;
+    return cameraValues[camId][key];
+}
+
+// Restaurar UI desde cachÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© al cambiar de cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡mara
+function restoreUIFromCache() {
+    const cache = cameraValues[currentCamera];
+    
+    document.querySelectorAll('.param-control').forEach(el => {
+        const paramKey = el.dataset.paramkey;
+        const subIndex = el.dataset.subindex;
+        const key = subIndex !== undefined ? `${paramKey}[${subIndex}]` : paramKey;
+        
+        if (cache[key] !== undefined) {
+            updateControlValue(el, cache[key]);
+        }
+    });
+}
+
+// Actualizar el valor de un control
+function updateControlValue(el, value) {
+    const type = el.dataset.paramtype;
+    
+    if (type === 'checkbox' || type === 'sub-check') {
+        el.checked = (value == 1 || value === true);
+    } else if (el.tagName === 'SELECT') {
+        el.value = value;
+    } else if (type === 'range' || type === 'sub-range') {
+        el.value = value;
+        // Actualizar label asociado
+        const labelId = el.id.replace('_range', '_val');
+        const label = document.getElementById(labelId);
+        if (label) {
+            const numVal = parseFloat(value);
+            label.textContent = isNaN(numVal) ? value : numVal.toFixed(2);
+        }
+    } else {
+        el.value = value;
+    }
+}
+
+// === FUNCIONES DE UI ===
+
+function showTab(tabId) {
+    document.querySelectorAll('.tabcontent').forEach(t => t.style.display = 'none');
+    const tab = document.getElementById(tabId);
+    if (tab) tab.style.display = 'block';
+    
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active-tab'));
+    const btn = document.querySelector(`.tabs button[onclick="showTab('${tabId}')"]`);
+    if (btn) btn.classList.add('active-tab');
+}
+
+function highlightCameraButton(camNum) {
+    document.querySelectorAll('.camera-buttons button').forEach(b => b.classList.remove('active-camera'));
+    const btn = document.getElementById('camBtn' + camNum);
+    if (btn) btn.classList.add('active-camera');
+}
+
+function setCameraId(num) {
+    // Save current state antes de cambiar
+    saveCurrentStateToCache();
+    
+    currentCamera = num;
+    highlightCameraButton(num);
+    
+    // Notificar al Arduino
+    fetch(`/?cameraId=${num}`);
+    
+    // Restaurar UI para la nueva cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡mara
+    restoreUIFromCache();
+    
+    // Actualizar nombres de presets
+    updatePresetNames();
+}
+
+// Save current state de todos los controles en cachÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©
+function saveCurrentStateToCache() {
+    document.querySelectorAll('.param-control').forEach(el => {
+        const paramKey = el.dataset.paramkey;
+        const subIndex = el.dataset.subindex;
+        const type = el.dataset.paramtype;
+        
+        let value;
+        if (type === 'checkbox' || type === 'sub-check') {
+            value = el.checked ? 1 : 0;
+        } else {
+            value = el.value;
+        }
+        
+        cacheValue(paramKey, value, subIndex !== undefined ? parseInt(subIndex) : null);
+    });
+}
+
+// === ENVÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂO DE PARÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂMETROS ===
+
+function sendParam(key, val) {
+    cacheValue(key, val);
+    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(val)}`);
+}
+
+function triggerVoid(key) {
+    fetch(`/?cameraId=${currentCamera}&${key}=1`);
+}
+
+function toggleCheckbox(key, cb) {
+    const v = cb.checked ? 1 : 0;
+    cacheValue(key, v);
+    sendParam(key, v);
+}
+
+// === SLIDERS ===
+
+function sliderChanged(key, sl, labId) {
+    const val = parseFloat(sl.value);
+    cacheValue(key, val);
+    
+    const label = document.getElementById(labId);
+    if (label) {
+        // Formato especial para temperatura de color y program_return_feed_enable
+        if (key === "manual_white_balance" || key === "program_return_feed_enable") {
+            label.textContent = val.toFixed(0);
+        } else {
+            label.textContent = val.toFixed(2);
+        }
+    }
+    
+    // EnvÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­o continuo para zoom
+    if (key === "set_continuous_zoom_speed") {
+        sendParam(key, val);
+    }
+}
+
+function sliderRelease(key, sl) {
+    if (key === "set_continuous_zoom_speed") {
+        sl.value = 0;
+        cacheValue(key, 0);
+        const labId = sl.id.replace("_range", "_val");
+        document.getElementById(labId).textContent = "0.00";
+        sendParam(key, 0);
+    } else {
+        sendParam(key, sl.value);
+    }
+}
+
+function stepSlider(key, step) {
+    const sld = document.getElementById(key + '_range');
+    if (!sld) return;
+    
+    let nv = parseFloat(sld.value) + step;
+    nv = Math.max(parseFloat(sld.min), Math.min(parseFloat(sld.max), nv));
+    sld.value = nv;
+    cacheValue(key, nv);
+    
+    const lid = key + '_val';
+    const label = document.getElementById(lid);
+    if (label) {
+        if (key === "manual_white_balance" || key === "program_return_feed_enable") {
+            label.textContent = nv.toFixed(0);
+        } else {
+            label.textContent = nv.toFixed(2);
+        }
+    }
+    
+    sendParam(key, nv);
+}
+
+function resetSlider(key, defVal) {
+    const sld = document.getElementById(key + '_range');
+    if (!sld) return;
+    
+    sld.value = defVal;
+    cacheValue(key, defVal);
+    
+    const lid = key + '_val';
+    const label = document.getElementById(lid);
+    if (label) {
+        if (key === "manual_white_balance" || key === "program_return_feed_enable") {
+            label.textContent = parseFloat(defVal).toFixed(0);
+        } else {
+            label.textContent = parseFloat(defVal).toFixed(2);
+        }
+    }
+    
+    sendParam(key, defVal);
+}
+
+// === OVERLAY ENABLES (BIT FIELD) ===
+
+function updateOverlayEnables() {
+    const zebraCb = document.getElementById('overlay_enables_zebra');
+    const peakingCb = document.getElementById('overlay_enables_peaking');
+    
+    let value = 0;
+    if (zebraCb && zebraCb.checked) value += 4;  // 0x4 = zebra
+    if (peakingCb && peakingCb.checked) value += 8;  // 0x8 = peaking
+    
+    cacheValue('overlay_enables', value);
+    sendParam('overlay_enables', value);
+}
+
+// === EXPOSURE AND FOCUS TOOLS (BIT FIELD) ===
+
+function updateExposureFocusTools() {
+    const key = 'exposure_and_focus_tools';
+    
+    // [0] Tools bit flags: 1=Zebra, 2=Focus Assist, 4=False Color
+    let tools = 0;
+    const zebraCb = document.getElementById(key + '_zebra');
+    const focusCb = document.getElementById(key + '_focus');
+    const falseColorCb = document.getElementById(key + '_false_color');
+    
+    if (zebraCb && zebraCb.checked) tools += 1;
+    if (focusCb && focusCb.checked) tools += 2;
+    if (falseColorCb && falseColorCb.checked) tools += 4;
+    
+    // [1] Target displays bit flags: 1=LCD, 2=HDMI, 4=EVF, 8=Main SDI, 16=Front SDI
+    let displays = 0;
+    const lcdCb = document.getElementById(key + '_lcd');
+    const hdmiCb = document.getElementById(key + '_hdmi');
+    const evfCb = document.getElementById(key + '_evf');
+    const mainSdiCb = document.getElementById(key + '_main_sdi');
+    const frontSdiCb = document.getElementById(key + '_front_sdi');
+    
+    if (lcdCb && lcdCb.checked) displays += 1;
+    if (hdmiCb && hdmiCb.checked) displays += 2;
+    if (evfCb && evfCb.checked) displays += 4;
+    if (mainSdiCb && mainSdiCb.checked) displays += 8;
+    if (frontSdiCb && frontSdiCb.checked) displays += 16;
+    
+    if (!multiSubValues[key]) multiSubValues[key] = [];
+    multiSubValues[key][0] = tools;
+    multiSubValues[key][1] = displays;
+    
+    cacheValue(key, tools, 0);
+    cacheValue(key, displays, 1);
+    
+    const valStr = `${tools},${displays}`;
+    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
+}
+
+// === MULTI-SUBÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂNDICE ===
+
+function multiSubOnInput(key, index, slider, labelId) {
+    const v = parseFloat(slider.value);
+    const label = document.getElementById(labelId);
+    
+    // Formato especial para ND Filter
+    if (key === "nd_filter_stop") {
+        label.textContent = v.toFixed(0);
+    } else {
+        label.textContent = v.toFixed(2);
+    }
+    
+    if (!multiSubValues[key]) multiSubValues[key] = [];
+    multiSubValues[key][index] = v;
+    cacheValue(key, v, index);
+    
+    // EnvÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­o continuo para pan/tilt
+    if (key === "pan_tilt_velocity") {
+        const valStr = multiSubValues[key].join(",");
+        fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
+    }
+}
+
+function multiSubOnChange(key) {
+    if (key === "pan_tilt_velocity") {
+        // Reset a 0
+        multiSubValues[key] = [0, 0];
+        for (let i = 0; i < 2; i++) {
+            const slider = document.getElementById(`${key}_${i}_range`);
+            const label = document.getElementById(`${key}_${i}_val`);
+            if (slider) slider.value = 0;
+            if (label) label.textContent = "0.00";
+            cacheValue(key, 0, i);
+        }
+        fetch(`/?cameraId=${currentCamera}&${key}=0,0`);
+    } else {
+        const arr = multiSubValues[key] || [];
+        const valStr = arr.join(",");
+        fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
+    }
+}
+
+function multiSubSelectChange(key, index, sel) {
+    if (!multiSubValues[key]) multiSubValues[key] = [];
+    multiSubValues[key][index] = sel.value;
+    cacheValue(key, sel.value, index);
+    
+    const valStr = multiSubValues[key].join(",");
+    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
+}
+
+function multiSubCheckChange(key, index, cb) {
+    const v = cb.checked ? 1 : 0;
+    if (!multiSubValues[key]) multiSubValues[key] = [];
+    multiSubValues[key][index] = v;
+    cacheValue(key, v, index);
+    
+    const valStr = multiSubValues[key].join(",");
+    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
+}
+
+function multiSubTextBlur(key, index, input) {
+    if (!multiSubValues[key]) multiSubValues[key] = [];
+    multiSubValues[key][index] = input.value;
+    cacheValue(key, input.value, index);
+    
+    const valStr = multiSubValues[key].join(",");
+    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
+}
+
+function multiSubVoid(key, index) {
+    if (!multiSubValues[key]) multiSubValues[key] = [];
+    multiSubValues[key][index] = 1;
+    const valStr = multiSubValues[key].join(",");
+    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
+}
+
+function multiStepSlider(key, subIndex, step) {
+    const sld = document.getElementById(`${key}_${subIndex}_range`);
+    if (!sld) return;
+    
+    let nv = parseFloat(sld.value) + step;
+    nv = Math.max(parseFloat(sld.min), Math.min(parseFloat(sld.max), nv));
+    sld.value = nv;
+    
+    const label = document.getElementById(`${key}_${subIndex}_val`);
+    if (label) {
+        if (key === "nd_filter_stop") {
+            label.textContent = nv.toFixed(0);
+        } else {
+            label.textContent = nv.toFixed(2);
+        }
+    }
+    
+    if (!multiSubValues[key]) multiSubValues[key] = [];
+    multiSubValues[key][subIndex] = nv;
+    cacheValue(key, nv, subIndex);
+    
+    multiSubOnChange(key);
+}
+
+function multiResetSlider(key, subIndex, defVal) {
+    const sld = document.getElementById(`${key}_${subIndex}_range`);
+    if (!sld) return;
+    
+    sld.value = defVal;
+    const label = document.getElementById(`${key}_${subIndex}_val`);
+    if (label) {
+        if (key === "nd_filter_stop") {
+            label.textContent = parseFloat(defVal).toFixed(0);
+        } else {
+            label.textContent = parseFloat(defVal).toFixed(2);
+        }
+    }
+    
+    if (!multiSubValues[key]) multiSubValues[key] = [];
+    multiSubValues[key][subIndex] = defVal;
+    cacheValue(key, defVal, subIndex);
+    
+    multiSubOnChange(key);
+}
+
+// === MEMORY PRESET (PTZ) ===
+
+if (!multiSubValues["memory_preset"]) multiSubValues["memory_preset"] = [0, 0];
+
+function setMemoryPresetSelection(preset) {
+    multiSubValues["memory_preset"][1] = preset;
+    for (let i = 0; i < 6; i++) {
+        const btn = document.getElementById("memory_slot_select_btn_" + i);
+        if (btn) {
+            btn.classList.toggle("active-memory-preset", i === preset);
+        }
+    }
+}
+
+function setMemoryPresetAction(action) {
+    multiSubValues["memory_preset"][0] = action;
+    const presetValue = multiSubValues["memory_preset"][1] || 0;
+    const combined = `${action},${presetValue}`;
+    fetch(`/?cameraId=${currentCamera}&memory_preset=${encodeURIComponent(combined)}`);
+}
+
+// === OVERRIDES ===
+
+function getOverrides() {
+    fetch('/?getOverrides=1')
+        .then(r => r.json())
+        .then(data => {
+            if (data.overrideTally !== undefined) {
+                document.getElementById('lblOverrideTally').textContent = data.overrideTally ? "On" : "Off";
+            }
+            if (data.overrideCCU !== undefined) {
+                document.getElementById('lblOverrideCCU').textContent = data.overrideCCU ? "On" : "Off";
+            }
+        })
+        .catch(() => {
+            document.getElementById('lblOverrideTally').textContent = "On";
+            document.getElementById('lblOverrideCCU').textContent = "On";
+        });
+}
+
+function toggleOverrideTally() {
+    const current = document.getElementById('lblOverrideTally').textContent;
+    const newVal = current === "On" ? 0 : 1;
+    fetch(`/?overrideTally=${newVal}`)
+        .then(() => document.getElementById('lblOverrideTally').textContent = newVal ? "On" : "Off");
+}
+
+function toggleOverrideCCU() {
+    const current = document.getElementById('lblOverrideCCU').textContent;
+    const newVal = current === "On" ? 0 : 1;
+    fetch(`/?overrideCCU=${newVal}`)
+        .then(() => document.getElementById('lblOverrideCCU').textContent = newVal ? "On" : "Off");
+}
+
+// === VMIX CONNECT ===
+
+let vmixConnectEnabled = true;
+
+function getVmixConnectStatus() {
+    fetch('/?getVmixConnect=1')
+        .then(r => r.text())
+        .then(text => {
+            const match = text.match(/\{.*\}/);
+            if (match) {
+                const data = JSON.parse(match[0]);
+                if (data.vmixConnectEnabled !== undefined) {
+                    vmixConnectEnabled = data.vmixConnectEnabled;
+                    document.getElementById('lblVmixConnect').textContent = vmixConnectEnabled ? "On" : "Off";
+                }
+            }
+        })
+        .catch(console.error);
+}
+
+function toggleVmixConnect() {
+    vmixConnectEnabled = !vmixConnectEnabled;
+    fetch(`/?vmixConnect=${vmixConnectEnabled ? 1 : 0}`)
+        .then(() => document.getElementById('lblVmixConnect').textContent = vmixConnectEnabled ? "On" : "Off")
+        .catch(console.error);
+}
+
+function rebootArduino() {
+    if (confirm("Are you sure you want to reset the Arduino?")) {
+        fetch('/reboot');
+    }
+}
+
+// === GRUPOS PARA PRESETS ===
+
+function toggleParamGroup(groupId) {
+    const cb = document.getElementById(`group_selector_${groupId}`);
+    selectedParamGroups[groupId] = cb.checked;
+    localStorage.setItem('selectedParamGroups', JSON.stringify(selectedParamGroups));
+}
+
+function toggleAllParamGroups(state) {
+    Object.keys(selectedParamGroups).forEach(group => {
+        selectedParamGroups[group] = state;
+        const cb = document.getElementById(`group_selector_${group}`);
+        if (cb) cb.checked = state;
+    });
+    localStorage.setItem('selectedParamGroups', JSON.stringify(selectedParamGroups));
+}
+
+function setDefaultParamGroups() {
+    const defaults = ["lens", "video", "color_correction"];
+    Object.keys(selectedParamGroups).forEach(group => {
+        const isDefault = defaults.includes(group);
+        selectedParamGroups[group] = isDefault;
+        const cb = document.getElementById(`group_selector_${group}`);
+        if (cb) cb.checked = isDefault;
+    });
+    localStorage.setItem('selectedParamGroups', JSON.stringify(selectedParamGroups));
+}
+
+
+// === SINCRONIZACION PUSH ===
+
+const SYNC_CONFIG = {
+    enabled: true,
+    interval: 2500,        // 2.5 segundos
+    timeout: 2000,         // timeout de request
+    onlyOnFocus: false,    // SIEMPRE hacer polling (cambiado)
+    debug: false,
+    retryCount: 0,
+    maxRetries: 3,
+    presetRefreshEvery: 10  // Refrescar nombres de presets cada N ciclos
+};
+
+let syncTimer = null;
+let syncInProgress = false;
+let lastKnownState = {};
+let lastSyncTime = 0;
+let syncCycleCount = 0;
+
+// Iniciar sincronizacion
+function startSync() {
+    if (syncTimer) clearInterval(syncTimer);
+    syncCycleCount = 0;
+    
+    // Primera sincronizacion inmediata
+    syncFromArduino();
+    
+    // Polling periodico con setInterval robusto
+    syncTimer = setInterval(function() {
+        if (!SYNC_CONFIG.enabled) return;
+        if (syncInProgress) {
+            if (SYNC_CONFIG.debug) console.log('[Sync] Saltando - en progreso');
+            return;
+        }
+        syncFromArduino();
+        
+        // Refrescar nombres de presets periodicamente
+        syncCycleCount++;
+        if (syncCycleCount >= SYNC_CONFIG.presetRefreshEvery) {
+            syncCycleCount = 0;
+            if (typeof updatePresetNames === 'function') {
+                updatePresetNames();
+            }
+        }
+    }, SYNC_CONFIG.interval);
+    
+    if (SYNC_CONFIG.debug) console.log('[Sync] Iniciado, intervalo:', SYNC_CONFIG.interval);
+}
+
+// Detener sincronizacion
+function stopSync() {
+    if (syncTimer) {
+        clearInterval(syncTimer);
+        syncTimer = null;
+    }
+}
+
+// Consultar estado desde Arduino
+async function syncFromArduino() {
+    if (syncInProgress) return;
+    syncInProgress = true;
+    
+    const startTime = Date.now();
+    
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(function() { controller.abort(); }, SYNC_CONFIG.timeout);
+        
+        const url = '/?getParams=' + currentCamera + '&t=' + Date.now();
+        const response = await fetch(url, {
+            method: 'GET',
+            cache: 'no-store',
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data && data.params) {
+                processSyncData(data);
+                SYNC_CONFIG.retryCount = 0;
+            }
+            lastSyncTime = Date.now();
+            if (SYNC_CONFIG.debug) console.log('[Sync] OK en', Date.now() - startTime, 'ms, params:', data.paramCount || 0);
+        }
+    } catch (e) {
+        SYNC_CONFIG.retryCount++;
+        if (SYNC_CONFIG.debug) console.log('[Sync] Error:', e.name, '- retry', SYNC_CONFIG.retryCount);
+        
+        // Si hay muchos errores, reiniciar el timer
+        if (SYNC_CONFIG.retryCount >= SYNC_CONFIG.maxRetries) {
+            SYNC_CONFIG.retryCount = 0;
+            stopSync();
+            setTimeout(startSync, 5000);
+        }
+    } finally {
+        syncInProgress = false;
+    }
+}
+
+// Procesar datos recibidos
+function processSyncData(data) {
+    const params = data.params;
+    let changesCount = 0;
+    
+    for (const paramKey in params) {
+        if (!params.hasOwnProperty(paramKey)) continue;
+        
+        const newValue = params[paramKey];
+        const stateKey = 'cam' + data.cameraId + '_' + paramKey;
+        const newValueStr = JSON.stringify(newValue);
+        
+        // Solo actualizar si cambio
+        if (JSON.stringify(lastKnownState[stateKey]) !== newValueStr) {
+            lastKnownState[stateKey] = newValue;
+            updateFieldFromSync(paramKey, newValue);
+            changesCount++;
+        }
+    }
+    
+    if (changesCount > 0 && SYNC_CONFIG.debug) {
+        console.log('[Sync]', changesCount, 'cambios aplicados');
+    }
+}
+
+// Actualizar campo del formulario desde sincronizacion
+function updateFieldFromSync(paramKey, value) {
+    // No actualizar si el usuario esta editando
+    const activeEl = document.activeElement;
+    
+    // Buscar controles con este paramKey
+    const controls = document.querySelectorAll('[data-paramkey="' + paramKey + '"]');
+    controls.forEach(function(el) {
+        if (el === activeEl) return; // No actualizar si tiene foco
+        
+        const subIndex = el.dataset.subindex;
+        let val = value;
+        
+        // Si es array y tiene subindex, usar el valor correspondiente
+        if (Array.isArray(value) && subIndex !== undefined) {
+            val = value[parseInt(subIndex)];
+        }
+        
+        if (val !== undefined) {
+            updateControlValue(el, val);
+            cacheValue(paramKey, val, subIndex !== undefined ? parseInt(subIndex) : null);
+        }
+    });
+}
+
+// Toggle sincronizacion (para debug)
+function toggleSync(enabled) {
+    SYNC_CONFIG.enabled = enabled;
+    if (enabled && !syncTimer) startSync();
+    console.log('[Sync]', enabled ? 'Enabled' : 'Disabled');
+}
+
+// Forzar sincronizacion completa
+function forceSync() {
+    lastKnownState = {};
+    syncFromArduino();
+}
+
+// State of sincronizacion (para debug desde consola)
+function syncStatus() {
+    console.log('Sync enabled:', SYNC_CONFIG.enabled);
+    console.log('Sync timer:', syncTimer ? 'activo' : 'inactivo');
+    console.log('Sync in progress:', syncInProgress);
+    console.log('Last sync:', lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString() : 'nunca');
+    console.log('Params en cache:', Object.keys(lastKnownState).length);
+}
+
+
+// === INICIALIZACIÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“N ===
+
+document.addEventListener('DOMContentLoaded', function() {
+    highlightCameraButton(currentCamera);
+    
+    const firstTab = document.querySelector('.tabs button');
+    if (firstTab) firstTab.classList.add('active-tab');
+    
+    getOverrides();
+    setTimeout(getVmixConnectStatus, 500);
+    
+    // Inicializar grupos para presets
+    document.querySelectorAll('[id^="group_selector_"]').forEach(cb => {
+        const groupId = cb.id.replace('group_selector_', '');
+        selectedParamGroups[groupId] = cb.checked;
+    });
+    
+    // Load preferencias guardadas
+    const saved = localStorage.getItem('selectedParamGroups');
+    if (saved) {
+        try {
+            Object.assign(selectedParamGroups, JSON.parse(saved));
+            Object.keys(selectedParamGroups).forEach(group => {
+                const cb = document.getElementById(`group_selector_${group}`);
+                if (cb) cb.checked = selectedParamGroups[group];
+            });
+        } catch (e) { console.error("Error loading preferences:", e); }
+    }
+    
+    updatePresetNames();
+    
+    // Iniciar sincronizacion con Arduino
+    startSync();
+});
+
+// Limpiar al cerrar
+window.addEventListener('beforeunload', stopSync);
+
+// === GESTION DE PRESETS ===
+
+// State ofl guardado
+let saveInProgress = false;
+
+// === UTILIDADES DE NOMBRES ===
+
+function encodePresetName(name) {
+    return encodeURIComponent(name);
+}
+
+function decodePresetName(name) {
+    try {
+        return decodeURIComponent(name);
+    } catch (e) {
+        return name;
+    }
+}
+
+function savePresetNameToLocalStorage(cameraId, presetIndex, name) {
+    let presetNames = JSON.parse(localStorage.getItem('presetNames') || '{}');
+    if (!presetNames[cameraId]) presetNames[cameraId] = {};
+    presetNames[cameraId][presetIndex] = name;
+    localStorage.setItem('presetNames', JSON.stringify(presetNames));
+}
+
+function getPresetNameFromLocalStorage(cameraId, presetIndex, defaultName) {
+    const presetNames = JSON.parse(localStorage.getItem('presetNames') || '{}');
+    if (presetNames[cameraId] && presetNames[cameraId][presetIndex]) {
+        return decodePresetName(presetNames[cameraId][presetIndex]);
+    }
+    return defaultName;
+}
+
+function updatePresetNames() {
+    // Primero cargar desde localStorage
+    for (let i = 0; i < MAX_PRESETS; i++) {
+        const input = document.getElementById("presetName_" + i);
+        if (input) {
+            input.value = getPresetNameFromLocalStorage(currentCamera, i, `Preset ${i+1}`);
+        }
+    }
+    
+    // Luego actualizar desde el servidor
+    fetch('/?listPresets')
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.presets) {
+                const presetsForCamera = data.presets.filter(p => p.cameraId === currentCamera);
+                presetsForCamera.forEach(preset => {
+                    const input = document.getElementById("presetName_" + preset.presetId);
+                    if (input && preset.name) {
+                        input.value = decodePresetName(preset.name);
+                        savePresetNameToLocalStorage(currentCamera, preset.presetId, preset.name);
+                    }
+                });
+            }
+        })
+        .catch(console.error);
+}
+
+// === RECOPILAR PARAMETROS ===
+
+function collectAllParameters() {
+    const params = {};
+    
+    // Primero, recopilar todos los parameters simples (sin subindex)
+    document.querySelectorAll('.param-control:not([data-subindex])').forEach(el => {
+        const parent = el.closest('.tabcontent');
+        if (!parent) return;
+        
+        // Verificar si el grupo esta seleccionado
+        const groupId = parent.id.replace('group_', '');
+        if (!selectedParamGroups[groupId]) return;
+        
+        const key = el.dataset.paramkey;
+        if (!key) return;
+        
+        const type = el.dataset.paramtype;
+        if (type === 'checkbox') {
+            params[key] = el.checked ? 1 : 0;
+        } else if (type === 'void') {
+            // No guardar parameters void (son triggers)
+            return;
+        } else {
+            params[key] = el.value;
+        }
+    });
+    
+    // Segundo, recopilar parameters multi-subindice
+    const multiParams = new Map(); // key -> array de {subIndex, value}
+    
+    document.querySelectorAll('.param-control[data-subindex]').forEach(el => {
+        const parent = el.closest('.tabcontent');
+        if (!parent) return;
+        
+        const groupId = parent.id.replace('group_', '');
+        if (!selectedParamGroups[groupId]) return;
+        
+        const key = el.dataset.paramkey;
+        const subIndex = parseInt(el.dataset.subindex);
+        if (!key || isNaN(subIndex)) return;
+        
+        const type = el.dataset.paramtype;
+        let value;
+        
+        if (type === 'sub-check') {
+            value = el.checked ? 1 : 0;
+        } else if (type === 'sub-void') {
+            return; // No guardar void
+        } else {
+            value = el.value;
+        }
+        
+        if (!multiParams.has(key)) {
+            multiParams.set(key, []);
+        }
+        multiParams.get(key).push({ subIndex, value });
+    });
+    
+    // Convertir multi-params a arrays ordenados
+    multiParams.forEach((entries, key) => {
+        // Ordenar por subIndex
+        entries.sort((a, b) => a.subIndex - b.subIndex);
+        // Crear array de valores
+        const values = [];
+        entries.forEach(e => {
+            values[e.subIndex] = e.value;
+        });
+        // Rellenar huecos con 0
+        for (let i = 0; i < values.length; i++) {
+            if (values[i] === undefined) values[i] = 0;
+        }
+        params[key] = values;
+    });
+    
+    console.log('Parametros recopilados:', Object.keys(params).length);
+    console.log(params);
+    
+    return params;
+}
+
+// === MOSTRAR ESTADO ===
+
+function showSaveStatus(message, type = 'info', progress = null) {
+    let statusEl = document.getElementById('saveStatusElement');
+    
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'saveStatusElement';
+        statusEl.className = 'save-status';
+        statusEl.innerHTML = '<div class="message"></div><div class="progress"><div class="progress-bar"></div></div>';
+        document.body.appendChild(statusEl);
+    }
+    
+    statusEl.querySelector('.message').textContent = message;
+    statusEl.className = 'save-status ' + type;
+    
+    if (progress !== null) {
+        statusEl.querySelector('.progress').style.display = 'block';
+        statusEl.querySelector('.progress-bar').style.width = progress + '%';
+    } else {
+        statusEl.querySelector('.progress').style.display = 'none';
+    }
+    
+    return statusEl;
+}
+
+function hideSaveStatus(delay = 0) {
+    setTimeout(() => {
+        const el = document.getElementById('saveStatusElement');
+        if (el) el.remove();
+    }, delay);
+}
+
+// === GUARDAR PRESET - VERSION POST ===
+// Un solo request POST con todos los datos en el body
+// Mucho mas rapido y fiable que multiples GETs
+
+async function savePreset(idx) {
+    if (saveInProgress) {
+        alert('A save is already in progress');
+        return;
+    }
+    
+    saveInProgress = true;
+    const presetName = document.getElementById("presetName_" + idx).value || `Preset ${idx + 1}`;
+    
+    savePresetNameToLocalStorage(currentCamera, idx, presetName);
+    
+    showSaveStatus(`Preparing preset "${presetName}"...`, 'info', 10);
+    
+    try {
+        // Recopilar todos los parameters
+        const params = collectAllParameters();
+        const paramKeys = Object.keys(params);
+        
+        if (paramKeys.length === 0) {
+            showSaveStatus('No parameters to save', 'error');
+            hideSaveStatus(2000);
+            saveInProgress = false;
+            return;
+        }
+        
+        console.log(`Saving preset with ${paramKeys.length} parameters`);
+        
+        // Construir string de datos: key1:val1;key2:val2;...
+        let dataString = '';
+        for (const key of paramKeys) {
+            const value = params[key];
+            const valueStr = Array.isArray(value) ? value.join(',') : String(value);
+            dataString += `${key}:${valueStr};`;
+        }
+        
+        // Construir body del POST
+        const bodyData = `cameraId=${currentCamera}&presetId=${idx}&name=${encodeURIComponent(presetName)}&data=${encodeURIComponent(dataString)}`;
+        
+        console.log(`Body length: ${bodyData.length} bytes`);
+        showSaveStatus(`Sending parameters...`, 'info', 50);
+        
+        // Enviar POST
+        const response = await fetch('/savePreset', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': bodyData.length.toString()
+            },
+            body: bodyData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Respuesta del servidor:', result);
+        
+        if (result.success) {
+            showSaveStatus(`Preset saved! (${result.paramCount} params)`, 'success', 100);
+        } else {
+            throw new Error(result.message || 'Unknown error');
+        }
+        
+        hideSaveStatus(2000);
+        setTimeout(updatePresetNames, 500);
+        
+    } catch (error) {
+        console.error('Error saving preset:', error);
+        showSaveStatus(`Error: ${error.message}`, 'error');
+        hideSaveStatus(3000);
+    } finally {
+        saveInProgress = false;
+    }
+}
+
+// === CARGAR PRESET ===
+
+async function loadPreset(idx) {
+    showSaveStatus(`Loading preset ${idx}...`, 'info');
+    
+    try {
+        const response = await fetch(`/?loadPreset=${currentCamera},${idx}&returnValues=1`);
+        const text = await response.text();
+        
+        // Intentar parsear como JSON
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            // Si no es JSON valido, solo fue aplicado en la camara
+            showSaveStatus('Preset applied to camera', 'success');
+            hideSaveStatus(2000);
+            return;
+        }
+        
+        if (data && data.parameters) {
+            applyValuesToUI(data.parameters);
+            showSaveStatus('Preset loaded successfully', 'success');
+        } else {
+            showSaveStatus('Preset applied to camera', 'success');
+        }
+        
+        hideSaveStatus(2000);
+        
+    } catch (error) {
+        console.error('Error loading preset:', error);
+        showSaveStatus(`Error: ${error.message}`, 'error');
+        hideSaveStatus(3000);
+    }
+}
+
+// === APLICAR VALORES A LA UI ===
+
+function applyValuesToUI(parameters) {
+    for (const [key, value] of Object.entries(parameters)) {
+        if (key === 'name' || key === 'cameraId' || key === 'presetId') continue;
+        
+        // Determinar si es array o CSV
+        let values;
+        if (Array.isArray(value)) {
+            values = value;
+        } else if (typeof value === 'string' && value.includes(',')) {
+            values = value.split(',').map(v => {
+                const n = parseFloat(v);
+                return isNaN(n) ? v : n;
+            });
+        } else {
+            values = null;
+        }
+        
+        if (values) {
+            // Multi-subindice
+            multiSubValues[key] = values;
+            values.forEach((v, i) => {
+                const control = document.querySelector(`.param-control[data-paramkey="${key}"][data-subindex="${i}"]`);
+                if (control) {
+                    updateControlFromValue(control, v, key, i);
+                    cacheValue(key, v, i);
+                }
+            });
+        } else {
+            // Valor simple
+            const control = document.querySelector(`.param-control[data-paramkey="${key}"]:not([data-subindex])`);
+            if (control) {
+                updateControlFromValue(control, value, key);
+                cacheValue(key, value);
+            }
+        }
+    }
+}
+
+function updateControlFromValue(control, value, paramKey, subIndex = null) {
+    const type = control.dataset.paramtype;
+    
+    if (type === 'checkbox' || type === 'sub-check') {
+        control.checked = (value == 1 || value === true);
+    } else if (control.tagName === 'SELECT') {
+        control.value = value;
+    } else if (type === 'range' || type === 'sub-range') {
+        control.value = value;
+        // Actualizar label
+        const labelId = subIndex !== null 
+            ? `${paramKey}_${subIndex}_val` 
+            : `${paramKey}_val`;
+        const label = document.getElementById(labelId);
+        if (label) {
+            const numVal = parseFloat(value);
+            label.textContent = isNaN(numVal) ? value : numVal.toFixed(2);
+        }
+    } else {
+        control.value = value;
+    }
+}
+
+// === RESTABLECER VALORES ===
+
+function resetSelectedGroupParams() {
+    if (!confirm("Reset all parameters in the selected groups?")) return;
+    
+    showSaveStatus('Resetting values...', 'info');
+    let count = 0;
+    
+    const selectedGroups = Object.entries(selectedParamGroups)
+        .filter(([_, sel]) => sel)
+        .map(([g]) => g);
+    
+    document.querySelectorAll('.tabcontent').forEach(tab => {
+        const groupId = tab.id.replace('group_', '');
+        if (!selectedGroups.includes(groupId)) return;
+        
+        // Buscar botones de reset y simular click
+        tab.querySelectorAll('.reset-button').forEach(btn => {
+            btn.click();
+            count++;
+        });
+        
+        // Manejar checkboxes
+        tab.querySelectorAll('.param-control[data-paramtype="checkbox"], .param-control[data-paramtype="sub-check"]').forEach(cb => {
+            const defVal = cb.dataset.default;
+            const shouldCheck = defVal === "1";
+            if (cb.checked !== shouldCheck) {
+                cb.checked = shouldCheck;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+                count++;
+            }
+        });
+        
+        // Manejar selects
+        tab.querySelectorAll('select.param-control').forEach(sel => {
+            const defVal = sel.dataset.default;
+            if (defVal && sel.value !== defVal) {
+                sel.value = defVal;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                count++;
+            }
+        });
+    });
+    
+    showSaveStatus(`Restablecidos ${count} controles`, 'success');
+    hideSaveStatus(2000);
+}
+</script>
+</head>
+<body>
+<div class="encabezado-fijo">
+  <div class="titulo-container">
+    <h1>TallyCCU Pro <span class="subtitulo">SDI Blackmagic Cam Control</span></h1>
+  </div>
+  <div class="nav-buttons">
+    <button class="btn" onclick="location.href='tally.html'">Vmix Tally Map</button>
+    <button class="btn" onclick="location.href='/sd'">&#128193; SD Card</button>
+  </div>
+</div>
+<fieldset>
+  <legend>Select Camera</legend>
+  <div class="camera-buttons">
+    <button id="camBtn1" onclick="setCameraId(1)">Cam 1</button>
+    <button id="camBtn2" onclick="setCameraId(2)">Cam 2</button>
+    <button id="camBtn3" onclick="setCameraId(3)">Cam 3</button>
+    <button id="camBtn4" onclick="setCameraId(4)">Cam 4</button>
+    <button id="camBtn5" onclick="setCameraId(5)">Cam 5</button>
+    <button id="camBtn6" onclick="setCameraId(6)">Cam 6</button>
+    <button id="camBtn7" onclick="setCameraId(7)">Cam 7</button>
+    <button id="camBtn8" onclick="setCameraId(8)">Cam 8</button>
+  </div>
+</fieldset>
+<fieldset class="overrides-container">
+  <legend>Controls</legend>
+  <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+    <div>
+      <button onclick="toggleOverrideTally()">Tally: <span id="lblOverrideTally">On</span></button>
+      <button onclick="toggleOverrideCCU()">CCU: <span id="lblOverrideCCU">On</span></button>
+      <button onclick="toggleVmixConnect()">vMix: <span id="lblVmixConnect">On</span></button>
+      <button onclick="rebootArduino()">Reboot</button>
+    </div>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 12px;">Groups:</span>
+      <button onclick="toggleAllParamGroups(true)" style="padding: 2px 6px; font-size: 10px;">All</button>
+      <button onclick="setDefaultParamGroups()" style="padding: 2px 6px; font-size: 10px;">Default</button>
+      <button onclick="toggleAllParamGroups(false)" style="padding: 2px 6px; font-size: 10px;">None</button>
+    </div>
+  </div>
+  <div class="group-selector">
+    <label><input type="checkbox" id="group_selector_lens" onchange="toggleParamGroup('lens')" checked>Lens</label>
+    <label><input type="checkbox" id="group_selector_video" onchange="toggleParamGroup('video')" checked>Video</label>
+    <label><input type="checkbox" id="group_selector_color_correction" onchange="toggleParamGroup('color_correction')" checked>Color Correction</label>
+    <label><input type="checkbox" id="group_selector_output" onchange="toggleParamGroup('output')" >Output</label>
+    <label><input type="checkbox" id="group_selector_display" onchange="toggleParamGroup('display')" >Display</label>
+    <label><input type="checkbox" id="group_selector_audio" onchange="toggleParamGroup('audio')" >Audio</label>
+    <label><input type="checkbox" id="group_selector_tally" onchange="toggleParamGroup('tally')" >Tally</label>
+    <label><input type="checkbox" id="group_selector_reference" onchange="toggleParamGroup('reference')" >Reference</label>
+    <label><input type="checkbox" id="group_selector_ptz_control" onchange="toggleParamGroup('ptz_control')" >PTZ Control</label>
+  </div>
+</fieldset>
+<fieldset>
+  <legend>Presets</legend>
+  <div class="preset-buttons">
+    <div class="preset-item">
+      <input type="text" id="presetName_0" class="preset-name" placeholder="Name" value="Preset 1">
+      <button onclick="savePreset(0)">Save</button>
+      <button class="btn-load" onclick="loadPreset(0)">Load</button>
+    </div>
+    <div class="preset-item">
+      <input type="text" id="presetName_1" class="preset-name" placeholder="Name" value="Preset 2">
+      <button onclick="savePreset(1)">Save</button>
+      <button class="btn-load" onclick="loadPreset(1)">Load</button>
+    </div>
+    <div class="preset-item">
+      <input type="text" id="presetName_2" class="preset-name" placeholder="Name" value="Preset 3">
+      <button onclick="savePreset(2)">Save</button>
+      <button class="btn-load" onclick="loadPreset(2)">Load</button>
+    </div>
+    <div class="preset-item">
+      <input type="text" id="presetName_3" class="preset-name" placeholder="Name" value="Preset 4">
+      <button onclick="savePreset(3)">Save</button>
+      <button class="btn-load" onclick="loadPreset(3)">Load</button>
+    </div>
+    <div class="preset-item">
+      <input type="text" id="presetName_4" class="preset-name" placeholder="Name" value="Preset 5">
+      <button onclick="savePreset(4)">Save</button>
+      <button class="btn-load" onclick="loadPreset(4)">Load</button>
+    </div>
+    <div class="preset-item">
+      <button onclick="resetSelectedGroupParams()">Reset to Default</button>
+    </div>
+  </div>
+</fieldset>
+<div class="tabs-container">
+  <fieldset>
+    <legend>Groups</legend>
+    <div class="tabs">
+      <button onclick="showTab('group_lens')">Lens</button>
+      <button onclick="showTab('group_video')">Video</button>
+      <button onclick="showTab('group_color_correction')">Color Correction</button>
+      <button onclick="showTab('group_output')">Output</button>
+      <button onclick="showTab('group_display')">Display</button>
+      <button onclick="showTab('group_audio')">Audio</button>
+      <button onclick="showTab('group_tally')">Tally</button>
+      <button onclick="showTab('group_reference')">Reference</button>
+      <button onclick="showTab('group_ptz_control')">PTZ Control</button>
+    </div>
+  </fieldset>
+</div>
+<div class="main-content">
+  <div class="contenido-desplazable">
+    <div id="group_lens" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Aperture (normalised)</label>
+            <span class="sub-label">0.0 = Smallest, 1.0 = Largest</span>
+            <input type="range" id="aperture_normalised_range" class="param-control" data-paramkey="aperture_normalised" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="0" data-default="0"
+              oninput="sliderChanged('aperture_normalised', this, 'aperture_normalised_val')"
+              onchange="sliderRelease('aperture_normalised', this)">
+            <span id="aperture_normalised_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('aperture_normalised', -0.1)">-</button>
+              <button onclick="stepSlider('aperture_normalised', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('aperture_normalised', 0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Instantaneous auto aperture</label>
+            <button class="param-control" data-paramkey="instantaneous_auto_aperture" data-paramtype="void"
+              onclick="triggerVoid('instantaneous_auto_aperture')">Execute</button>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Optical image stabilisation</label>
+            <input type="checkbox" class="param-control" data-paramkey="optical_image_stabilisation" data-paramtype="checkbox" 
+              data-default="1" onchange="toggleCheckbox('optical_image_stabilisation', this)" checked>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Focus</label>
+            <span class="sub-label">0.0 = Near, 1.0 = Far</span>
+            <input type="range" id="focus_range" class="param-control" data-paramkey="focus" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="0" data-default="0"
+              oninput="sliderChanged('focus', this, 'focus_val')"
+              onchange="sliderRelease('focus', this)">
+            <span id="focus_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('focus', -0.1)">-</button>
+              <button onclick="stepSlider('focus', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('focus', 0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Instantaneous autofocus</label>
+            <button class="param-control" data-paramkey="instantaneous_autofocus" data-paramtype="void"
+              onclick="triggerVoid('instantaneous_autofocus')">Execute</button>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Set absolute zoom (normalised)</label>
+            <span class="sub-label">Move to specified focal length: 0.0 = wide, 1.0 = tele</span>
+            <input type="range" id="set_absolute_zoom_normalised_range" class="param-control" data-paramkey="set_absolute_zoom_normalised" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="0" data-default="0"
+              oninput="sliderChanged('set_absolute_zoom_normalised', this, 'set_absolute_zoom_normalised_val')"
+              onchange="sliderRelease('set_absolute_zoom_normalised', this)">
+            <span id="set_absolute_zoom_normalised_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('set_absolute_zoom_normalised', -0.1)">-</button>
+              <button onclick="stepSlider('set_absolute_zoom_normalised', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('set_absolute_zoom_normalised', 0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Set continuous zoom (speed)</label>
+            <span class="sub-label">Start/stop zooming at specified rate: -1.0 = zoom wider fast, 0.0 = stop, +1.0 = zoom tele fast</span>
+            <input type="range" id="set_continuous_zoom_speed_range" class="param-control" data-paramkey="set_continuous_zoom_speed" data-paramtype="range"
+              min="-1.0" max="1.0" step="0.1" value="0" data-default="0"
+              oninput="sliderChanged('set_continuous_zoom_speed', this, 'set_continuous_zoom_speed_val')"
+              onchange="sliderRelease('set_continuous_zoom_speed', this)">
+            <span id="set_continuous_zoom_speed_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('set_continuous_zoom_speed', -0.1)">-</button>
+              <button onclick="stepSlider('set_continuous_zoom_speed', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('set_continuous_zoom_speed', 0)">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="group_video" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>ND Filter Stop</label>
+            <script>multiSubValues["nd_filter_stop"] = [];</script>
+            <span class="sub-label">Filter power as f-stop</span>
+            <input type="range" id="nd_filter_stop_0_range" class="param-control" data-paramkey="nd_filter_stop" data-paramtype="sub-range" data-subindex="0"
+              min="0.0" max="15.0" step="1" value="0.0" data-default="0.0"
+              oninput="multiSubOnInput('nd_filter_stop', 0, this, 'nd_filter_stop_0_val')"
+              onchange="multiSubOnChange('nd_filter_stop')">
+            <span id="nd_filter_stop_0_val" class="value-label">0</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('nd_filter_stop', 0, -1)">-</button>
+              <button onclick="multiStepSlider('nd_filter_stop', 0, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('nd_filter_stop', 0, 0.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["nd_filter_stop"][0]===undefined) multiSubValues["nd_filter_stop"][0] = 0.0;</script>
+            <span class="sub-label">0 = Stop, 1 = Density, 2 = Transmitance</span>
+            <input type="range" id="nd_filter_stop_1_range" class="param-control" data-paramkey="nd_filter_stop" data-paramtype="sub-range" data-subindex="1"
+              min="0.0" max="2.0" step="1" value="0.0" data-default="0.0"
+              oninput="multiSubOnInput('nd_filter_stop', 1, this, 'nd_filter_stop_1_val')"
+              onchange="multiSubOnChange('nd_filter_stop')">
+            <span id="nd_filter_stop_1_val" class="value-label">0</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('nd_filter_stop', 1, -1)">-</button>
+              <button onclick="multiStepSlider('nd_filter_stop', 1, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('nd_filter_stop', 1, 0.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["nd_filter_stop"][1]===undefined) multiSubValues["nd_filter_stop"][1] = 0.0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Shutter speed</label>
+            <span class="sub-label">Shutter speed value as a fraction of 1, so 50 for 1/50th of a second</span>
+            <input type="range" id="shutter_speed_range" class="param-control" data-paramkey="shutter_speed" data-paramtype="range"
+              min="24.0" max="2000.0" step="1" value="24.0" data-default="24.0"
+              oninput="sliderChanged('shutter_speed', this, 'shutter_speed_val')"
+              onchange="sliderRelease('shutter_speed', this)">
+            <span id="shutter_speed_val" class="value-label">24.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('shutter_speed', -1)">-</button>
+              <button onclick="stepSlider('shutter_speed', 1)">+</button>
+              <button class="reset-button" onclick="resetSlider('shutter_speed', 24.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Gain(db)</label>
+            <span class="sub-label">Gain in decibel (dB)</span>
+            <input type="range" id="gain_db_range" class="param-control" data-paramkey="gain_db" data-paramtype="range"
+              min="-12.0" max="36.0" step="2" value="0.0" data-default="0.0"
+              oninput="sliderChanged('gain_db', this, 'gain_db_val')"
+              onchange="sliderRelease('gain_db', this)">
+            <span id="gain_db_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('gain_db', -2)">-</button>
+              <button onclick="stepSlider('gain_db', 2)">+</button>
+              <button class="reset-button" onclick="resetSlider('gain_db', 0.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Manual White Balance</label>
+            <script>multiSubValues["manual_white_balance"] = [];</script>
+            <span class="sub-label">Color temp (2500-10000 K)</span>
+            <input type="range" id="manual_white_balance_0_range" class="param-control" data-paramkey="manual_white_balance" data-paramtype="sub-range" data-subindex="0"
+              min="2500.0" max="10000.0" step="100" value="5600.0" data-default="5600.0"
+              oninput="multiSubOnInput('manual_white_balance', 0, this, 'manual_white_balance_0_val')"
+              onchange="multiSubOnChange('manual_white_balance')">
+            <span id="manual_white_balance_0_val" class="value-label">5600</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('manual_white_balance', 0, -100)">-</button>
+              <button onclick="multiStepSlider('manual_white_balance', 0, 100)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('manual_white_balance', 0, 5600.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["manual_white_balance"][0]===undefined) multiSubValues["manual_white_balance"][0] = 5600.0;</script>
+            <span class="sub-label">Tint (-50 to 50)</span>
+            <input type="range" id="manual_white_balance_1_range" class="param-control" data-paramkey="manual_white_balance" data-paramtype="sub-range" data-subindex="1"
+              min="-50.0" max="50.0" step="1" value="10.0" data-default="10.0"
+              oninput="multiSubOnInput('manual_white_balance', 1, this, 'manual_white_balance_1_val')"
+              onchange="multiSubOnChange('manual_white_balance')">
+            <span id="manual_white_balance_1_val" class="value-label">10.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('manual_white_balance', 1, -1)">-</button>
+              <button onclick="multiStepSlider('manual_white_balance', 1, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('manual_white_balance', 1, 10.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["manual_white_balance"][1]===undefined) multiSubValues["manual_white_balance"][1] = 10.0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Set auto WB</label>
+            <button class="param-control" data-paramkey="set_auto_wb" data-paramtype="void"
+              onclick="triggerVoid('set_auto_wb')">Execute</button>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Restore auto WB</label>
+            <button class="param-control" data-paramkey="restore_auto_wb" data-paramtype="void"
+              onclick="triggerVoid('restore_auto_wb')">Execute</button>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Dynamic Range Mode</label>
+            <span class="sub-label">0 = Film, 1 = Video, 2 = Extended Video</span>
+            <input type="range" id="dynamic_range_mode_range" class="param-control" data-paramkey="dynamic_range_mode" data-paramtype="range"
+              min="0.0" max="2.0" step="1" value="2.0" data-default="2.0"
+              oninput="sliderChanged('dynamic_range_mode', this, 'dynamic_range_mode_val')"
+              onchange="sliderRelease('dynamic_range_mode', this)">
+            <span id="dynamic_range_mode_val" class="value-label">2.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('dynamic_range_mode', -1)">-</button>
+              <button onclick="stepSlider('dynamic_range_mode', 1)">+</button>
+              <button class="reset-button" onclick="resetSlider('dynamic_range_mode', 2.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Video sharpening level</label>
+            <span class="sub-label">0 = Off, 1 = Low, 2 = Medium, 3 = High</span>
+            <input type="range" id="video_sharpening_level_range" class="param-control" data-paramkey="video_sharpening_level" data-paramtype="range"
+              min="0.0" max="3.0" step="1" value="0" data-default="0"
+              oninput="sliderChanged('video_sharpening_level', this, 'video_sharpening_level_val')"
+              onchange="sliderRelease('video_sharpening_level', this)">
+            <span id="video_sharpening_level_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('video_sharpening_level', -1)">-</button>
+              <button onclick="stepSlider('video_sharpening_level', 1)">+</button>
+              <button class="reset-button" onclick="resetSlider('video_sharpening_level', 0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Set auto exposure mode</label>
+            <span class="sub-label">0 = Manual Trigger, 1 = Iris, 2 = Shutter, 3 = Iris + Shutter, 4 = Shutter + Iris</span>
+            <input type="range" id="set_auto_exposure_mode_range" class="param-control" data-paramkey="set_auto_exposure_mode" data-paramtype="range"
+              min="0.0" max="4.0" step="1" value="0.0" data-default="0.0"
+              oninput="sliderChanged('set_auto_exposure_mode', this, 'set_auto_exposure_mode_val')"
+              onchange="sliderRelease('set_auto_exposure_mode', this)">
+            <span id="set_auto_exposure_mode_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('set_auto_exposure_mode', -1)">-</button>
+              <button onclick="stepSlider('set_auto_exposure_mode', 1)">+</button>
+              <button class="reset-button" onclick="resetSlider('set_auto_exposure_mode', 0.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Video mode</label>
+            <script>multiSubValues["video_mode"] = [];</script>
+            <span class="sub-label">Frame rate (24, 25, 30, 50, 60)</span>
+            <select id="video_mode_0_select" class="param-control" data-paramkey="video_mode" data-paramtype="select" data-subindex="0" 
+              data-default="60" onchange="multiSubSelectChange('video_mode', 0, this)">
+              <option value="24" >24 fps</option>
+              <option value="25" >25 fps</option>
+              <option value="30" >30 fps</option>
+              <option value="50" >50 fps</option>
+              <option value="60" selected>60 fps</option>
+            </select>
+            <script>multiSubValues["video_mode"][0] = 60;</script>
+            <span class="sub-label">M-rate (0 = regular, 1 = M-rate)</span>
+            <input type="range" id="video_mode_1_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="1"
+              min="0.0" max="1.0" step="1" value="0.0" data-default="0.0"
+              oninput="multiSubOnInput('video_mode', 1, this, 'video_mode_1_val')"
+              onchange="multiSubOnChange('video_mode')">
+            <span id="video_mode_1_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('video_mode', 1, -1)">-</button>
+              <button onclick="multiStepSlider('video_mode', 1, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('video_mode', 1, 0.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["video_mode"][1]===undefined) multiSubValues["video_mode"][1] = 0.0;</script>
+            <span class="sub-label">Dimensions (0 = NTSC, 1 = PAL, 2 = 720, 3 = 1080, 4 = 2kDCI, 5 = 2k16:9, 6 = UHD, 7 = 3k Anamorphic, 8 = 4k DCI, 9 = 4k 16:9, 10 = 4.6k 2.4:1, 11 = 4.6k)</span>
+            <input type="range" id="video_mode_2_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="2"
+              min="0.0" max="11.0" step="1" value="6.0" data-default="6.0"
+              oninput="multiSubOnInput('video_mode', 2, this, 'video_mode_2_val')"
+              onchange="multiSubOnChange('video_mode')">
+            <span id="video_mode_2_val" class="value-label">6.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('video_mode', 2, -1)">-</button>
+              <button onclick="multiStepSlider('video_mode', 2, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('video_mode', 2, 6.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["video_mode"][2]===undefined) multiSubValues["video_mode"][2] = 6.0;</script>
+            <span class="sub-label">Interlaced (0 = progressive, 1 = interlaced)</span>
+            <input type="range" id="video_mode_3_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="3"
+              min="0.0" max="1.0" step="1" value="0.0" data-default="0.0"
+              oninput="multiSubOnInput('video_mode', 3, this, 'video_mode_3_val')"
+              onchange="multiSubOnChange('video_mode')">
+            <span id="video_mode_3_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('video_mode', 3, -1)">-</button>
+              <button onclick="multiStepSlider('video_mode', 3, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('video_mode', 3, 0.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["video_mode"][3]===undefined) multiSubValues["video_mode"][3] = 0.0;</script>
+            <span class="sub-label">Color space (0 = YUV)</span>
+            <input type="range" id="video_mode_4_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="4"
+              min="0.0" max="1.0" step="1" value="0.0" data-default="0.0"
+              oninput="multiSubOnInput('video_mode', 4, this, 'video_mode_4_val')"
+              onchange="multiSubOnChange('video_mode')">
+            <span id="video_mode_4_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('video_mode', 4, -1)">-</button>
+              <button onclick="multiStepSlider('video_mode', 4, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('video_mode', 4, 0.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["video_mode"][4]===undefined) multiSubValues["video_mode"][4] = 0.0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Display LUT</label>
+            <script>multiSubValues["display_lut"] = [];</script>
+<div class='display-lut-container'>
+  <div style='margin-bottom: 8px;'>
+    <span class='sub-label'>Selected LUT:</span>
+    <select id='display_lut_0_select' class='param-control' data-paramkey='display_lut' data-paramtype='select' data-subindex='0' data-default='0' onchange='multiSubSelectChange("display_lut", 0, this)'>
+      <option value='0' selected>None</option>
+      <option value='1'>Custom</option>
+      <option value='2'>Film to Video</option>
+      <option value='3'>Film to Ext Video</option>
+    </select>
+    <script>multiSubValues["display_lut"][0] = 0;</script>
+  </div>
+  <div>
+    <span class='sub-label'>LUT Enabled:</span>
+    <input type='checkbox' id='display_lut_1_check' class='param-control' data-paramkey='display_lut' data-paramtype='sub-check' data-subindex='1' data-default='0' onchange='multiSubCheckChange("display_lut", 1, this)'>
+    <script>multiSubValues["display_lut"][1] = 0;</script>
+  </div>
+</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="group_color_correction" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Contrast Adjust</label>
+            <script>multiSubValues["contrast_adjust"] = [];</script>
+            <span class="sub-label">Pivot</span>
+            <input type="range" id="contrast_adjust_0_range" class="param-control" data-paramkey="contrast_adjust" data-paramtype="sub-range" data-subindex="0"
+              min="0.0" max="1.0" step="0.1" value="0.5" data-default="0.5"
+              oninput="multiSubOnInput('contrast_adjust', 0, this, 'contrast_adjust_0_val')"
+              onchange="multiSubOnChange('contrast_adjust')">
+            <span id="contrast_adjust_0_val" class="value-label">0.50</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('contrast_adjust', 0, -0.1)">-</button>
+              <button onclick="multiStepSlider('contrast_adjust', 0, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('contrast_adjust', 0, 0.5)">Reset</button>
+            </div>
+            <script>if(multiSubValues["contrast_adjust"][0]===undefined) multiSubValues["contrast_adjust"][0] = 0.5;</script>
+            <span class="sub-label">Adjust</span>
+            <input type="range" id="contrast_adjust_1_range" class="param-control" data-paramkey="contrast_adjust" data-paramtype="sub-range" data-subindex="1"
+              min="0.0" max="2.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="multiSubOnInput('contrast_adjust', 1, this, 'contrast_adjust_1_val')"
+              onchange="multiSubOnChange('contrast_adjust')">
+            <span id="contrast_adjust_1_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('contrast_adjust', 1, -0.1)">-</button>
+              <button onclick="multiStepSlider('contrast_adjust', 1, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('contrast_adjust', 1, 1.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["contrast_adjust"][1]===undefined) multiSubValues["contrast_adjust"][1] = 1.0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Color Adjust</label>
+            <script>multiSubValues["color_adjust"] = [];</script>
+            <span class="sub-label">Hue</span>
+            <input type="range" id="color_adjust_0_range" class="param-control" data-paramkey="color_adjust" data-paramtype="sub-range" data-subindex="0"
+              min="-1.0" max="1.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('color_adjust', 0, this, 'color_adjust_0_val')"
+              onchange="multiSubOnChange('color_adjust')">
+            <span id="color_adjust_0_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('color_adjust', 0, -0.1)">-</button>
+              <button onclick="multiStepSlider('color_adjust', 0, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('color_adjust', 0, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["color_adjust"][0]===undefined) multiSubValues["color_adjust"][0] = 0;</script>
+            <span class="sub-label">Saturation</span>
+            <input type="range" id="color_adjust_1_range" class="param-control" data-paramkey="color_adjust" data-paramtype="sub-range" data-subindex="1"
+              min="0.0" max="2.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="multiSubOnInput('color_adjust', 1, this, 'color_adjust_1_val')"
+              onchange="multiSubOnChange('color_adjust')">
+            <span id="color_adjust_1_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('color_adjust', 1, -0.1)">-</button>
+              <button onclick="multiStepSlider('color_adjust', 1, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('color_adjust', 1, 1.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["color_adjust"][1]===undefined) multiSubValues["color_adjust"][1] = 1.0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Lift Adjust</label>
+            <script>multiSubValues["lift_adjust"] = [];</script>
+            <span class="sub-label">Red</span>
+            <input type="range" id="lift_adjust_0_range" class="param-control" data-paramkey="lift_adjust" data-paramtype="sub-range" data-subindex="0"
+              min="-2.0" max="2.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('lift_adjust', 0, this, 'lift_adjust_0_val')"
+              onchange="multiSubOnChange('lift_adjust')">
+            <span id="lift_adjust_0_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('lift_adjust', 0, -0.1)">-</button>
+              <button onclick="multiStepSlider('lift_adjust', 0, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('lift_adjust', 0, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["lift_adjust"][0]===undefined) multiSubValues["lift_adjust"][0] = 0;</script>
+            <span class="sub-label">Green</span>
+            <input type="range" id="lift_adjust_1_range" class="param-control" data-paramkey="lift_adjust" data-paramtype="sub-range" data-subindex="1"
+              min="-2.0" max="2.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('lift_adjust', 1, this, 'lift_adjust_1_val')"
+              onchange="multiSubOnChange('lift_adjust')">
+            <span id="lift_adjust_1_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('lift_adjust', 1, -0.1)">-</button>
+              <button onclick="multiStepSlider('lift_adjust', 1, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('lift_adjust', 1, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["lift_adjust"][1]===undefined) multiSubValues["lift_adjust"][1] = 0;</script>
+            <span class="sub-label">Blue</span>
+            <input type="range" id="lift_adjust_2_range" class="param-control" data-paramkey="lift_adjust" data-paramtype="sub-range" data-subindex="2"
+              min="-2.0" max="2.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('lift_adjust', 2, this, 'lift_adjust_2_val')"
+              onchange="multiSubOnChange('lift_adjust')">
+            <span id="lift_adjust_2_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('lift_adjust', 2, -0.1)">-</button>
+              <button onclick="multiStepSlider('lift_adjust', 2, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('lift_adjust', 2, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["lift_adjust"][2]===undefined) multiSubValues["lift_adjust"][2] = 0;</script>
+            <span class="sub-label">Luma</span>
+            <input type="range" id="lift_adjust_3_range" class="param-control" data-paramkey="lift_adjust" data-paramtype="sub-range" data-subindex="3"
+              min="-2.0" max="2.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('lift_adjust', 3, this, 'lift_adjust_3_val')"
+              onchange="multiSubOnChange('lift_adjust')">
+            <span id="lift_adjust_3_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('lift_adjust', 3, -0.1)">-</button>
+              <button onclick="multiStepSlider('lift_adjust', 3, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('lift_adjust', 3, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["lift_adjust"][3]===undefined) multiSubValues["lift_adjust"][3] = 0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Gamma Adjust</label>
+            <script>multiSubValues["gamma_adjust"] = [];</script>
+            <span class="sub-label">Red</span>
+            <input type="range" id="gamma_adjust_0_range" class="param-control" data-paramkey="gamma_adjust" data-paramtype="sub-range" data-subindex="0"
+              min="-4.0" max="4.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('gamma_adjust', 0, this, 'gamma_adjust_0_val')"
+              onchange="multiSubOnChange('gamma_adjust')">
+            <span id="gamma_adjust_0_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('gamma_adjust', 0, -0.1)">-</button>
+              <button onclick="multiStepSlider('gamma_adjust', 0, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('gamma_adjust', 0, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["gamma_adjust"][0]===undefined) multiSubValues["gamma_adjust"][0] = 0;</script>
+            <span class="sub-label">Green</span>
+            <input type="range" id="gamma_adjust_1_range" class="param-control" data-paramkey="gamma_adjust" data-paramtype="sub-range" data-subindex="1"
+              min="-4.0" max="4.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('gamma_adjust', 1, this, 'gamma_adjust_1_val')"
+              onchange="multiSubOnChange('gamma_adjust')">
+            <span id="gamma_adjust_1_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('gamma_adjust', 1, -0.1)">-</button>
+              <button onclick="multiStepSlider('gamma_adjust', 1, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('gamma_adjust', 1, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["gamma_adjust"][1]===undefined) multiSubValues["gamma_adjust"][1] = 0;</script>
+            <span class="sub-label">Blue</span>
+            <input type="range" id="gamma_adjust_2_range" class="param-control" data-paramkey="gamma_adjust" data-paramtype="sub-range" data-subindex="2"
+              min="-4.0" max="4.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('gamma_adjust', 2, this, 'gamma_adjust_2_val')"
+              onchange="multiSubOnChange('gamma_adjust')">
+            <span id="gamma_adjust_2_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('gamma_adjust', 2, -0.1)">-</button>
+              <button onclick="multiStepSlider('gamma_adjust', 2, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('gamma_adjust', 2, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["gamma_adjust"][2]===undefined) multiSubValues["gamma_adjust"][2] = 0;</script>
+            <span class="sub-label">Luma</span>
+            <input type="range" id="gamma_adjust_3_range" class="param-control" data-paramkey="gamma_adjust" data-paramtype="sub-range" data-subindex="3"
+              min="-4.0" max="4.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('gamma_adjust', 3, this, 'gamma_adjust_3_val')"
+              onchange="multiSubOnChange('gamma_adjust')">
+            <span id="gamma_adjust_3_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('gamma_adjust', 3, -0.1)">-</button>
+              <button onclick="multiStepSlider('gamma_adjust', 3, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('gamma_adjust', 3, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["gamma_adjust"][3]===undefined) multiSubValues["gamma_adjust"][3] = 0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Gain Adjust</label>
+            <script>multiSubValues["gain_adjust"] = [];</script>
+            <span class="sub-label">Red</span>
+            <input type="range" id="gain_adjust_0_range" class="param-control" data-paramkey="gain_adjust" data-paramtype="sub-range" data-subindex="0"
+              min="0.0" max="16.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="multiSubOnInput('gain_adjust', 0, this, 'gain_adjust_0_val')"
+              onchange="multiSubOnChange('gain_adjust')">
+            <span id="gain_adjust_0_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('gain_adjust', 0, -0.1)">-</button>
+              <button onclick="multiStepSlider('gain_adjust', 0, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('gain_adjust', 0, 1.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["gain_adjust"][0]===undefined) multiSubValues["gain_adjust"][0] = 1.0;</script>
+            <span class="sub-label">Green</span>
+            <input type="range" id="gain_adjust_1_range" class="param-control" data-paramkey="gain_adjust" data-paramtype="sub-range" data-subindex="1"
+              min="0.0" max="16.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="multiSubOnInput('gain_adjust', 1, this, 'gain_adjust_1_val')"
+              onchange="multiSubOnChange('gain_adjust')">
+            <span id="gain_adjust_1_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('gain_adjust', 1, -0.1)">-</button>
+              <button onclick="multiStepSlider('gain_adjust', 1, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('gain_adjust', 1, 1.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["gain_adjust"][1]===undefined) multiSubValues["gain_adjust"][1] = 1.0;</script>
+            <span class="sub-label">Blue</span>
+            <input type="range" id="gain_adjust_2_range" class="param-control" data-paramkey="gain_adjust" data-paramtype="sub-range" data-subindex="2"
+              min="0.0" max="16.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="multiSubOnInput('gain_adjust', 2, this, 'gain_adjust_2_val')"
+              onchange="multiSubOnChange('gain_adjust')">
+            <span id="gain_adjust_2_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('gain_adjust', 2, -0.1)">-</button>
+              <button onclick="multiStepSlider('gain_adjust', 2, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('gain_adjust', 2, 1.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["gain_adjust"][2]===undefined) multiSubValues["gain_adjust"][2] = 1.0;</script>
+            <span class="sub-label">Luma</span>
+            <input type="range" id="gain_adjust_3_range" class="param-control" data-paramkey="gain_adjust" data-paramtype="sub-range" data-subindex="3"
+              min="0.0" max="16.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="multiSubOnInput('gain_adjust', 3, this, 'gain_adjust_3_val')"
+              onchange="multiSubOnChange('gain_adjust')">
+            <span id="gain_adjust_3_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('gain_adjust', 3, -0.1)">-</button>
+              <button onclick="multiStepSlider('gain_adjust', 3, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('gain_adjust', 3, 1.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["gain_adjust"][3]===undefined) multiSubValues["gain_adjust"][3] = 1.0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Offset Adjust</label>
+            <script>multiSubValues["offset_adjust"] = [];</script>
+            <span class="sub-label">Red</span>
+            <input type="range" id="offset_adjust_0_range" class="param-control" data-paramkey="offset_adjust" data-paramtype="sub-range" data-subindex="0"
+              min="-8.0" max="8.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('offset_adjust', 0, this, 'offset_adjust_0_val')"
+              onchange="multiSubOnChange('offset_adjust')">
+            <span id="offset_adjust_0_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('offset_adjust', 0, -0.1)">-</button>
+              <button onclick="multiStepSlider('offset_adjust', 0, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('offset_adjust', 0, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["offset_adjust"][0]===undefined) multiSubValues["offset_adjust"][0] = 0;</script>
+            <span class="sub-label">Green</span>
+            <input type="range" id="offset_adjust_1_range" class="param-control" data-paramkey="offset_adjust" data-paramtype="sub-range" data-subindex="1"
+              min="-8.0" max="8.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('offset_adjust', 1, this, 'offset_adjust_1_val')"
+              onchange="multiSubOnChange('offset_adjust')">
+            <span id="offset_adjust_1_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('offset_adjust', 1, -0.1)">-</button>
+              <button onclick="multiStepSlider('offset_adjust', 1, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('offset_adjust', 1, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["offset_adjust"][1]===undefined) multiSubValues["offset_adjust"][1] = 0;</script>
+            <span class="sub-label">Blue</span>
+            <input type="range" id="offset_adjust_2_range" class="param-control" data-paramkey="offset_adjust" data-paramtype="sub-range" data-subindex="2"
+              min="-8.0" max="8.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('offset_adjust', 2, this, 'offset_adjust_2_val')"
+              onchange="multiSubOnChange('offset_adjust')">
+            <span id="offset_adjust_2_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('offset_adjust', 2, -0.1)">-</button>
+              <button onclick="multiStepSlider('offset_adjust', 2, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('offset_adjust', 2, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["offset_adjust"][2]===undefined) multiSubValues["offset_adjust"][2] = 0;</script>
+            <span class="sub-label">Luma</span>
+            <input type="range" id="offset_adjust_3_range" class="param-control" data-paramkey="offset_adjust" data-paramtype="sub-range" data-subindex="3"
+              min="-8.0" max="8.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('offset_adjust', 3, this, 'offset_adjust_3_val')"
+              onchange="multiSubOnChange('offset_adjust')">
+            <span id="offset_adjust_3_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('offset_adjust', 3, -0.1)">-</button>
+              <button onclick="multiStepSlider('offset_adjust', 3, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('offset_adjust', 3, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["offset_adjust"][3]===undefined) multiSubValues["offset_adjust"][3] = 0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Luma mix</label>
+            <span class="sub-label">-</span>
+            <input type="range" id="luma_mix_range" class="param-control" data-paramkey="luma_mix" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="sliderChanged('luma_mix', this, 'luma_mix_val')"
+              onchange="sliderRelease('luma_mix', this)">
+            <span id="luma_mix_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('luma_mix', -0.1)">-</button>
+              <button onclick="stepSlider('luma_mix', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('luma_mix', 1.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Correction Reset Default</label>
+            <button class="param-control" data-paramkey="correction_reset_default" data-paramtype="void"
+              onclick="triggerVoid('correction_reset_default')">Execute</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="group_output" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Overlays</label>
+            <script>multiSubValues["overlays"] = [];</script>
+            <span class="sub-label">Frame guides style (0 = Off, 1 = 2.4:1, 2 = 2.39:1, 3 = 2.35:1, 4 = 1.85:1, 5 = 16:9, 6 = 14:9, 7 = 4:3, 8 = 2:1, 9 = 4:5, 10 = 1:1)</span>
+            <input type="range" id="overlays_0_range" class="param-control" data-paramkey="overlays" data-paramtype="sub-range" data-subindex="0"
+              min="0.0" max="10.0" step="1" value="5.0" data-default="5.0"
+              oninput="multiSubOnInput('overlays', 0, this, 'overlays_0_val')"
+              onchange="multiSubOnChange('overlays')">
+            <span id="overlays_0_val" class="value-label">5.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('overlays', 0, -1)">-</button>
+              <button onclick="multiStepSlider('overlays', 0, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('overlays', 0, 5.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["overlays"][0]===undefined) multiSubValues["overlays"][0] = 5.0;</script>
+            <span class="sub-label">Frame Guide Opacity (0 = Transparent, 100 = Opaque)</span>
+            <input type="range" id="overlays_1_range" class="param-control" data-paramkey="overlays" data-paramtype="sub-range" data-subindex="1"
+              min="0.0" max="100.0" step="1" value="100.0" data-default="100.0"
+              oninput="multiSubOnInput('overlays', 1, this, 'overlays_1_val')"
+              onchange="multiSubOnChange('overlays')">
+            <span id="overlays_1_val" class="value-label">100.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('overlays', 1, -1)">-</button>
+              <button onclick="multiStepSlider('overlays', 1, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('overlays', 1, 100.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["overlays"][1]===undefined) multiSubValues["overlays"][1] = 100.0;</script>
+            <span class="sub-label">Safe Area Percentage (0 means off)</span>
+            <input type="range" id="overlays_2_range" class="param-control" data-paramkey="overlays" data-paramtype="sub-range" data-subindex="2"
+              min="0.0" max="100.0" step="1" value="0.0" data-default="0.0"
+              oninput="multiSubOnInput('overlays', 2, this, 'overlays_2_val')"
+              onchange="multiSubOnChange('overlays')">
+            <span id="overlays_2_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('overlays', 2, -1)">-</button>
+              <button onclick="multiStepSlider('overlays', 2, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('overlays', 2, 0.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["overlays"][2]===undefined) multiSubValues["overlays"][2] = 0.0;</script>
+            <span class="sub-label">Grid style bit flags (1 = Thirds, 2 = Cross Hairs, 4 = Center Dot, 8 = Horizon)</span>
+            <input type="range" id="overlays_3_range" class="param-control" data-paramkey="overlays" data-paramtype="sub-range" data-subindex="3"
+              min="0.0" max="15.0" step="1" value="9.0" data-default="9.0"
+              oninput="multiSubOnInput('overlays', 3, this, 'overlays_3_val')"
+              onchange="multiSubOnChange('overlays')">
+            <span id="overlays_3_val" class="value-label">9.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('overlays', 3, -1)">-</button>
+              <button onclick="multiStepSlider('overlays', 3, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('overlays', 3, 9.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["overlays"][3]===undefined) multiSubValues["overlays"][3] = 9.0;</script>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="group_display" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Brightness</label>
+            <span class="sub-label">0.0 = Minimum, 1.0 = Maximum</span>
+            <input type="range" id="brightness_range" class="param-control" data-paramkey="brightness" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="sliderChanged('brightness', this, 'brightness_val')"
+              onchange="sliderRelease('brightness', this)">
+            <span id="brightness_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('brightness', -0.1)">-</button>
+              <button onclick="stepSlider('brightness', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('brightness', 1.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Exposure and focus tools</label>
+            <script>multiSubValues["exposure_and_focus_tools"] = [];</script>
+<div class='bitfield-container'>
+  <div style='margin-bottom: 8px;'>
+    <span class='sub-label'>Herramientas:</span>
+    <div class='bitfield-checkboxes'>
+      <label><input type='checkbox' id='exposure_and_focus_tools_zebra' onchange='updateExposureFocusTools()'> Zebra</label>
+      <label><input type='checkbox' id='exposure_and_focus_tools_focus' onchange='updateExposureFocusTools()'> Focus Assist</label>
+      <label><input type='checkbox' id='exposure_and_focus_tools_false_color' onchange='updateExposureFocusTools()'> False Color</label>
+    </div>
+    <script>multiSubValues["exposure_and_focus_tools"][0] = 0;</script>
+  </div>
+  <div>
+    <span class='sub-label'>Displays:</span>
+    <div class='bitfield-checkboxes'>
+      <label><input type='checkbox' id='exposure_and_focus_tools_lcd' onchange='updateExposureFocusTools()'> LCD</label>
+      <label><input type='checkbox' id='exposure_and_focus_tools_hdmi' onchange='updateExposureFocusTools()'> HDMI</label>
+      <label><input type='checkbox' id='exposure_and_focus_tools_evf' onchange='updateExposureFocusTools()'> EVF</label>
+      <label><input type='checkbox' id='exposure_and_focus_tools_main_sdi' onchange='updateExposureFocusTools()'> Main SDI</label>
+      <label><input type='checkbox' id='exposure_and_focus_tools_front_sdi' onchange='updateExposureFocusTools()'> Front SDI</label>
+    </div>
+    <script>multiSubValues["exposure_and_focus_tools"][1] = 0;</script>
+  </div>
+</div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Zebra level</label>
+            <span class="sub-label">0.0 = Minimum, 1.0 = Maximum</span>
+            <input type="range" id="zebra_level_range" class="param-control" data-paramkey="zebra_level" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="0.5" data-default="0.5"
+              oninput="sliderChanged('zebra_level', this, 'zebra_level_val')"
+              onchange="sliderRelease('zebra_level', this)">
+            <span id="zebra_level_val" class="value-label">0.50</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('zebra_level', -0.1)">-</button>
+              <button onclick="stepSlider('zebra_level', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('zebra_level', 0.5)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Peaking level</label>
+            <span class="sub-label">0.0 = Minimum, 1.0 = Maximum</span>
+            <input type="range" id="peaking_level_range" class="param-control" data-paramkey="peaking_level" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="0.9" data-default="0.9"
+              oninput="sliderChanged('peaking_level', this, 'peaking_level_val')"
+              onchange="sliderRelease('peaking_level', this)">
+            <span id="peaking_level_val" class="value-label">0.90</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('peaking_level', -0.1)">-</button>
+              <button onclick="stepSlider('peaking_level', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('peaking_level', 0.9)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Color bars display time (seconds)</label>
+            <span class="sub-label">0 = Disable Bars, 1-30 = Enable Bars With Timeout (s)</span>
+            <input type="range" id="color_bars_display_time_seconds_range" class="param-control" data-paramkey="color_bars_display_time_seconds" data-paramtype="range"
+              min="0.0" max="30.0" step="1" value="0" data-default="0"
+              oninput="sliderChanged('color_bars_display_time_seconds', this, 'color_bars_display_time_seconds_val')"
+              onchange="sliderRelease('color_bars_display_time_seconds', this)">
+            <span id="color_bars_display_time_seconds_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('color_bars_display_time_seconds', -1)">-</button>
+              <button onclick="stepSlider('color_bars_display_time_seconds', 1)">+</button>
+              <button class="reset-button" onclick="resetSlider('color_bars_display_time_seconds', 0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Focus Assist</label>
+            <script>multiSubValues["focus_assist"] = [];</script>
+            <span class="sub-label">Focus Assist Method (0 = Peak, 1 = Colored lines)</span>
+            <input type="range" id="focus_assist_0_range" class="param-control" data-paramkey="focus_assist" data-paramtype="sub-range" data-subindex="0"
+              min="0.0" max="1.0" step="1" value="1.0" data-default="1.0"
+              oninput="multiSubOnInput('focus_assist', 0, this, 'focus_assist_0_val')"
+              onchange="multiSubOnChange('focus_assist')">
+            <span id="focus_assist_0_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('focus_assist', 0, -1)">-</button>
+              <button onclick="multiStepSlider('focus_assist', 0, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('focus_assist', 0, 1.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["focus_assist"][0]===undefined) multiSubValues["focus_assist"][0] = 1.0;</script>
+            <span class="sub-label">Focus Line Color (0 = Red, 1 = Green, 2 = Blue, 3 = White, 4 = Black)</span>
+            <input type="range" id="focus_assist_1_range" class="param-control" data-paramkey="focus_assist" data-paramtype="sub-range" data-subindex="1"
+              min="0.0" max="4.0" step="1" value="0.0" data-default="0.0"
+              oninput="multiSubOnInput('focus_assist', 1, this, 'focus_assist_1_val')"
+              onchange="multiSubOnChange('focus_assist')">
+            <span id="focus_assist_1_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('focus_assist', 1, -1)">-</button>
+              <button onclick="multiStepSlider('focus_assist', 1, 1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('focus_assist', 1, 0.0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["focus_assist"][1]===undefined) multiSubValues["focus_assist"][1] = 0.0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Program return feed enable</label>
+<div>
+  <span class='sub-label'>0 = Disable, 1-30 = Enable con timeout (segundos)</span>
+  <input type='range' id='program_return_feed_enable_range' class='param-control' data-paramkey='program_return_feed_enable' data-paramtype='range'
+    min='0' max='30' step='1' value='0' data-default='0'
+    oninput="sliderChanged('program_return_feed_enable', this, 'program_return_feed_enable_val')"
+    onchange="sliderRelease('program_return_feed_enable', this)">
+  <span id='program_return_feed_enable_val' class='value-label'>0</span>
+  <div class='step-buttons'>
+    <button onclick="stepSlider('program_return_feed_enable', -1)">-</button>
+    <button onclick="stepSlider('program_return_feed_enable', 1)">+</button>
+    <button class='reset-button' onclick="resetSlider('program_return_feed_enable', 0)">Reset</button>
+  </div>
+</div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Timecode Source</label>
+<div>
+  <select id='timecode_source_select' class='param-control' data-paramkey='timecode_source' data-paramtype='select' data-default='0' onchange="sendParam('timecode_source', this.value)">
+    <option value='0' selected>Clip</option>
+    <option value='1'>Timecode</option>
+  </select>
+</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="group_audio" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Mic level</label>
+            <span class="sub-label">0.0 = Minimum, 1.0 = Maximum</span>
+            <input type="range" id="mic_level_range" class="param-control" data-paramkey="mic_level" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="0.7" data-default="0.7"
+              oninput="sliderChanged('mic_level', this, 'mic_level_val')"
+              onchange="sliderRelease('mic_level', this)">
+            <span id="mic_level_val" class="value-label">0.70</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('mic_level', -0.1)">-</button>
+              <button onclick="stepSlider('mic_level', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('mic_level', 0.7)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Headphone level</label>
+            <span class="sub-label">0.0 = Minimum, 1.0 = Maximum</span>
+            <input type="range" id="headphone_level_range" class="param-control" data-paramkey="headphone_level" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="sliderChanged('headphone_level', this, 'headphone_level_val')"
+              onchange="sliderRelease('headphone_level', this)">
+            <span id="headphone_level_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('headphone_level', -0.1)">-</button>
+              <button onclick="stepSlider('headphone_level', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('headphone_level', 1.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Headphone program mix</label>
+            <span class="sub-label">0.0 = Minimum, 1.0 = Maximum</span>
+            <input type="range" id="headphone_program_mix_range" class="param-control" data-paramkey="headphone_program_mix" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="0.0" data-default="0.0"
+              oninput="sliderChanged('headphone_program_mix', this, 'headphone_program_mix_val')"
+              onchange="sliderRelease('headphone_program_mix', this)">
+            <span id="headphone_program_mix_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('headphone_program_mix', -0.1)">-</button>
+              <button onclick="stepSlider('headphone_program_mix', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('headphone_program_mix', 0.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Speaker level</label>
+            <span class="sub-label">0.0 = Minimum, 1.0 = Maximum</span>
+            <input type="range" id="speaker_level_range" class="param-control" data-paramkey="speaker_level" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="sliderChanged('speaker_level', this, 'speaker_level_val')"
+              onchange="sliderRelease('speaker_level', this)">
+            <span id="speaker_level_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('speaker_level', -0.1)">-</button>
+              <button onclick="stepSlider('speaker_level', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('speaker_level', 1.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Input type</label>
+            <span class="sub-label">0 = Internal Mic, 1 = Line Level Input, 2 = Low Mic Level Input, 3 = High Mic Level Input</span>
+            <input type="range" id="input_type_range" class="param-control" data-paramkey="input_type" data-paramtype="range"
+              min="0.0" max="3.0" step="1" value="0.0" data-default="0.0"
+              oninput="sliderChanged('input_type', this, 'input_type_val')"
+              onchange="sliderRelease('input_type', this)">
+            <span id="input_type_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('input_type', -1)">-</button>
+              <button onclick="stepSlider('input_type', 1)">+</button>
+              <button class="reset-button" onclick="resetSlider('input_type', 0.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Input levels</label>
+            <script>multiSubValues["input_levels"] = [];</script>
+            <span class="sub-label">Ch1 = 0.0 Minimum, 1.0 Maximum</span>
+            <input type="range" id="input_levels_0_range" class="param-control" data-paramkey="input_levels" data-paramtype="sub-range" data-subindex="0"
+              min="0.0" max="1.0" step="0.1" value="0.5" data-default="0.5"
+              oninput="multiSubOnInput('input_levels', 0, this, 'input_levels_0_val')"
+              onchange="multiSubOnChange('input_levels')">
+            <span id="input_levels_0_val" class="value-label">0.50</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('input_levels', 0, -0.1)">-</button>
+              <button onclick="multiStepSlider('input_levels', 0, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('input_levels', 0, 0.5)">Reset</button>
+            </div>
+            <script>if(multiSubValues["input_levels"][0]===undefined) multiSubValues["input_levels"][0] = 0.5;</script>
+            <span class="sub-label">Ch2 = 0.0 Minimum, 1.0 Maximum</span>
+            <input type="range" id="input_levels_1_range" class="param-control" data-paramkey="input_levels" data-paramtype="sub-range" data-subindex="1"
+              min="0.0" max="1.0" step="0.1" value="0.5" data-default="0.5"
+              oninput="multiSubOnInput('input_levels', 1, this, 'input_levels_1_val')"
+              onchange="multiSubOnChange('input_levels')">
+            <span id="input_levels_1_val" class="value-label">0.50</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('input_levels', 1, -0.1)">-</button>
+              <button onclick="multiStepSlider('input_levels', 1, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('input_levels', 1, 0.5)">Reset</button>
+            </div>
+            <script>if(multiSubValues["input_levels"][1]===undefined) multiSubValues["input_levels"][1] = 0.5;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Phantom power</label>
+            <input type="checkbox" class="param-control" data-paramkey="phantom_power" data-paramtype="checkbox" 
+              data-default="0.5" onchange="toggleCheckbox('phantom_power', this)" >
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="group_tally" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Tally brightness</label>
+            <span class="sub-label">Sets the tally front and rear brightness. 0.0 = minimum, 1.0 = maximum</span>
+            <input type="range" id="tally_brightness_range" class="param-control" data-paramkey="tally_brightness" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="sliderChanged('tally_brightness', this, 'tally_brightness_val')"
+              onchange="sliderRelease('tally_brightness', this)">
+            <span id="tally_brightness_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('tally_brightness', -0.1)">-</button>
+              <button onclick="stepSlider('tally_brightness', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('tally_brightness', 1.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Front tally brightness</label>
+            <span class="sub-label">Sets the tally front brightness. 0.0 = minimum, 1.0 = maximum</span>
+            <input type="range" id="front_tally_brightness_range" class="param-control" data-paramkey="front_tally_brightness" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="sliderChanged('front_tally_brightness', this, 'front_tally_brightness_val')"
+              onchange="sliderRelease('front_tally_brightness', this)">
+            <span id="front_tally_brightness_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('front_tally_brightness', -0.1)">-</button>
+              <button onclick="stepSlider('front_tally_brightness', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('front_tally_brightness', 1.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Rear tally brightness</label>
+            <span class="sub-label">Sets the tally rear brightness. 0.0 = minimum, 1.0 = maximum (cannot be turned off)</span>
+            <input type="range" id="rear_tally_brightness_range" class="param-control" data-paramkey="rear_tally_brightness" data-paramtype="range"
+              min="0.0" max="1.0" step="0.1" value="1.0" data-default="1.0"
+              oninput="sliderChanged('rear_tally_brightness', this, 'rear_tally_brightness_val')"
+              onchange="sliderRelease('rear_tally_brightness', this)">
+            <span id="rear_tally_brightness_val" class="value-label">1.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('rear_tally_brightness', -0.1)">-</button>
+              <button onclick="stepSlider('rear_tally_brightness', 0.1)">+</button>
+              <button class="reset-button" onclick="resetSlider('rear_tally_brightness', 1.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="group_reference" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Source</label>
+            <span class="sub-label">0 = Internal, 1 = Program, 2 = External</span>
+            <input type="range" id="source_range" class="param-control" data-paramkey="source" data-paramtype="range"
+              min="0.0" max="2.0" step="1" value="0.0" data-default="0.0"
+              oninput="sliderChanged('source', this, 'source_val')"
+              onchange="sliderRelease('source', this)">
+            <span id="source_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('source', -1)">-</button>
+              <button onclick="stepSlider('source', 1)">+</button>
+              <button class="reset-button" onclick="resetSlider('source', 0.0)">Reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Offset</label>
+            <span class="sub-label">+/- offset in pixels</span>
+            <input type="range" id="offset_range" class="param-control" data-paramkey="offset" data-paramtype="range"
+              min="0" max="100" step="1" value="0" data-default="0"
+              oninput="sliderChanged('offset', this, 'offset_val')"
+              onchange="sliderRelease('offset', this)">
+            <span id="offset_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="stepSlider('offset', -1)">-</button>
+              <button onclick="stepSlider('offset', 1)">+</button>
+              <button class="reset-button" onclick="resetSlider('offset', 0)">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="group_ptz_control" class="tabcontent">
+      <div class="parameters-contenedor">
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Pan/Tilt Velocity</label>
+            <script>multiSubValues["pan_tilt_velocity"] = [];</script>
+            <span class="sub-label">[0] pan velocity (-1.0 = full speed left, 1.0 = full speed right)</span>
+            <input type="range" id="pan_tilt_velocity_0_range" class="param-control" data-paramkey="pan_tilt_velocity" data-paramtype="sub-range" data-subindex="0"
+              min="-1.0" max="1.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('pan_tilt_velocity', 0, this, 'pan_tilt_velocity_0_val')"
+              onchange="multiSubOnChange('pan_tilt_velocity')">
+            <span id="pan_tilt_velocity_0_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('pan_tilt_velocity', 0, -0.1)">-</button>
+              <button onclick="multiStepSlider('pan_tilt_velocity', 0, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('pan_tilt_velocity', 0, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["pan_tilt_velocity"][0]===undefined) multiSubValues["pan_tilt_velocity"][0] = 0;</script>
+            <span class="sub-label">[1] tilt velocity (-1.0 = full speed down, 1.0 = full speed up)</span>
+            <input type="range" id="pan_tilt_velocity_1_range" class="param-control" data-paramkey="pan_tilt_velocity" data-paramtype="sub-range" data-subindex="1"
+              min="-1.0" max="1.0" step="0.1" value="0" data-default="0"
+              oninput="multiSubOnInput('pan_tilt_velocity', 1, this, 'pan_tilt_velocity_1_val')"
+              onchange="multiSubOnChange('pan_tilt_velocity')">
+            <span id="pan_tilt_velocity_1_val" class="value-label">0.00</span>
+            <div class="step-buttons">
+              <button onclick="multiStepSlider('pan_tilt_velocity', 1, -0.1)">-</button>
+              <button onclick="multiStepSlider('pan_tilt_velocity', 1, 0.1)">+</button>
+              <button class="reset-button" onclick="multiResetSlider('pan_tilt_velocity', 1, 0)">Reset</button>
+            </div>
+            <script>if(multiSubValues["pan_tilt_velocity"][1]===undefined) multiSubValues["pan_tilt_velocity"][1] = 0;</script>
+          </div>
+        </div>
+        <div class="parametro-item">
+          <div class="param-block">
+            <label>Memory Preset</label>
+            <script>multiSubValues["memory_preset"] = [];</script>
+<div class='memory-preset-container'>
+  <div>
+    <label>Accion:</label><br>
+    <button onclick="setMemoryPresetAction(0)">Reset</button>
+    <button onclick="setMemoryPresetAction(1)">Save</button>
+    <button onclick="setMemoryPresetAction(2)">Recall</button>
+  </div>
+  <div style="margin-top: 6px;">
+    <label>Slot:</label><br>
+    <button id='memory_slot_select_btn_0' onclick='setMemoryPresetSelection(0)'>Slot 1</button>
+    <button id='memory_slot_select_btn_1' onclick='setMemoryPresetSelection(1)'>Slot 2</button>
+    <button id='memory_slot_select_btn_2' onclick='setMemoryPresetSelection(2)'>Slot 3</button>
+    <button id='memory_slot_select_btn_3' onclick='setMemoryPresetSelection(3)'>Slot 4</button>
+    <button id='memory_slot_select_btn_4' onclick='setMemoryPresetSelection(4)'>Slot 5</button>
+    <button id='memory_slot_select_btn_5' onclick='setMemoryPresetSelection(5)'>Slot 6</button>
+  </div>
+</div>
+          </div>
+        </div>
+      </div>
+    </div>
+<script>showTab('group_lens');</script>
+  </div>
+</div>
+</body>
+</html>
