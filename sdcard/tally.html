@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tally Config - TallyCCU Pro</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #1a1a1a;
+      color: #DDD;
+      min-height: 100vh;
+    }
+    .header-fixed {
+      background: #222;
+      border-bottom: 1px solid #444;
+      padding: 8px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .title-container { display: flex; align-items: center; }
+    .header-fixed h1 { font-size: 24px; margin: 0; color: #FFF; }
+    .subtitle { font-size: 14px; font-weight: normal; color: #888; margin-left: 12px; }
+    .btn {
+      background: #3a3a3a;
+      color: #DDD;
+      border: 1px solid #555;
+      padding: 6px 12px;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: background 0.2s;
+      font-size: 13px;
+    }
+    .btn:hover { background: #4a4a4a; }
+    .btn-primary {
+      background: #0066cc;
+      border-color: #0088ff;
+      color: #FFF;
+    }
+    .btn-primary:hover { background: #0077dd; }
+    .btn-success {
+      background: #2a5a2a;
+      border-color: #3a7a3a;
+    }
+    .btn-success:hover { background: #3a6a3a; }
+    .main-content {
+      padding: 15px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    fieldset {
+      border: 1px solid #444;
+      padding: 12px;
+      margin-bottom: 15px;
+      border-radius: 4px;
+      background: #222;
+    }
+    legend { 
+      font-weight: bold; 
+      color: #EEE; 
+      font-size: 14px; 
+      padding: 0 8px; 
+    }
+    input[type='text'], input[type='number'] {
+      padding: 6px 10px;
+      font-size: 13px;
+      background: #333;
+      border: 1px solid #555;
+      color: #DDD;
+      border-radius: 3px;
+    }
+    input[type='text']:focus, input[type='number']:focus {
+      outline: none;
+      border-color: #0088ff;
+    }
+    #vmixIp { width: 160px; }
+    .vmix-config {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .vmix-config label {
+      font-weight: bold;
+      font-size: 13px;
+    }
+    .vmix-status {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #888;
+    }
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #555;
+    }
+    .status-indicator.connected { background: #0a0; }
+    .status-indicator.disconnected { background: #a00; }
+    .status-indicator.reconnecting { background: #aa0; }
+    #camMap {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .cam-block {
+      background: #262626;
+      padding: 15px;
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: border-color 0.2s;
+    }
+    .cam-block:hover { border-color: #555; }
+    .cam-block h3 {
+      margin: 0;
+      text-align: center;
+      font-size: 15px;
+      color: #FFF;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #3a3a3a;
+    }
+    .cam-block .cam-number { color: #0af; }
+    .cam-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .cam-row label {
+      font-size: 12px;
+      color: #AAA;
+      min-width: 80px;
+    }
+    .cam-row input[type='number'] {
+      width: 60px;
+      text-align: center;
+    }
+    .cam-block .btn {
+      width: 100%;
+      margin-top: 5px;
+    }
+    .save-status {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 30px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 8px;
+      z-index: 9999;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .save-status.success { border-color: #0a0; }
+    .save-status.error { border-color: #a00; }
+    .info-text {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .global-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-fixed">
+    <div class="title-container">
+      <h1>TallyCCU Pro <span class="subtitle">vMix Tally Map</span></h1>
+    </div>
+    <button class="btn" onclick="window.location.href='index.html'">&larr; Back to CCU Control</button>
+  </div>
+
+  <div class="main-content">
+    <fieldset>
+      <legend>vMix Connection</legend>
+      <div class="vmix-config">
+        <label for="vmixIp">vMix IP:</label>
+        <input type="text" id="vmixIp" placeholder="192.168.10.140" />
+        <button class="btn btn-primary" onclick="saveVmixIp()">Save IP</button>
+        <div class="vmix-status">
+          <span id="vmixStatusText">Status: Unknown</span>
+          <div id="vmixStatusIndicator" class="status-indicator"></div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Camera Mapping</legend>
+      <p class="info-text">
+        Configure the relationship between vMix inputs and Blackmagic cameras. 
+        "vMix Input" corresponds to the input number in vMix, and "BMD Cam ID" 
+        is the camera identifier in the Blackmagic SDI system.
+      </p>
+      <div class="global-actions">
+        <button class="btn" onclick="saveAllMappings()">Save all mappings</button>
+        <button class="btn" onclick="resetToDefaults()">Reset to defaults</button>
+      </div>
+      <div style="margin-top: 15px;">
+        <div id="camMap"></div>
+      </div>
+    </fieldset>
+  </div>
+
+  <script>
+    const NUM_CAMERAS = 10;
+
+    function showStatus(message, type = 'info') {
+      const existing = document.getElementById('statusElement');
+      if (existing) existing.remove();
+      
+      const el = document.createElement('div');
+      el.id = 'statusElement';
+      el.className = 'save-status ' + type;
+      el.textContent = message;
+      document.body.appendChild(el);
+      
+      setTimeout(() => el.remove(), 2000);
+    }
+
+    function saveVmixIp() {
+      const ip = document.getElementById('vmixIp').value.trim();
+      if (!ip || !isValidIP(ip)) {
+        showStatus("Enter a valid IP (e.g. 192.168.10.140)", 'error');
+        return;
+      }
+      
+      fetch(`/?vmixIP=${encodeURIComponent(ip)}`)
+        .then(res => res.text())
+        .then(() => {
+          showStatus("vMix IP saved: " + ip, 'success');
+          checkVmixStatus();
+        })
+        .catch(err => {
+          console.error(err);
+          showStatus("Error saving IP", 'error');
+        });
+    }
+
+    function isValidIP(ip) {
+      const parts = ip.split('.');
+      if (parts.length !== 4) return false;
+      return parts.every(part => {
+        const num = parseInt(part, 10);
+        return num >= 0 && num <= 255 && part === num.toString();
+      });
+    }
+
+    function checkVmixStatus() {
+      fetch('/?getVmixConnect=1')
+        .then(r => r.text())
+        .then(text => {
+          const match = text.match(/\{.*\}/);
+          if (match) {
+            const data = JSON.parse(match[0]);
+            const indicator = document.getElementById('vmixStatusIndicator');
+            const statusText = document.getElementById('vmixStatusText');
+            const ipInput = document.getElementById('vmixIp');
+            
+            if (data.vmixIP) {
+              ipInput.value = data.vmixIP;
+            }
+            
+            if (data.vmixConnected === true) {
+              indicator.className = 'status-indicator connected';
+              statusText.textContent = 'Connected to ' + (data.vmixIP || '?');
+            } else if (data.vmixConnectEnabled === true) {
+              indicator.className = 'status-indicator reconnecting';
+              statusText.textContent = 'Reconnecting to ' + (data.vmixIP || '?') + '...';
+            } else {
+              indicator.className = 'status-indicator disconnected';
+              statusText.textContent = 'Disabled';
+            }
+          }
+        })
+        .catch(() => {
+          document.getElementById('vmixStatusIndicator').className = 'status-indicator';
+          document.getElementById('vmixStatusText').textContent = 'Status: Unknown';
+        });
+    }
+
+    function initCams() {
+      const cont = document.getElementById('camMap');
+      cont.innerHTML = '';
+      
+      for (let i = 0; i < NUM_CAMERAS; i++) {
+        const divCam = document.createElement('div');
+        divCam.className = 'cam-block';
+        divCam.innerHTML = `
+          <h3>Camera <span class="cam-number">${i + 1}</span></h3>
+          <div class="cam-row">
+            <label>vMix Input:</label>
+            <input type="number" id="tallyCam${i}Input" value="${i + 1}" min="1" max="99"/>
+          </div>
+          <div class="cam-row">
+            <label>BMD Cam ID:</label>
+            <input type="number" id="cam${i}ID" value="${i + 1}" min="1" max="8"/>
+          </div>
+          <button class="btn btn-success" onclick="saveMap(${i})">Save</button>
+        `;
+        cont.appendChild(divCam);
+      }
+    }
+
+    function saveMap(idx) {
+      const inpVal = document.getElementById(`tallyCam${idx}Input`).value;
+      const camVal = document.getElementById(`cam${idx}ID`).value;
+      const url = `/?tallyCam${idx}Input=${inpVal}&cam${idx}ID=${camVal}`;
+      
+      fetch(url)
+        .then(r => r.text())
+        .then(() => showStatus(`Camera ${idx + 1}: Configuration saved`, 'success'))
+        .catch(e => {
+          console.error(e);
+          showStatus(`Error saving camera ${idx + 1}`, 'error');
+        });
+    }
+
+    async function saveAllMappings() {
+      showStatus('Saving all mappings...', 'info');
+      
+      let success = 0;
+      let errors = 0;
+      
+      for (let i = 0; i < NUM_CAMERAS; i++) {
+        const inpVal = document.getElementById(`tallyCam${i}Input`).value;
+        const camVal = document.getElementById(`cam${i}ID`).value;
+        const url = `/?tallyCam${i}Input=${inpVal}&cam${i}ID=${camVal}`;
+        
+        try {
+          await fetch(url);
+          success++;
+        } catch (e) {
+          errors++;
+          console.error(`Error saving camera ${i + 1}:`, e);
+        }
+        
+        await new Promise(r => setTimeout(r, 100));
+      }
+      
+      if (errors === 0) {
+        showStatus(`All mappings saved (${success}/${NUM_CAMERAS})`, 'success');
+      } else {
+        showStatus(`Saved ${success}/${NUM_CAMERAS}, errors: ${errors}`, 'error');
+      }
+    }
+
+    function resetToDefaults() {
+      if (!confirm('Reset all values to defaults?')) return;
+      
+      for (let i = 0; i < NUM_CAMERAS; i++) {
+        document.getElementById(`tallyCam${i}Input`).value = i + 1;
+        document.getElementById(`cam${i}ID`).value = i + 1;
+      }
+      
+      showStatus('Values reset (remember to save)', 'info');
+    }
+
+    window.onload = function() {
+      initCams();
+      checkVmixStatus();
+      setInterval(checkVmixStatus, 5000);
+    };
+  </script>
+</body>
+</html>
