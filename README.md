@@ -115,9 +115,9 @@ After formatting, copy these files to the SD card root:
 
 ```
 SD Card Root/
-+-- index.html      (124 KB - Main CCU interface)
-+-- tally.html      (11 KB - Tally configuration)
-+-- sdcard.html     (18 KB - File manager)
++-- index.html      (Main CCU interface)
++-- tally.html      (Tally configuration)
++-- sdcard.html     (SD Card File manager)
 ```
 
 ---
@@ -169,7 +169,7 @@ Available commands:
 
 1. Open browser: `http://YOUR_ARDUINO_IP/`
 2. You should see the CCU Control interface
-3. Select a camera and adjust tally brightness to test
+3. Select a camera and adjust parameters to test
 
 ---
 
