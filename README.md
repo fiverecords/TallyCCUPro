@@ -62,6 +62,10 @@ TallyCCU Pro is an Arduino-based solution that provides full Camera Control Unit
         +---------------------+
 ```
 
+![Arduino](Images/Arduino%20Stack%20Back.jpeg)
+![Arduino](Images/Arduino%20Stack%20Front.jpeg)
+
+
 ### CRITICAL: I2C Bridge Wires Required
 
 The Blackmagic SDI Shield is designed for Arduino Uno, which has I2C pins at A4/A5. The Arduino Mega has I2C on different pins (20/21), so you MUST add two jumper wires on the **Blackmagic SDI Shield**:
