@@ -1,231 +1,420 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tally Config - TallyCCU Pro</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: Arial, sans-serif;
-      background: #1a1a1a;
-      color: #DDD;
-      min-height: 100vh;
-    }
-    .header-fixed {
-      background: #222;
-      border-bottom: 1px solid #444;
-      padding: 8px 15px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .title-container { display: flex; align-items: center; }
-    .header-fixed h1 { font-size: 24px; margin: 0; color: #FFF; }
-    .subtitle { font-size: 14px; font-weight: normal; color: #888; margin-left: 12px; }
-    .btn {
-      background: #3a3a3a;
-      color: #DDD;
-      border: 1px solid #555;
-      padding: 6px 12px;
-      cursor: pointer;
-      border-radius: 3px;
-      transition: background 0.2s;
-      font-size: 13px;
-    }
-    .btn:hover { background: #4a4a4a; }
-    .btn-primary {
-      background: #0066cc;
-      border-color: #0088ff;
-      color: #FFF;
-    }
-    .btn-primary:hover { background: #0077dd; }
-    .btn-success {
-      background: #2a5a2a;
-      border-color: #3a7a3a;
-    }
-    .btn-success:hover { background: #3a6a3a; }
-    .main-content {
-      padding: 15px;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-    fieldset {
-      border: 1px solid #444;
-      padding: 12px;
-      margin-bottom: 15px;
-      border-radius: 4px;
-      background: #222;
-    }
-    legend { 
-      font-weight: bold; 
-      color: #EEE; 
-      font-size: 14px; 
-      padding: 0 8px; 
-    }
-    input[type='text'], input[type='number'] {
-      padding: 6px 10px;
-      font-size: 13px;
-      background: #333;
-      border: 1px solid #555;
-      color: #DDD;
-      border-radius: 3px;
-    }
-    input[type='text']:focus, input[type='number']:focus {
-      outline: none;
-      border-color: #0088ff;
-    }
-    #vmixIp { width: 160px; }
-    .vmix-config {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .vmix-config label {
-      font-weight: bold;
-      font-size: 13px;
-    }
-    .vmix-status {
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: #888;
-    }
-    .status-indicator {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #555;
-    }
-    .status-indicator.connected { background: #0a0; }
-    .status-indicator.disconnected { background: #a00; }
-    .status-indicator.reconnecting { background: #aa0; }
-    #camMap {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 12px;
-    }
-    .cam-block {
-      background: #262626;
-      padding: 15px;
-      border: 1px solid #3a3a3a;
-      border-radius: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      transition: border-color 0.2s;
-    }
-    .cam-block:hover { border-color: #555; }
-    .cam-block h3 {
-      margin: 0;
-      text-align: center;
-      font-size: 15px;
-      color: #FFF;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #3a3a3a;
-    }
-    .cam-block .cam-number { color: #0af; }
-    .cam-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .cam-row label {
-      font-size: 12px;
-      color: #AAA;
-      min-width: 80px;
-    }
-    .cam-row input[type='number'] {
-      width: 60px;
-      text-align: center;
-    }
-    .cam-block .btn {
-      width: 100%;
-      margin-top: 5px;
-    }
-    .save-status {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 20px 30px;
-      background: #333;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 8px;
-      z-index: 9999;
-      text-align: center;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-    }
-    .save-status.success { border-color: #0a0; }
-    .save-status.error { border-color: #a00; }
-    .info-text {
-      font-size: 12px;
-      color: #888;
-      margin-bottom: 12px;
-      line-height: 1.5;
-    }
-    .global-actions {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-      flex-wrap: wrap;
-    }
+:root {
+  --bg-primary: #1a1a1c;
+  --bg-secondary: #232326;
+  --bg-tertiary: #2a2a2e;
+  --bg-panel: #1e1e21;
+  --bg-input: #333338;
+  --bg-hover: #35353a;
+  
+  --border-color: #3a3a40;
+  --border-light: #454550;
+  --border-focus: #5a8fd9;
+  
+  --text-primary: #e8e8e8;
+  --text-secondary: #a0a0a5;
+  --text-muted: #6a6a70;
+  --text-label: #c8c8cc;
+  
+  --accent-blue: #4a90d9;
+  --accent-blue-hover: #5a9fe8;
+  --accent-orange: #e87a35;
+  --accent-green: #4caf50;
+  --accent-red: #e53935;
+  
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  min-height: 100vh;
+}
+
+/* === HEADER === */
+.header {
+  background: linear-gradient(180deg, #2d2d32 0%, var(--bg-secondary) 100%);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-md) var(--spacing-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.logo-accent { color: var(--accent-orange); }
+
+.logo-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: var(--spacing-md);
+  padding-left: var(--spacing-md);
+  border-left: 1px solid var(--border-color);
+}
+
+/* === BUTTONS === */
+.btn {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+.btn-primary {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--accent-blue-hover);
+  border-color: var(--accent-blue-hover);
+}
+
+.btn-success {
+  background: #2d5a3d;
+  border-color: #3d7a4d;
+  color: var(--text-primary);
+}
+
+.btn-success:hover {
+  background: #3d7a4d;
+}
+
+/* === MAIN CONTENT === */
+.main-content {
+  padding: var(--spacing-xl);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* === CONTROL PANEL === */
+.control-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-lg);
+  overflow: hidden;
+}
+
+.control-panel-header {
+  background: var(--bg-tertiary);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.control-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.control-panel-body {
+  padding: var(--spacing-lg);
+}
+
+/* === VMIX CONFIG === */
+.vmix-config {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.vmix-config label {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+.vmix-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bg-input);
+}
+
+.status-indicator.connected { 
+  background: var(--accent-green);
+  box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+}
+
+.status-indicator.disconnected { 
+  background: var(--accent-red);
+  box-shadow: 0 0 8px rgba(229, 57, 53, 0.5);
+}
+
+.status-indicator.reconnecting { 
+  background: var(--accent-orange);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* === INPUTS === */
+input[type='text'], input[type='number'] {
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease;
+}
+
+input[type='text']:focus, input[type='number']:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+#vmixIp { width: 160px; }
+
+/* === CAMERA GRID === */
+#camMap {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.cam-block {
+  background: var(--bg-panel);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  transition: all 0.2s ease;
+}
+
+.cam-block:hover { 
+  border-color: var(--border-light);
+  transform: translateY(-2px);
+}
+
+.cam-block h3 {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cam-block .cam-number { 
+  color: var(--accent-blue);
+  font-weight: 700;
+}
+
+.cam-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.cam-row label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 80px;
+}
+
+.cam-row input[type='number'] {
+  width: 65px;
+  text-align: center;
+}
+
+.cam-block .btn {
+  width: 100%;
+  margin-top: var(--spacing-sm);
+  justify-content: center;
+}
+
+/* === INFO TEXT === */
+.info-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-lg);
+  line-height: 1.6;
+  padding: var(--spacing-md);
+  background: var(--bg-panel);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent-blue);
+}
+
+/* === GLOBAL ACTIONS === */
+.global-actions {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+/* === SAVE STATUS === */
+.save-status {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: var(--spacing-xl) 30px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  z-index: 9999;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  font-weight: 500;
+}
+
+.save-status.success { 
+  border-color: var(--accent-green);
+  border-left-width: 4px;
+}
+
+.save-status.error { 
+  border-color: var(--accent-red);
+  border-left-width: 4px;
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 600px) {
+  .header {
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+  }
+  
+  .vmix-config {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .vmix-status {
+    margin-left: 0;
+    margin-top: var(--spacing-sm);
+  }
+  
+  #camMap {
+    grid-template-columns: 1fr;
+  }
+}
   </style>
 </head>
 <body>
-  <div class="header-fixed">
-    <div class="title-container">
-      <h1>TallyCCU Pro <span class="subtitle">vMix Tally Map</span></h1>
+  <div class="header">
+    <div class="header-left">
+      <span class="logo">Tally<span class="logo-accent">CCU</span> Pro</span>
+      <span class="logo-sub">vMix Tally Configuration</span>
     </div>
-    <button class="btn" onclick="window.location.href='index.html'">&larr; Back to CCU Control</button>
+    <button class="btn" onclick="window.location.href='index.html'">← Back to CCU Control</button>
   </div>
 
   <div class="main-content">
-    <fieldset>
-      <legend>vMix Connection</legend>
-      <div class="vmix-config">
-        <label for="vmixIp">vMix IP:</label>
-        <input type="text" id="vmixIp" placeholder="192.168.10.140" />
-        <button class="btn btn-primary" onclick="saveVmixIp()">Save IP</button>
-        <div class="vmix-status">
-          <span id="vmixStatusText">Status: Unknown</span>
-          <div id="vmixStatusIndicator" class="status-indicator"></div>
+    <div class="control-panel">
+      <div class="control-panel-header">
+        <span class="control-panel-title">🔗 vMix Connection</span>
+      </div>
+      <div class="control-panel-body">
+        <div class="vmix-config">
+          <label for="vmixIp">vMix IP Address:</label>
+          <input type="text" id="vmixIp" placeholder="192.168.10.140" />
+          <button class="btn btn-primary" onclick="saveVmixIp()">Save IP</button>
+          <div class="vmix-status">
+            <span id="vmixStatusText">Status: Checking...</span>
+            <div id="vmixStatusIndicator" class="status-indicator"></div>
+          </div>
         </div>
       </div>
-    </fieldset>
+    </div>
 
-    <fieldset>
-      <legend>Camera Mapping</legend>
-      <p class="info-text">
-        Configure the relationship between vMix inputs and Blackmagic cameras. 
-        "vMix Input" corresponds to the input number in vMix, and "BMD Cam ID" 
-        is the camera identifier in the Blackmagic SDI system.
-      </p>
-      <div class="global-actions">
-        <button class="btn" onclick="saveAllMappings()">Save all mappings</button>
-        <button class="btn" onclick="resetToDefaults()">Reset to defaults</button>
+    <div class="control-panel">
+      <div class="control-panel-header">
+        <span class="control-panel-title">📷 Camera Mapping</span>
       </div>
-      <div style="margin-top: 15px;">
+      <div class="control-panel-body">
+        <p class="info-text">
+          Configure the relationship between vMix inputs and Blackmagic cameras. 
+          <strong>vMix Input</strong> corresponds to the input number in vMix, and 
+          <strong>BMD Cam ID</strong> is the camera identifier in the Blackmagic SDI system (1-8).
+        </p>
+        <div class="global-actions">
+          <button class="btn btn-primary" onclick="saveAllMappings()">💾 Save All Mappings</button>
+          <button class="btn" onclick="resetToDefaults()">↻ Reset to Defaults</button>
+        </div>
         <div id="camMap"></div>
       </div>
-    </fieldset>
+    </div>
   </div>
 
   <script>
     const NUM_CAMERAS = 10;
-    let isEditingVmixIp = false;
-
-    // Track when user is editing the IP field
-    document.addEventListener('DOMContentLoaded', () => {
-      const ipInput = document.getElementById('vmixIp');
-      ipInput.addEventListener('focus', () => { isEditingVmixIp = true; });
-      ipInput.addEventListener('blur', () => { isEditingVmixIp = false; });
-    });
 
     function showStatus(message, type = 'info') {
       const existing = document.getElementById('statusElement');
@@ -279,7 +468,8 @@
             const statusText = document.getElementById('vmixStatusText');
             const ipInput = document.getElementById('vmixIp');
             
-            if (data.vmixIP && !isEditingVmixIp) {
+            // Solo actualizar IP si el campo no tiene el foco
+            if (data.vmixIP && document.activeElement !== ipInput) {
               ipInput.value = data.vmixIP;
             }
             
@@ -318,7 +508,7 @@
             <label>BMD Cam ID:</label>
             <input type="number" id="cam${i}ID" value="${i + 1}" min="1" max="8"/>
           </div>
-          <button class="btn btn-success" onclick="saveMap(${i})">Save</button>
+          <button class="btn btn-success" onclick="saveMap(${i})">✓ Save</button>
         `;
         cont.appendChild(divCam);
       }
