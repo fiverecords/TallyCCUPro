@@ -1,5 +1,7 @@
 # TallyCCU Pro
 
+![Front](Images/Color%20Wheels.png)
+
 <p align="center">
   <strong>Open-source CCU control system for Blackmagic Design cameras with vMix tally integration using the Blackmagic Arduino SDI Shield</strong>
 </p>
