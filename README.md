@@ -152,6 +152,9 @@ SD Card Root/
 
 Connect via serial monitor (115200 baud) or use the Serial Configurator tool:
 
+![Configurator](Images/Configurator.png)
+
+
 ```
 Available commands:
   ip 192.168.1.100        Set Arduino IP address
