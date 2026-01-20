@@ -1,307 +1,544 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TallyCCU Pro - SD Card</title>
-    <style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SD Card - TallyCCU Pro</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+:root {
+  --bg-primary: #1a1a1c;
+  --bg-secondary: #232326;
+  --bg-tertiary: #2a2a2e;
+  --bg-panel: #1e1e21;
+  --bg-input: #333338;
+  --bg-hover: #35353a;
+  
+  --border-color: #3a3a40;
+  --border-light: #454550;
+  --border-focus: #5a8fd9;
+  
+  --text-primary: #e8e8e8;
+  --text-secondary: #a0a0a5;
+  --text-muted: #6a6a70;
+  --text-label: #c8c8cc;
+  
+  --accent-blue: #4a90d9;
+  --accent-blue-hover: #5a9fe8;
+  --accent-orange: #e87a35;
+  --accent-green: #4caf50;
+  --accent-red: #e53935;
+  
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
 body {
-    font-family: Arial, sans-serif;
-    background: #1a1a1a;
-    color: #DDD;
-    min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  min-height: 100vh;
 }
-.header-fixed {
-    background: #222;
-    border-bottom: 1px solid #444;
-    padding: 8px 15px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+
+/* === HEADER === */
+.header {
+  background: linear-gradient(180deg, #2d2d32 0%, var(--bg-secondary) 100%);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-md) var(--spacing-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
-.title-container { display: flex; align-items: center; }
-.header-fixed h1 { font-size: 24px; margin: 0; color: #FFF; }
-.subtitle { font-size: 14px; font-weight: normal; color: #888; margin-left: 12px; }
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.logo-accent { color: var(--accent-orange); }
+
+.logo-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: var(--spacing-md);
+  padding-left: var(--spacing-md);
+  border-left: 1px solid var(--border-color);
+}
+
+/* === BUTTONS === */
 .btn {
-    background: #3a3a3a;
-    color: #DDD;
-    border: 1px solid #555;
-    padding: 6px 12px;
-    cursor: pointer;
-    border-radius: 3px;
-    transition: background 0.2s;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-.btn:hover { background: #4a4a4a; }
-.container {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 15px;
+
+.btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-light);
 }
-fieldset {
-    border: 1px solid #444;
-    padding: 12px;
-    margin-bottom: 12px;
-    border-radius: 4px;
-    background: #222;
-}
-legend { font-weight: bold; color: #EEE; font-size: 13px; padding: 0 5px; }
-.upload-area {
-    border: 2px dashed #444;
-    border-radius: 4px;
-    padding: 25px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s;
-}
-.upload-area:hover, .upload-area.dragover {
-    border-color: #888;
-    background: #2a2a2a;
-}
-.upload-area.uploading {
-    cursor: default;
-    border-color: #0066cc;
-    background: #1a2a3a;
-}
-.upload-area input[type="file"] { display: none; }
-.upload-icon { font-size: 36px; margin-bottom: 8px; }
-.progress-container {
-    display: none;
-    margin-top: 15px;
-    padding: 15px;
-    background: #1a1a1a;
-    border-radius: 4px;
-    border: 1px solid #333;
-}
-.progress-container.show { display: block; }
-.progress-filename {
-    font-family: monospace;
-    color: #0af;
-    margin-bottom: 8px;
-    word-break: break-all;
-}
-.progress-bar-wrapper {
-    background: #333;
-    border-radius: 10px;
-    height: 20px;
-    overflow: hidden;
-    position: relative;
-}
-.progress-bar {
-    background: linear-gradient(90deg, #0066cc, #0088ff);
-    height: 100%;
-    width: 0%;
-    border-radius: 10px;
-    transition: width 0.2s ease;
-    position: relative;
-}
-.progress-bar.indeterminate {
-    width: 30%;
-    animation: indeterminate 1.5s infinite ease-in-out;
-}
-@keyframes indeterminate {
-    0% { margin-left: 0%; }
-    50% { margin-left: 70%; }
-    100% { margin-left: 0%; }
-}
-.progress-bar.complete {
-    background: linear-gradient(90deg, #2a5a2a, #3a7a3a);
-}
-.progress-bar.error {
-    background: linear-gradient(90deg, #5a2a2a, #7a3a3a);
-}
-.progress-info {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 8px;
-    font-size: 12px;
-    color: #888;
-}
-.progress-percent {
-    font-weight: bold;
-    color: #FFF;
-}
-.progress-status {
-    margin-top: 8px;
-    font-size: 13px;
-    color: #888;
-}
-.progress-status.success { color: #8c8; }
-.progress-status.error { color: #c88; }
-.spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid #555;
-    border-top-color: #0af;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    vertical-align: middle;
-    margin-right: 8px;
-}
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-th, td {
-    padding: 10px 8px;
-    text-align: left;
-    border-bottom: 1px solid #333;
-}
-th {
-    color: #FFF;
-    font-weight: 600;
-    background: #2a2a2a;
-}
-tr:hover { background: #2a2a2a; }
-.file-name {
-    font-family: monospace;
-    color: #FFF;
-}
-.file-size {
-    color: #888;
-    font-size: 0.9em;
-}
-.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
 .btn-small {
-    padding: 4px 10px;
-    font-size: 0.85em;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 11px;
 }
+
 .btn-danger {
-    background: #5a2a2a;
-    border-color: #733;
+  background: #4a2525;
+  border-color: #6a3535;
+  color: #f88;
 }
-.btn-danger:hover { background: #733; }
+
+.btn-danger:hover {
+  background: #6a3535;
+}
+
 .btn-rename {
-    background: #2a4a5a;
-    border-color: #357;
+  background: #2a3a4a;
+  border-color: #3a5a6a;
+  color: #8cf;
 }
-.btn-rename:hover { background: #357; }
+
+.btn-rename:hover {
+  background: #3a5a6a;
+}
+
+/* === MAIN CONTENT === */
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--spacing-xl);
+}
+
+/* === CONTROL PANEL === */
+.control-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-lg);
+  overflow: hidden;
+}
+
+.control-panel-header {
+  background: var(--bg-tertiary);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.control-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.control-panel-body {
+  padding: var(--spacing-lg);
+}
+
+/* === UPLOAD AREA === */
+.upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--bg-panel);
+}
+
+.upload-area:hover, .upload-area.dragover {
+  border-color: var(--accent-blue);
+  background: #1a2535;
+}
+
+.upload-area.uploading {
+  cursor: default;
+  border-color: var(--accent-blue);
+  background: #1a2535;
+}
+
+.upload-area input[type="file"] { display: none; }
+
+.upload-icon { 
+  font-size: 48px; 
+  margin-bottom: var(--spacing-md);
+  opacity: 0.7;
+}
+
+.upload-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* === PROGRESS === */
+.progress-container {
+  display: none;
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--bg-panel);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.progress-container.show { display: block; }
+
+.progress-filename {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--accent-blue);
+  margin-bottom: var(--spacing-sm);
+  word-break: break-all;
+  font-size: 13px;
+}
+
+.progress-bar-wrapper {
+  background: var(--bg-input);
+  border-radius: 10px;
+  height: 20px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar {
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-blue-hover));
+  height: 100%;
+  width: 0%;
+  border-radius: 10px;
+  transition: width 0.2s ease;
+}
+
+.progress-bar.indeterminate {
+  width: 30%;
+  animation: indeterminate 1.5s infinite ease-in-out;
+}
+
+@keyframes indeterminate {
+  0% { margin-left: 0%; }
+  50% { margin-left: 70%; }
+  100% { margin-left: 0%; }
+}
+
+.progress-bar.complete {
+  background: linear-gradient(90deg, #2d5a3d, var(--accent-green));
+}
+
+.progress-bar.error {
+  background: linear-gradient(90deg, #4a2525, var(--accent-red));
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--spacing-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.progress-percent {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progress-status {
+  margin-top: var(--spacing-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.progress-status.success { color: var(--accent-green); }
+.progress-status.error { color: var(--accent-red); }
+
+/* === SPINNER === */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  vertical-align: middle;
+  margin-right: var(--spacing-sm);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* === TABLE === */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: var(--spacing-md) var(--spacing-sm);
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+th {
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--bg-tertiary);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+tr:hover { 
+  background: var(--bg-hover);
+}
+
+.file-name {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.file-size {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.actions { 
+  display: flex; 
+  gap: 6px; 
+  flex-wrap: wrap; 
+}
+
+/* === STATUS === */
 .status {
-    padding: 8px 12px;
-    border-radius: 3px;
-    margin-bottom: 12px;
-    display: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+  display: none;
+  font-size: 13px;
 }
+
 .status.success {
-    background: #2a4a2a;
-    border: 1px solid #3a5a3a;
-    color: #8c8;
-    display: block;
+  background: #1a3a2a;
+  border: 1px solid #2d5a3d;
+  color: var(--accent-green);
+  display: block;
 }
+
 .status.error {
-    background: #4a2a2a;
-    border: 1px solid #633;
-    color: #c88;
-    display: block;
+  background: #3a1a1a;
+  border: 1px solid #5a2525;
+  color: var(--accent-red);
+  display: block;
 }
+
+/* === LOADING === */
 .loading {
-    text-align: center;
-    padding: 30px;
-    color: #888;
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
 }
+
 .total-info {
-    color: #888;
-    font-size: 0.9em;
-    margin-top: 10px;
-    text-align: right;
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-top: var(--spacing-md);
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
 }
+
+/* === MODAL === */
 .modal {
-    display: none;
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.7);
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.8);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
 }
+
 .modal.show { display: flex; }
+
 .modal-content {
-    background: #222;
-    border: 1px solid #444;
-    border-radius: 5px;
-    padding: 20px;
-    min-width: 300px;
-    max-width: 90%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  min-width: 320px;
+  max-width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
+
 .modal-content h3 {
-    margin-bottom: 15px;
-    color: #FFF;
+  margin-bottom: var(--spacing-lg);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
 }
+
 .modal-content input {
-    width: 100%;
-    padding: 8px;
-    margin-bottom: 15px;
-    background: #1a1a1a;
-    border: 1px solid #444;
-    border-radius: 3px;
-    color: #DDD;
-    font-family: monospace;
+  width: 100%;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
 }
+
+.modal-content input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
 .modal-buttons {
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: flex-end;
 }
+
+.modal-buttons .btn-primary {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.modal-buttons .btn-primary:hover {
+  background: var(--accent-blue-hover);
+}
+
+/* === EMPTY STATE === */
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: var(--spacing-md);
+  opacity: 0.5;
+}
+
+/* === RESPONSIVE === */
 @media (max-width: 600px) {
-    .actions { flex-direction: column; }
-    th, td { padding: 8px 5px; }
+  .header {
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+  }
+  
+  .container {
+    padding: var(--spacing-md);
+  }
+  
+  .upload-area {
+    padding: 30px 20px;
+  }
+  
+  .actions { flex-direction: column; }
+  
+  th, td { padding: var(--spacing-sm); }
 }
-    </style>
+  </style>
 </head>
 <body>
-    <div class="header-fixed">
-        <div class="title-container">
-            <h1>TallyCCU Pro <span class="subtitle">SD Card Manager</span></h1>
+  <div class="header">
+    <div class="header-left">
+      <span class="logo">Tally<span class="logo-accent">CCU</span> Pro</span>
+      <span class="logo-sub">SD Card Manager</span>
+    </div>
+    <button class="btn" onclick="location.href='/'">← Back to CCU Control</button>
+  </div>
+    
+  <div class="container">
+    <div id="status" class="status"></div>
+    
+    <div class="control-panel">
+      <div class="control-panel-header">
+        <span class="control-panel-title">📤 Upload File</span>
+      </div>
+      <div class="control-panel-body">
+        <div class="upload-area" id="uploadArea">
+          <div class="upload-icon" id="uploadIcon">📁</div>
+          <p class="upload-text" id="uploadText">Drag a file here or click to select</p>
+          <input type="file" id="fileInput">
         </div>
-        <button class="btn" onclick="location.href='/'">&larr; Back to CCU</button>
+        <div class="progress-container" id="progressContainer">
+          <div class="progress-filename" id="progressFilename"></div>
+          <div class="progress-bar-wrapper">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+          <div class="progress-info">
+            <span id="progressBytes">0 KB / 0 KB</span>
+            <span class="progress-percent" id="progressPercent">0%</span>
+          </div>
+          <div class="progress-status" id="progressStatus"></div>
+        </div>
+      </div>
     </div>
     
-    <div class="container">
-        <div id="status" class="status"></div>
-        
-        <fieldset>
-            <legend>Upload file</legend>
-            <div class="upload-area" id="uploadArea">
-                <div class="upload-icon" id="uploadIcon">&#128228;</div>
-                <p id="uploadText">Drag a file here or click to select</p>
-                <input type="file" id="fileInput">
-            </div>
-            <div class="progress-container" id="progressContainer">
-                <div class="progress-filename" id="progressFilename"></div>
-                <div class="progress-bar-wrapper">
-                    <div class="progress-bar" id="progressBar"></div>
-                </div>
-                <div class="progress-info">
-                    <span id="progressBytes">0 KB / 0 KB</span>
-                    <span class="progress-percent" id="progressPercent">0%</span>
-                </div>
-                <div class="progress-status" id="progressStatus"></div>
-            </div>
-        </fieldset>
-        
-        <fieldset>
-            <legend>Files on SD</legend>
-            <div id="fileList"></div>
-            <div class="total-info" id="totalInfo"></div>
-        </fieldset>
-    </div>
-    
-    <div class="modal" id="renameModal">
-        <div class="modal-content">
-            <h3>Rename file</h3>
-            <input type="text" id="renameInput" placeholder="New name">
-            <div class="modal-buttons">
-                <button class="btn" onclick="closeRenameModal()">Cancel</button>
-                <button class="btn" style="background:#0066cc;border-color:#0088ff;" onclick="confirmRename()">Rename</button>
-            </div>
+    <div class="control-panel">
+      <div class="control-panel-header">
+        <span class="control-panel-title">📂 Files on SD Card</span>
+        <button class="btn btn-small" onclick="loadFiles()">↻ Refresh</button>
+      </div>
+      <div class="control-panel-body">
+        <div id="fileList">
+          <div class="loading"><span class="spinner"></span> Loading files...</div>
         </div>
+        <div class="total-info" id="totalInfo"></div>
+      </div>
     </div>
+  </div>
 
-    <script>
+  <div class="modal" id="renameModal">
+    <div class="modal-content">
+      <h3>✏️ Rename File</h3>
+      <input type="text" id="renameInput" placeholder="New filename">
+      <div class="modal-buttons">
+        <button class="btn" onclick="closeRenameModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmRename()">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
 const uploadArea = document.getElementById('uploadArea');
 const uploadIcon = document.getElementById('uploadIcon');
 const uploadText = document.getElementById('uploadText');
@@ -318,286 +555,286 @@ let isUploading = false;
 let currentRenameFile = '';
 
 uploadArea.addEventListener('click', () => {
-    if (!isUploading) fileInput.click();
+  if (!isUploading) fileInput.click();
 });
 
 uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    if (!isUploading) uploadArea.classList.add('dragover');
+  e.preventDefault();
+  if (!isUploading) uploadArea.classList.add('dragover');
 });
 
 uploadArea.addEventListener('dragleave', () => {
-    uploadArea.classList.remove('dragover');
+  uploadArea.classList.remove('dragover');
 });
 
 uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.classList.remove('dragover');
-    if (!isUploading && e.dataTransfer.files.length > 0) {
-        checkAndUpload(e.dataTransfer.files[0]);
-    }
+  e.preventDefault();
+  uploadArea.classList.remove('dragover');
+  if (!isUploading && e.dataTransfer.files.length > 0) {
+    checkAndUpload(e.dataTransfer.files[0]);
+  }
 });
 
 fileInput.addEventListener('change', () => {
-    if (!isUploading && fileInput.files.length > 0) {
-        checkAndUpload(fileInput.files[0]);
-    }
+  if (!isUploading && fileInput.files.length > 0) {
+    checkAndUpload(fileInput.files[0]);
+  }
 });
 
 async function checkAndUpload(file) {
-    try {
-        const response = await fetch('/?fileExists=' + encodeURIComponent(file.name));
-        const data = await response.json();
-        
-        if (data.exists) {
-            if (!confirm('File "' + file.name + '" already exists.\n\nDo you want to overwrite it?')) {
-                fileInput.value = '';
-                return;
-            }
-        }
-        
-        uploadFile(file);
-    } catch (e) {
-        uploadFile(file);
+  try {
+    const response = await fetch('/?fileExists=' + encodeURIComponent(file.name));
+    const data = await response.json();
+    
+    if (data.exists) {
+      if (!confirm('File "' + file.name + '" already exists.\n\nDo you want to overwrite it?')) {
+        fileInput.value = '';
+        return;
+      }
     }
+    
+    uploadFile(file);
+  } catch (e) {
+    uploadFile(file);
+  }
 }
 
 function uploadFile(file) {
-    isUploading = true;
+  isUploading = true;
+  
+  uploadArea.classList.add('uploading');
+  uploadIcon.innerHTML = '<span class="spinner"></span>';
+  uploadText.textContent = 'Uploading file...';
+  
+  progressContainer.classList.add('show');
+  progressFilename.textContent = file.name;
+  progressBar.style.width = '0%';
+  progressBar.className = 'progress-bar';
+  progressBytes.textContent = '0 KB / ' + formatSize(file.size);
+  progressPercent.textContent = '0%';
+  progressStatus.textContent = '';
+  progressStatus.className = 'progress-status';
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const xhr = new XMLHttpRequest();
+  
+  xhr.upload.addEventListener('progress', (e) => {
+    if (e.lengthComputable) {
+      const percent = Math.round((e.loaded / e.total) * 100);
+      progressBar.style.width = percent + '%';
+      progressPercent.textContent = percent + '%';
+      progressBytes.textContent = formatSize(e.loaded) + ' / ' + formatSize(e.total);
+      
+      if (percent < 100) {
+        progressStatus.textContent = 'Sending data...';
+      } else {
+        progressStatus.textContent = 'Saving to SD card...';
+        progressBar.classList.add('indeterminate');
+      }
+    }
+  });
+  
+  xhr.addEventListener('load', () => {
+    progressBar.classList.remove('indeterminate');
     
-    uploadArea.classList.add('uploading');
-    uploadIcon.innerHTML = '<span class="spinner"></span>';
-    uploadText.textContent = 'Uploading file...';
-    
-    progressContainer.classList.add('show');
-    progressFilename.textContent = file.name;
-    progressBar.style.width = '0%';
-    progressBar.className = 'progress-bar';
-    progressBytes.textContent = '0 KB / ' + formatSize(file.size);
-    progressPercent.textContent = '0%';
-    progressStatus.textContent = '';
-    progressStatus.className = 'progress-status';
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const xhr = new XMLHttpRequest();
-    
-    xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            progressBar.style.width = percent + '%';
-            progressPercent.textContent = percent + '%';
-            progressBytes.textContent = formatSize(e.loaded) + ' / ' + formatSize(e.total);
-            
-            if (percent < 100) {
-                progressStatus.textContent = 'Sending data...';
-            } else {
-                progressStatus.textContent = 'Saving to SD...';
-                progressBar.classList.add('indeterminate');
-            }
-        }
-    });
-    
-    xhr.addEventListener('load', () => {
-        progressBar.classList.remove('indeterminate');
-        
-        if (xhr.status === 200) {
-            try {
-                const data = JSON.parse(xhr.responseText);
-                if (data.success) {
-                    progressBar.style.width = '100%';
-                    progressBar.classList.add('complete');
-                    progressStatus.textContent = 'File uploaded successfully';
-                    progressStatus.classList.add('success');
-                    showStatus('File "' + file.name + '" uploaded successfully', 'success');
-                    loadFiles();
-                } else {
-                    uploadError(data.message || 'Unknown error');
-                }
-            } catch (e) {
-                uploadError('Invalid server response');
-            }
+    if (xhr.status === 200) {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (data.success) {
+          progressBar.style.width = '100%';
+          progressBar.classList.add('complete');
+          progressStatus.textContent = '✓ File uploaded successfully';
+          progressStatus.classList.add('success');
+          showStatus('File "' + file.name + '" uploaded successfully', 'success');
+          loadFiles();
         } else {
-            uploadError('HTTP error ' + xhr.status);
+          uploadError(data.message || 'Unknown error');
         }
-        
-        finishUpload();
-    });
+      } catch (e) {
+        uploadError('Invalid server response');
+      }
+    } else {
+      uploadError('HTTP error ' + xhr.status);
+    }
     
-    xhr.addEventListener('error', () => {
-        progressBar.classList.remove('indeterminate');
-        uploadError('Connection error');
-        finishUpload();
-    });
-    
-    xhr.addEventListener('timeout', () => {
-        progressBar.classList.remove('indeterminate');
-        uploadError('Timeout');
-        finishUpload();
-    });
-    
-    xhr.open('POST', '/upload');
-    xhr.timeout = 120000;
-    xhr.send(formData);
+    finishUpload();
+  });
+  
+  xhr.addEventListener('error', () => {
+    progressBar.classList.remove('indeterminate');
+    uploadError('Connection error');
+    finishUpload();
+  });
+  
+  xhr.addEventListener('timeout', () => {
+    progressBar.classList.remove('indeterminate');
+    uploadError('Timeout');
+    finishUpload();
+  });
+  
+  xhr.open('POST', '/upload');
+  xhr.timeout = 120000;
+  xhr.send(formData);
 }
 
 function uploadError(message) {
-    progressBar.style.width = '100%';
-    progressBar.classList.add('error');
-    progressStatus.textContent = 'Error: ' + message;
-    progressStatus.classList.add('error');
-    showStatus('Upload error: ' + message, 'error');
+  progressBar.style.width = '100%';
+  progressBar.classList.add('error');
+  progressStatus.textContent = '✗ Error: ' + message;
+  progressStatus.classList.add('error');
+  showStatus('Upload error: ' + message, 'error');
 }
 
 function finishUpload() {
-    isUploading = false;
-    uploadArea.classList.remove('uploading');
-    uploadIcon.innerHTML = '&#128228;';
-    uploadText.textContent = 'Drag a file here or click to select';
-    fileInput.value = '';
-    
-    setTimeout(() => {
-        progressContainer.classList.remove('show');
-    }, 3000);
+  isUploading = false;
+  uploadArea.classList.remove('uploading');
+  uploadIcon.innerHTML = '📁';
+  uploadText.textContent = 'Drag a file here or click to select';
+  fileInput.value = '';
+  
+  setTimeout(() => {
+    progressContainer.classList.remove('show');
+  }, 3000);
 }
 
 async function loadFiles() {
-    const fileList = document.getElementById('fileList');
-    fileList.innerHTML = '<div class="loading"><span class="spinner"></span> Loading files...</div>';
+  const fileList = document.getElementById('fileList');
+  fileList.innerHTML = '<div class="loading"><span class="spinner"></span> Loading files...</div>';
+  
+  try {
+    const response = await fetch('/?listFiles&t=' + Date.now());
+    const data = await response.json();
     
-    try {
-        const response = await fetch('/?listFiles&t=' + Date.now());
-        const data = await response.json();
-        
-        if (data.files && data.files.length > 0) {
-            let html = '<table><thead><tr><th>Name</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
-            
-            let totalSize = 0;
-            data.files.sort((a, b) => a.name.localeCompare(b.name));
-            
-            data.files.forEach(file => {
-                totalSize += file.size;
-                const safeName = escapeHtml(file.name);
-                html += '<tr>' +
-                    '<td class="file-name">' + safeName + '</td>' +
-                    '<td class="file-size">' + formatSize(file.size) + '</td>' +
-                    '<td class="actions">' +
-                        '<button class="btn btn-small" onclick="downloadFile(\'' + safeName + '\')" title="Download">&#11015;</button>' +
-                        '<button class="btn btn-small btn-rename" onclick="renameFile(\'' + safeName + '\')" title="Rename">&#9998;</button>' +
-                        '<button class="btn btn-small btn-danger" onclick="deleteFile(\'' + safeName + '\')" title="Delete">&#128465;</button>' +
-                    '</td>' +
-                '</tr>';
-            });
-            
-            html += '</tbody></table>';
-            fileList.innerHTML = html;
-            
-            document.getElementById('totalInfo').textContent = 
-                data.files.length + ' files, ' + formatSize(totalSize) + ' total';
-        } else {
-            fileList.innerHTML = '<p style="color:#888;text-align:center;padding:20px;">No files on SD card</p>';
-            document.getElementById('totalInfo').textContent = '';
-        }
-    } catch (e) {
-        fileList.innerHTML = '<p style="color:#c88;text-align:center;padding:20px;">Error loading files</p>';
+    if (data.files && data.files.length > 0) {
+      let html = '<table><thead><tr><th>Name</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
+      
+      let totalSize = 0;
+      data.files.sort((a, b) => a.name.localeCompare(b.name));
+      
+      data.files.forEach(file => {
+        totalSize += file.size;
+        const safeName = escapeHtml(file.name);
+        html += '<tr>' +
+          '<td class="file-name">' + safeName + '</td>' +
+          '<td class="file-size">' + formatSize(file.size) + '</td>' +
+          '<td class="actions">' +
+            '<button class="btn btn-small" onclick="downloadFile(\'' + safeName + '\')" title="Download">⬇</button>' +
+            '<button class="btn btn-small btn-rename" onclick="renameFile(\'' + safeName + '\')" title="Rename">✏</button>' +
+            '<button class="btn btn-small btn-danger" onclick="deleteFile(\'' + safeName + '\')" title="Delete">🗑</button>' +
+          '</td>' +
+        '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      fileList.innerHTML = html;
+      
+      document.getElementById('totalInfo').textContent = 
+        data.files.length + ' files • ' + formatSize(totalSize) + ' total';
+    } else {
+      fileList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No files on SD card</p></div>';
+      document.getElementById('totalInfo').textContent = '';
     }
+  } catch (e) {
+    fileList.innerHTML = '<div class="empty-state" style="color:var(--accent-red)"><div class="empty-state-icon">⚠</div><p>Error loading files</p></div>';
+  }
 }
 
 function downloadFile(filename) {
-    window.location.href = '/?download=' + encodeURIComponent(filename);
+  window.location.href = '/?download=' + encodeURIComponent(filename);
 }
 
 function renameFile(filename) {
-    currentRenameFile = filename;
-    document.getElementById('renameInput').value = filename;
-    document.getElementById('renameModal').classList.add('show');
-    document.getElementById('renameInput').focus();
-    document.getElementById('renameInput').select();
+  currentRenameFile = filename;
+  document.getElementById('renameInput').value = filename;
+  document.getElementById('renameModal').classList.add('show');
+  document.getElementById('renameInput').focus();
+  document.getElementById('renameInput').select();
 }
 
 function closeRenameModal() {
-    document.getElementById('renameModal').classList.remove('show');
-    currentRenameFile = '';
+  document.getElementById('renameModal').classList.remove('show');
+  currentRenameFile = '';
 }
 
 async function confirmRename() {
-    const newName = document.getElementById('renameInput').value.trim();
-    
-    if (!newName) {
-        showStatus('Enter a valid name', 'error');
-        return;
-    }
-    
-    if (newName === currentRenameFile) {
-        closeRenameModal();
-        return;
-    }
-    
-    try {
-        const url = '/?renameFile=' + encodeURIComponent(currentRenameFile) + '&to=' + encodeURIComponent(newName);
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (data.success) {
-            showStatus('File renamed to "' + newName + '"', 'success');
-            loadFiles();
-        } else {
-            showStatus('Error renaming (name already exists?)', 'error');
-        }
-    } catch (e) {
-        showStatus('Connection error', 'error');
-    }
-    
+  const newName = document.getElementById('renameInput').value.trim();
+  
+  if (!newName) {
+    showStatus('Enter a valid name', 'error');
+    return;
+  }
+  
+  if (newName === currentRenameFile) {
     closeRenameModal();
+    return;
+  }
+  
+  try {
+    const url = '/?renameFile=' + encodeURIComponent(currentRenameFile) + '&to=' + encodeURIComponent(newName);
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.success) {
+      showStatus('File renamed to "' + newName + '"', 'success');
+      loadFiles();
+    } else {
+      showStatus('Error renaming (name already exists?)', 'error');
+    }
+  } catch (e) {
+    showStatus('Connection error', 'error');
+  }
+  
+  closeRenameModal();
 }
 
 async function deleteFile(filename) {
-    if (!confirm('Delete "' + filename + '"?\n\nThis action cannot be undone.')) {
-        return;
-    }
+  if (!confirm('Delete "' + filename + '"?\n\nThis action cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    const response = await fetch('/?deleteFile=' + encodeURIComponent(filename));
+    const data = await response.json();
     
-    try {
-        const response = await fetch('/?deleteFile=' + encodeURIComponent(filename));
-        const data = await response.json();
-        
-        if (data.success) {
-            showStatus('File "' + filename + '" deleted', 'success');
-            loadFiles();
-        } else {
-            showStatus('Error deleting file', 'error');
-        }
-    } catch (e) {
-        showStatus('Connection error', 'error');
+    if (data.success) {
+      showStatus('File "' + filename + '" deleted', 'success');
+      loadFiles();
+    } else {
+      showStatus('Error deleting file', 'error');
     }
+  } catch (e) {
+    showStatus('Connection error', 'error');
+  }
 }
 
 function formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function showStatus(message, type) {
-    statusEl.textContent = message;
-    statusEl.className = 'status ' + type;
-    setTimeout(() => { statusEl.className = 'status'; }, 5000);
+  statusEl.textContent = message;
+  statusEl.className = 'status ' + type;
+  setTimeout(() => { statusEl.className = 'status'; }, 5000);
 }
 
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeRenameModal();
-    if (e.key === 'Enter' && document.getElementById('renameModal').classList.contains('show')) {
-        confirmRename();
-    }
+  if (e.key === 'Escape') closeRenameModal();
+  if (e.key === 'Enter' && document.getElementById('renameModal').classList.contains('show')) {
+    confirmRename();
+  }
 });
 
 loadFiles();
-    </script>
+  </script>
 </body>
 </html>
