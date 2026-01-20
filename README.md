@@ -35,6 +35,9 @@ TallyCCU Pro is an Arduino-based solution that provides full Camera Control Unit
 - **Per-Camera Presets**: 5 presets per camera, stored on SD card
 - **Group Selection**: Choose which parameter groups to include in presets
 
+![Presets](Images/Presets.png)
+
+
 ---
 
 ## Hardware Requirements
