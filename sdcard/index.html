@@ -817,6 +817,38 @@ body {
   gap: var(--spacing-sm);
 }
 
+.knob-with-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.knob-pm-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.knob-pm-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-blue);
+}
+
+.knob-pm-btn:active {
+  background: var(--accent-blue);
+  transform: scale(0.95);
+}
+
 .knob {
   width: 70px;
   height: 70px;
@@ -1470,7 +1502,6 @@ body {
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
   min-width: 180px;
-  max-width: 250px;
   flex: 1;
   overflow: hidden;
 }
@@ -1586,7 +1617,7 @@ body {
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
   min-width: 220px;
-  flex: 1.5;
+  flex: 1;
 }
 
 .hs-header {
@@ -1685,6 +1716,54 @@ body {
 }
 
 /* === LUM MIX CONTROL === */
+.lummix-row {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
+}
+
+.lummix-control-centered {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 300px;
+  width: 100%;
+}
+
+.lummix-control-centered label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.lummix-control-centered input[type="range"] {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+}
+
+.lummix-control-centered input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.lummix-control-centered .cc-value {
+  min-width: 36px;
+}
+
+.lummix-control-centered .mini-reset {
+  padding: 2px 6px;
+}
+
 .lummix-control {
   display: flex;
   flex-direction: column;
@@ -2105,7 +2184,7 @@ let multiSubValues = {};
         <button class="sidebar-tab" onclick="showTab('group_lens')"><span class="tab-icon">🔭</span><span class="tab-text">Lens</span></button>
         <button class="sidebar-tab" onclick="showTab('group_video')"><span class="tab-icon">🎬</span><span class="tab-text">Video</span></button>
         <button class="sidebar-tab" onclick="showTab('group_color_correction')"><span class="tab-icon">🎨</span><span class="tab-text">Color</span></button>
-        <button class="sidebar-tab" onclick="showTab('group_output')"><span class="tab-icon">📤</span><span class="tab-text">Output</span></button>
+        <button class="sidebar-tab" onclick="showTab('group_output')"><span class="tab-icon">📐</span><span class="tab-text">Output</span></button>
         <button class="sidebar-tab" onclick="showTab('group_display')"><span class="tab-icon">🖥️</span><span class="tab-text">Display</span></button>
         <button class="sidebar-tab" onclick="showTab('group_audio')"><span class="tab-icon">🔊</span><span class="tab-text">Audio</span></button>
         <button class="sidebar-tab" onclick="showTab('group_tally')"><span class="tab-icon">🔴</span><span class="tab-text">Tally</span></button>
@@ -2131,9 +2210,13 @@ let multiSubValues = {};
           <div class="knob-control">
             <label>Aperture</label>
             <div class="knob-container">
-              <div class="knob" id="knob-aperture" data-min="0" data-max="1" data-value="0.5" data-param="aperture_normalised">
-                <div class="knob-track"></div>
-                <div class="knob-indicator"></div>
+              <div class="knob-with-buttons">
+                <button class="knob-pm-btn" onclick="adjustKnob('aperture', -1)">−</button>
+                <div class="knob" id="knob-aperture" data-min="0" data-max="1" data-value="0.5" data-param="aperture_normalised">
+                  <div class="knob-track"></div>
+                  <div class="knob-indicator"></div>
+                </div>
+                <button class="knob-pm-btn" onclick="adjustKnob('aperture', 1)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="aperture_normalised_input" 
                 data-paramkey="aperture_normalised" data-paramtype="range" data-default="0"
@@ -2150,9 +2233,13 @@ let multiSubValues = {};
           <div class="knob-control">
             <label>Focus</label>
             <div class="knob-container">
-              <div class="knob" id="knob-focus" data-min="0" data-max="1" data-value="0" data-param="focus">
-                <div class="knob-track"></div>
-                <div class="knob-indicator"></div>
+              <div class="knob-with-buttons">
+                <button class="knob-pm-btn" onclick="adjustKnob('focus', -1)">−</button>
+                <div class="knob" id="knob-focus" data-min="0" data-max="1" data-value="0" data-param="focus">
+                  <div class="knob-track"></div>
+                  <div class="knob-indicator"></div>
+                </div>
+                <button class="knob-pm-btn" onclick="adjustKnob('focus', 1)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="focus_input"
                 data-paramkey="focus" data-paramtype="range" data-default="0"
@@ -2169,9 +2256,13 @@ let multiSubValues = {};
           <div class="knob-control">
             <label>Zoom</label>
             <div class="knob-container">
-              <div class="knob" id="knob-zoom" data-min="0" data-max="1" data-value="0" data-param="set_absolute_zoom_normalised">
-                <div class="knob-track"></div>
-                <div class="knob-indicator"></div>
+              <div class="knob-with-buttons">
+                <button class="knob-pm-btn" onclick="adjustKnob('zoom', -1)">−</button>
+                <div class="knob" id="knob-zoom" data-min="0" data-max="1" data-value="0" data-param="set_absolute_zoom_normalised">
+                  <div class="knob-track"></div>
+                  <div class="knob-indicator"></div>
+                </div>
+                <button class="knob-pm-btn" onclick="adjustKnob('zoom', 1)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="set_absolute_zoom_normalised_input"
                 data-paramkey="set_absolute_zoom_normalised" data-paramtype="range" data-default="0"
@@ -2241,9 +2332,13 @@ let multiSubValues = {};
           <div class="knob-control">
             <label>Shutter</label>
             <div class="knob-container">
-              <div class="knob" id="knob-shutter" data-min="24" data-max="2000" data-value="50" data-param="shutter_speed">
-                <div class="knob-track"></div>
-                <div class="knob-indicator"></div>
+              <div class="knob-with-buttons">
+                <button class="knob-pm-btn" onclick="adjustKnob('shutter', -1)">−</button>
+                <div class="knob" id="knob-shutter" data-min="24" data-max="2000" data-value="50" data-param="shutter_speed">
+                  <div class="knob-track"></div>
+                  <div class="knob-indicator"></div>
+                </div>
+                <button class="knob-pm-btn" onclick="adjustKnob('shutter', 1)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="shutter_speed_input"
                 data-paramkey="shutter_speed" data-paramtype="range" data-default="24"
@@ -2259,13 +2354,17 @@ let multiSubValues = {};
           <div class="knob-control">
             <label>Gain (dB)</label>
             <div class="knob-container">
-              <div class="knob" id="knob-gain" data-min="-12" data-max="36" data-value="0" data-param="gain_db">
-                <div class="knob-track"></div>
-                <div class="knob-indicator"></div>
+              <div class="knob-with-buttons">
+                <button class="knob-pm-btn" onclick="adjustKnob('gain', -1)">−</button>
+                <div class="knob" id="knob-gain" data-min="-12" data-max="32" data-value="0" data-param="gain_db">
+                  <div class="knob-track"></div>
+                  <div class="knob-indicator"></div>
+                </div>
+                <button class="knob-pm-btn" onclick="adjustKnob('gain', 1)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="gain_db_input"
                 data-paramkey="gain_db" data-paramtype="range" data-default="0"
-                value="0" min="-12" max="36" step="2">
+                value="0" min="-12" max="32" step="2">
             </div>
             <div class="knob-presets">
               <button onclick="setKnobValue('gain', 0)">0</button>
@@ -2278,13 +2377,17 @@ let multiSubValues = {};
           <div class="knob-control">
             <label>ND Filter</label>
             <div class="knob-container">
-              <div class="knob" id="knob-nd" data-min="0" data-max="15" data-value="0" data-param="nd_filter_stop">
-                <div class="knob-track"></div>
-                <div class="knob-indicator"></div>
+              <div class="knob-with-buttons">
+                <button class="knob-pm-btn" onclick="adjustKnob('nd', -1)">−</button>
+                <div class="knob" id="knob-nd" data-min="0" data-max="6" data-value="0" data-param="nd_filter_stop">
+                  <div class="knob-track"></div>
+                  <div class="knob-indicator"></div>
+                </div>
+                <button class="knob-pm-btn" onclick="adjustKnob('nd', 1)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="nd_filter_stop_0_input"
                 data-paramkey="nd_filter_stop" data-paramtype="sub-range" data-subindex="0" data-default="0"
-                value="0" min="0" max="15" step="1">
+                value="0" min="0" max="6" step="1">
             </div>
             <div class="knob-presets">
               <button onclick="setKnobValue('nd', 0)">Clear</button>
@@ -2361,69 +2464,6 @@ let multiSubValues = {};
     
     <div class="control-panel">
       <div class="control-panel-header">
-        <span class="control-panel-title">🎬 Video Mode</span>
-      </div>
-      <div class="control-panel-body">
-        <div class="settings-grid">
-          
-          <div class="setting-item">
-            <label>Resolution</label>
-            <select class="styled-select param-control" id="video_mode_2_select"
-              data-paramkey="video_mode" data-paramtype="select" data-subindex="2" data-default="6"
-              onchange="multiSubSelectChange('video_mode', 2, this)">
-              <option value="0">NTSC</option>
-              <option value="1">PAL</option>
-              <option value="2">720p</option>
-              <option value="3">1080p</option>
-              <option value="4">2K DCI</option>
-              <option value="5">2K 16:9</option>
-              <option value="6" selected>UHD</option>
-              <option value="7">3K Anamorphic</option>
-              <option value="8">4K DCI</option>
-              <option value="9">4K 16:9</option>
-              <option value="10">4.6K 2.4:1</option>
-              <option value="11">4.6K</option>
-            </select>
-          </div>
-          
-          <div class="setting-item">
-            <label>Frame Rate</label>
-            <div class="toggle-group" id="toggle-video_mode_0">
-              <button class="toggle-btn" data-value="24" onclick="setVideoModeValue(0, 24, this)">24</button>
-              <button class="toggle-btn" data-value="25" onclick="setVideoModeValue(0, 25, this)">25</button>
-              <button class="toggle-btn" data-value="30" onclick="setVideoModeValue(0, 30, this)">30</button>
-              <button class="toggle-btn" data-value="50" onclick="setVideoModeValue(0, 50, this)">50</button>
-              <button class="toggle-btn active" data-value="60" onclick="setVideoModeValue(0, 60, this)">60</button>
-            </div>
-            <input type="hidden" id="video_mode_0_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="0" value="60" data-default="60">
-          </div>
-          
-          <div class="setting-item">
-            <label>M-Rate</label>
-            <div class="toggle-group" id="toggle-video_mode_1">
-              <button class="toggle-btn active" data-value="0" onclick="setVideoModeValue(1, 0, this)">Regular</button>
-              <button class="toggle-btn" data-value="1" onclick="setVideoModeValue(1, 1, this)">M-Rate</button>
-            </div>
-            <input type="hidden" id="video_mode_1_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="1" value="0" data-default="0">
-          </div>
-          
-          <div class="setting-item">
-            <label>Scan Mode</label>
-            <div class="toggle-group" id="toggle-video_mode_3">
-              <button class="toggle-btn active" data-value="0" onclick="setVideoModeValue(3, 0, this)">Progressive</button>
-              <button class="toggle-btn" data-value="1" onclick="setVideoModeValue(3, 1, this)">Interlaced</button>
-            </div>
-            <input type="hidden" id="video_mode_3_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="3" value="0" data-default="0">
-          </div>
-          
-        </div>
-        <script>multiSubValues["video_mode"] = [60, 0, 6, 0, 0];</script>
-        <input type="hidden" id="video_mode_4_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="4" value="0" data-default="0">
-      </div>
-    </div>
-    
-    <div class="control-panel">
-      <div class="control-panel-header">
         <span class="control-panel-title">⚙️ Video Settings</span>
       </div>
       <div class="control-panel-body">
@@ -2487,6 +2527,69 @@ let multiSubValues = {};
           <script>multiSubValues["display_lut"] = [0, 0];</script>
           
         </div>
+      </div>
+    </div>
+    
+    <div class="control-panel">
+      <div class="control-panel-header">
+        <span class="control-panel-title">🎬 Video Mode</span>
+      </div>
+      <div class="control-panel-body">
+        <div class="settings-grid">
+          
+          <div class="setting-item">
+            <label>Resolution</label>
+            <select class="styled-select param-control" id="video_mode_2_select"
+              data-paramkey="video_mode" data-paramtype="select" data-subindex="2" data-default="6"
+              onchange="multiSubSelectChange('video_mode', 2, this)">
+              <option value="0">NTSC</option>
+              <option value="1">PAL</option>
+              <option value="2">720p</option>
+              <option value="3">1080p</option>
+              <option value="4">2K DCI</option>
+              <option value="5">2K 16:9</option>
+              <option value="6" selected>UHD</option>
+              <option value="7">3K Anamorphic</option>
+              <option value="8">4K DCI</option>
+              <option value="9">4K 16:9</option>
+              <option value="10">4.6K 2.4:1</option>
+              <option value="11">4.6K</option>
+            </select>
+          </div>
+          
+          <div class="setting-item">
+            <label>Frame Rate</label>
+            <div class="toggle-group" id="toggle-video_mode_0">
+              <button class="toggle-btn" data-value="24" onclick="setVideoModeValue(0, 24, this)">24</button>
+              <button class="toggle-btn" data-value="25" onclick="setVideoModeValue(0, 25, this)">25</button>
+              <button class="toggle-btn" data-value="30" onclick="setVideoModeValue(0, 30, this)">30</button>
+              <button class="toggle-btn" data-value="50" onclick="setVideoModeValue(0, 50, this)">50</button>
+              <button class="toggle-btn active" data-value="60" onclick="setVideoModeValue(0, 60, this)">60</button>
+            </div>
+            <input type="hidden" id="video_mode_0_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="0" value="60" data-default="60">
+          </div>
+          
+          <div class="setting-item">
+            <label>M-Rate</label>
+            <div class="toggle-group" id="toggle-video_mode_1">
+              <button class="toggle-btn active" data-value="0" onclick="setVideoModeValue(1, 0, this)">Regular</button>
+              <button class="toggle-btn" data-value="1" onclick="setVideoModeValue(1, 1, this)">M-Rate</button>
+            </div>
+            <input type="hidden" id="video_mode_1_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="1" value="0" data-default="0">
+          </div>
+          
+          <div class="setting-item">
+            <label>Scan Mode</label>
+            <div class="toggle-group" id="toggle-video_mode_3">
+              <button class="toggle-btn active" data-value="0" onclick="setVideoModeValue(3, 0, this)">Progressive</button>
+              <button class="toggle-btn" data-value="1" onclick="setVideoModeValue(3, 1, this)">Interlaced</button>
+            </div>
+            <input type="hidden" id="video_mode_3_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="3" value="0" data-default="0">
+          </div>
+          
+        </div>
+        <script>multiSubValues["video_mode"] = [60, 0, 6, 0, 0];</script>
+        <input type="hidden" id="video_mode_4_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="4" value="0" data-default="0">
       </div>
     </div>
     
@@ -2595,6 +2698,17 @@ let multiSubValues = {};
         </div>
       </div>
       
+      <!-- LUM MIX - Centered below wheels -->
+      <div class="lummix-row">
+        <div class="lummix-control-centered">
+          <label>Lum Mix</label>
+          <input type="range" min="0" max="1" step="0.01" value="1" id="cc-lummix"
+            oninput="updateLumMix(this.value)" onchange="sendLumMix()">
+          <span class="cc-value" id="cc-lummix-val">1.00</span>
+          <button class="mini-reset" onclick="resetLumMix()">⟳</button>
+        </div>
+      </div>
+      
       <div class="color-controls-row">
         <!-- CONTRAST / PIVOT - Visual curve control -->
         <div class="contrast-pivot-control">
@@ -2653,16 +2767,6 @@ let multiSubValues = {};
           </div>
         </div>
         
-        <!-- LUM MIX -->
-        <div class="lummix-control">
-          <div class="slider-header">
-            <label>Lum Mix</label>
-            <button class="slider-reset" onclick="resetLumMix()">⟳</button>
-          </div>
-          <input type="range" min="0" max="1" step="0.01" value="1" id="cc-lummix"
-            oninput="updateLumMix(this.value)" onchange="sendLumMix()">
-          <span class="cc-value" id="cc-lummix-val">1.00</span>
-        </div>
       </div>
     </div>
     
@@ -2745,27 +2849,27 @@ let multiSubValues = {};
             <div class="slider-header">
               <input type="range" class="styled-slider param-control" id="overlays_2_range"
                 data-paramkey="overlays" data-paramtype="sub-range" data-subindex="2"
-                min="0" max="100" step="5" value="0" data-default="0"
+                min="0" max="100" step="5" value="90" data-default="90"
                 oninput="styledSliderInput('overlays', 2, this)"
                 onchange="multiSubOnChange('overlays')">
-              <input type="number" class="slider-input" id="overlays_2_input" value="0" min="0" max="100" style="width:50px;margin-left:8px;">
+              <input type="number" class="slider-input" id="overlays_2_input" value="90" min="0" max="100" style="width:50px;margin-left:8px;">
             </div>
           </div>
           
           <div class="setting-item">
             <label>Grid Overlays</label>
             <div class="checkbox-group">
-              <label class="checkbox-item"><input type="checkbox" id="grid_thirds" onchange="updateGridOverlays()"> Thirds</label>
-              <label class="checkbox-item"><input type="checkbox" id="grid_crosshairs" onchange="updateGridOverlays()"> Crosshairs</label>
+              <label class="checkbox-item"><input type="checkbox" id="grid_thirds" onchange="updateGridOverlays()" checked> Thirds</label>
+              <label class="checkbox-item"><input type="checkbox" id="grid_crosshairs" onchange="updateGridOverlays()" checked> Crosshairs</label>
               <label class="checkbox-item"><input type="checkbox" id="grid_center" onchange="updateGridOverlays()"> Center</label>
-              <label class="checkbox-item"><input type="checkbox" id="grid_horizon" onchange="updateGridOverlays()"> Horizon</label>
+              <label class="checkbox-item"><input type="checkbox" id="grid_horizon" onchange="updateGridOverlays()" checked> Horizon</label>
             </div>
             <input type="hidden" id="overlays_3_range" class="param-control"
-              data-paramkey="overlays" data-paramtype="sub-range" data-subindex="3" data-default="0" value="0">
+              data-paramkey="overlays" data-paramtype="sub-range" data-subindex="3" data-default="11" value="11">
           </div>
           
         </div>
-        <script>multiSubValues["overlays"] = [5, 100, 0, 0];</script>
+        <script>multiSubValues["overlays"] = [5, 100, 90, 11];</script>
       </div>
     </div>
     
@@ -2837,9 +2941,9 @@ let multiSubValues = {};
           <div class="setting-item">
             <label>Tools</label>
             <div class="checkbox-group">
-              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_zebra" onchange="updateExposureFocusTools()"> Zebra</label>
-              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_focus" onchange="updateExposureFocusTools()"> Focus Assist</label>
-              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_false_color" onchange="updateExposureFocusTools()"> False Color</label>
+              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_zebra"> Zebra</label>
+              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_focus"> Focus Assist</label>
+              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_false_color"> False Color</label>
             </div>
             <input type="hidden" id="exposure_and_focus_tools_0_range" class="param-control"
               data-paramkey="exposure_and_focus_tools" data-paramtype="sub-range" data-subindex="0" data-default="0" value="0">
@@ -2848,13 +2952,18 @@ let multiSubValues = {};
           <div class="setting-item">
             <label>Target Displays</label>
             <div class="checkbox-group">
-              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_lcd" onchange="updateExposureFocusTools()"> LCD</label>
-              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_hdmi" onchange="updateExposureFocusTools()"> HDMI</label>
-              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_evf" onchange="updateExposureFocusTools()"> EVF</label>
-              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_main_sdi" onchange="updateExposureFocusTools()"> Main SDI</label>
+              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_lcd"> LCD</label>
+              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_hdmi"> HDMI</label>
+              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_evf"> EVF</label>
+              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_main_sdi"> Main SDI</label>
             </div>
             <input type="hidden" id="exposure_and_focus_tools_1_range" class="param-control"
               data-paramkey="exposure_and_focus_tools" data-paramtype="sub-range" data-subindex="1" data-default="0" value="0">
+          </div>
+          
+          <div class="setting-item">
+            <label>&nbsp;</label>
+            <button class="panel-action-btn" onclick="applyExposureFocusTools()" style="width:100%;">▶ Apply Tools</button>
           </div>
           
           <div class="setting-item">
@@ -3516,7 +3625,7 @@ function setDefaultParamGroups() {
 }
 
 // === EXPOSURE/FOCUS TOOLS ===
-function updateExposureFocusTools() {
+function getExposureFocusToolsValues() {
     const key = 'exposure_and_focus_tools';
     let tools = 0;
     if (document.getElementById(key + '_zebra')?.checked) tools += 1;
@@ -3529,12 +3638,30 @@ function updateExposureFocusTools() {
     if (document.getElementById(key + '_evf')?.checked) displays += 4;
     if (document.getElementById(key + '_main_sdi')?.checked) displays += 8;
     
+    return { tools, displays };
+}
+
+function updateExposureFocusTools() {
+    const key = 'exposure_and_focus_tools';
+    const { tools, displays } = getExposureFocusToolsValues();
+    
     multiSubValues[key] = [tools, displays];
-    // Actualizar hidden inputs
     const hiddenInput0 = document.getElementById(key + '_0_range');
     const hiddenInput1 = document.getElementById(key + '_1_range');
     if (hiddenInput0) hiddenInput0.value = tools;
     if (hiddenInput1) hiddenInput1.value = displays;
+}
+
+function applyExposureFocusTools() {
+    const key = 'exposure_and_focus_tools';
+    const { tools, displays } = getExposureFocusToolsValues();
+    
+    multiSubValues[key] = [tools, displays];
+    const hiddenInput0 = document.getElementById(key + '_0_range');
+    const hiddenInput1 = document.getElementById(key + '_1_range');
+    if (hiddenInput0) hiddenInput0.value = tools;
+    if (hiddenInput1) hiddenInput1.value = displays;
+    
     fetch(`/?cameraId=${currentCamera}&${key}=${tools},${displays}`);
 }
 
@@ -3599,7 +3726,7 @@ function setOverlayValue(subIndex, value, btn) {
     const group = btn.closest('.toggle-group');
     group.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    if (!multiSubValues["overlays"]) multiSubValues["overlays"] = [5, 100, 0, 0];
+    if (!multiSubValues["overlays"]) multiSubValues["overlays"] = [5, 100, 90, 11];
     multiSubValues["overlays"][subIndex] = value;
     // Actualizar hidden input
     const hiddenInput = document.getElementById(`overlays_${subIndex}_range`);
@@ -3613,7 +3740,7 @@ function updateGridOverlays() {
     if (document.getElementById('grid_crosshairs')?.checked) value += 2;
     if (document.getElementById('grid_center')?.checked) value += 4;
     if (document.getElementById('grid_horizon')?.checked) value += 8;
-    if (!multiSubValues["overlays"]) multiSubValues["overlays"] = [5, 100, 0, 0];
+    if (!multiSubValues["overlays"]) multiSubValues["overlays"] = [5, 100, 90, 11];
     multiSubValues["overlays"][3] = value;
     // Actualizar hidden input
     const hiddenInput = document.getElementById('overlays_3_range');
@@ -3642,8 +3769,8 @@ const knobConfig = {
     focus: { min: 0, max: 1, value: 0, param: 'focus', step: 0.05 },
     zoom: { min: 0, max: 1, value: 0, param: 'set_absolute_zoom_normalised', step: 0.05 },
     shutter: { min: 24, max: 2000, value: 50, param: 'shutter_speed', step: 1 },
-    gain: { min: -12, max: 36, value: 0, param: 'gain_db', step: 2 },
-    nd: { min: 0, max: 15, value: 0, param: 'nd_filter_stop', step: 1, subIndex: 0 }
+    gain: { min: -12, max: 32, value: 0, param: 'gain_db', step: 2 },
+    nd: { min: 0, max: 6, value: 0, param: 'nd_filter_stop', step: 2, subIndex: 0 }
 };
 
 function initKnob(name) {
@@ -3715,6 +3842,25 @@ function setKnobValue(name, value) {
     updateKnobDisplay(name, value);
     updateKnobIndicator(name, value);
     sendKnobValue(name);
+}
+
+function adjustKnob(name, direction) {
+    const config = knobConfig[name];
+    let newValue;
+    
+    if (name === 'shutter') {
+        // Shutter uses multiples of frame rate
+        const fps = getCurrentFrameRate();
+        const currentMultiple = Math.round(config.value / fps);
+        const newMultiple = Math.max(1, currentMultiple + direction);
+        newValue = fps * newMultiple;
+    } else {
+        const step = config.step || 1;
+        newValue = config.value + (direction * step);
+    }
+    
+    newValue = Math.max(config.min, Math.min(config.max, newValue));
+    setKnobValue(name, newValue);
 }
 
 function sendKnobValue(name) {
@@ -4745,23 +4891,23 @@ function resetSelectedGroupParams() {
     
     // Resetear controles especiales de Output
     if (selectedGroups.includes('output')) {
-        // Frame Guide Style - reset a 16:9 (valor 5)
-        multiSubValues['overlays'] = [5, 100, 0, 0];
+        // Frame Guide Style - reset a 16:9 (valor 5), safe area 90%, grids activados
+        multiSubValues['overlays'] = [5, 100, 90, 11];
         document.getElementById('overlays_0_range').value = 5;
         document.getElementById('overlays_1_range').value = 100;
-        document.getElementById('overlays_2_range').value = 0;
-        document.getElementById('overlays_3_range').value = 0;
+        document.getElementById('overlays_2_range').value = 90;
+        document.getElementById('overlays_3_range').value = 11;
         // Actualizar displays
         const ov1Input = document.getElementById('overlays_1_input');
         const ov2Input = document.getElementById('overlays_2_input');
         if (ov1Input) ov1Input.value = 100;
-        if (ov2Input) ov2Input.value = 0;
+        if (ov2Input) ov2Input.value = 90;
         updateOverlayToggleVisual(0, 5);
-        // Grid Overlays - reset a todo desactivado
-        document.getElementById('grid_thirds').checked = false;
-        document.getElementById('grid_crosshairs').checked = false;
+        // Grid Overlays - activar thirds, crosshairs, horizon
+        document.getElementById('grid_thirds').checked = true;
+        document.getElementById('grid_crosshairs').checked = true;
         document.getElementById('grid_center').checked = false;
-        document.getElementById('grid_horizon').checked = false;
+        document.getElementById('grid_horizon').checked = true;
         multiSubOnChange('overlays');
         count += 5;
     }
