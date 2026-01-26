@@ -1,12 +1,17 @@
 /*
  * CCUState.cpp
  * CCU parameter state storage implementation
- * Version 3.0
+ * Version 3.4
  * 
  * Approximate RAM usage:
- * - 26 params * (24 + 32) bytes = 1456 bytes
- * - Additional variables: ~10 bytes
- * - Total: ~1470 bytes
+ * - 10 params * (24 + 32 + 2) bytes = 580 bytes
+ * - Additional variables: ~14 bytes
+ * - Total: ~594 bytes
+ * 
+ * LRU Strategy:
+ * - Each entry has accessOrder timestamp
+ * - When full, find entry with lowest accessOrder
+ * - Replace that entry with new parameter
  */
 
 #include "CCUState.h"
@@ -15,10 +20,12 @@
 CCUState::ParamEntry CCUState::_params[CCU_STATE_MAX_PARAMS];
 int CCUState::_paramCount = 0;
 int CCUState::_currentCamera = 1;
+uint16_t CCUState::_accessCounter = 0;
 
 void CCUState::begin() {
     clear();
     _currentCamera = 1;
+    _accessCounter = 0;
 }
 
 void CCUState::setCurrentCamera(int cameraId) {
@@ -35,21 +42,34 @@ int CCUState::getCurrentCamera() {
 void CCUState::storeValue(const char* paramKey, const char* value) {
     if (!paramKey || !value) return;
     
+    // Increment access counter (with overflow protection)
+    _accessCounter++;
+    if (_accessCounter == 0) _accessCounter = 1;  // Avoid 0 after overflow
+    
     int idx = findParam(paramKey);
     
     if (idx >= 0) {
-        // Update existing value
+        // Update existing value and access time
         strncpy(_params[idx].value, value, CCU_STATE_VALUE_SIZE - 1);
         _params[idx].value[CCU_STATE_VALUE_SIZE - 1] = '\0';
+        _params[idx].accessOrder = _accessCounter;
     } else if (_paramCount < CCU_STATE_MAX_PARAMS) {
-        // Add new
+        // Add new entry (space available)
         strncpy(_params[_paramCount].key, paramKey, CCU_STATE_KEY_SIZE - 1);
         _params[_paramCount].key[CCU_STATE_KEY_SIZE - 1] = '\0';
         strncpy(_params[_paramCount].value, value, CCU_STATE_VALUE_SIZE - 1);
         _params[_paramCount].value[CCU_STATE_VALUE_SIZE - 1] = '\0';
+        _params[_paramCount].accessOrder = _accessCounter;
         _paramCount++;
+    } else {
+        // Full - use LRU replacement
+        int lruIdx = findLRUSlot();
+        strncpy(_params[lruIdx].key, paramKey, CCU_STATE_KEY_SIZE - 1);
+        _params[lruIdx].key[CCU_STATE_KEY_SIZE - 1] = '\0';
+        strncpy(_params[lruIdx].value, value, CCU_STATE_VALUE_SIZE - 1);
+        _params[lruIdx].value[CCU_STATE_VALUE_SIZE - 1] = '\0';
+        _params[lruIdx].accessOrder = _accessCounter;
     }
-    // If full and doesn't exist, ignore
 }
 
 int CCUState::findParam(const char* paramKey) {
@@ -61,8 +81,23 @@ int CCUState::findParam(const char* paramKey) {
     return -1;
 }
 
+int CCUState::findLRUSlot() {
+    int minIdx = 0;
+    uint16_t minOrder = _params[0].accessOrder;
+    
+    for (int i = 1; i < _paramCount; i++) {
+        if (_params[i].accessOrder < minOrder) {
+            minOrder = _params[i].accessOrder;
+            minIdx = i;
+        }
+    }
+    
+    return minIdx;
+}
+
 void CCUState::clear() {
     _paramCount = 0;
+    _accessCounter = 0;
 }
 
 int CCUState::getParamCount() {
