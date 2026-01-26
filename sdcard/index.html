@@ -2347,7 +2347,7 @@ let multiSubValues = {};
             <div class="knob-presets" id="shutter-presets">
               <button onclick="setShutterToFrameRate()">1/60</button>
               <button onclick="setShutterDouble()">1/120</button>
-              <button onclick="setKnobValue('shutter', 500)">1/500</button>
+              <button onclick="setShutterQuadruple()">1/240</button>
             </div>
           </div>
           
@@ -2818,9 +2818,15 @@ let multiSubValues = {};
             <div class="toggle-group" id="toggle-overlays_0">
               <button class="toggle-btn" data-value="0" onclick="setOverlayValue(0, 0, this)">Off</button>
               <button class="toggle-btn" data-value="5" onclick="setOverlayValue(0, 5, this)">16:9</button>
-              <button class="toggle-btn" data-value="1" onclick="setOverlayValue(0, 1, this)">2.4:1</button>
-              <button class="toggle-btn" data-value="4" onclick="setOverlayValue(0, 4, this)">1.85:1</button>
+              <button class="toggle-btn" data-value="6" onclick="setOverlayValue(0, 6, this)">14:9</button>
               <button class="toggle-btn" data-value="7" onclick="setOverlayValue(0, 7, this)">4:3</button>
+              <button class="toggle-btn" data-value="1" onclick="setOverlayValue(0, 1, this)">2.4:1</button>
+              <button class="toggle-btn" data-value="2" onclick="setOverlayValue(0, 2, this)">2.39:1</button>
+              <button class="toggle-btn" data-value="3" onclick="setOverlayValue(0, 3, this)">2.35:1</button>
+              <button class="toggle-btn" data-value="8" onclick="setOverlayValue(0, 8, this)">2:1</button>
+              <button class="toggle-btn" data-value="4" onclick="setOverlayValue(0, 4, this)">1.85:1</button>
+              <button class="toggle-btn" data-value="9" onclick="setOverlayValue(0, 9, this)">4:5</button>
+              <button class="toggle-btn" data-value="10" onclick="setOverlayValue(0, 10, this)">1:1</button>
             </div>
             <input type="hidden" id="overlays_0_range" class="param-control"
               data-paramkey="overlays" data-paramtype="sub-range" data-subindex="0" data-default="5" value="5">
@@ -3423,8 +3429,9 @@ function saveCurrentStateToCache() {
 
 // === ENVÍO DE PARÁMETROS ===
 function sendParam(key, val) {
-    cacheValue(key, val);
-    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(val)}`);
+    const v = typeof val === 'number' ? parseFloat(val.toFixed(2)) : val;
+    cacheValue(key, v);
+    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(v)}`);
 }
 
 function triggerVoid(key) {
@@ -3493,7 +3500,7 @@ function multiSubOnChange(key) {
         fetch(`/?cameraId=${currentCamera}&${key}=0,0`);
     } else {
         const arr = multiSubValues[key] || [];
-        const valStr = arr.join(",");
+        const valStr = arr.map(v => typeof v === 'number' ? parseFloat(v.toFixed(2)) : v).join(",");
         fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
     }
 }
@@ -4172,8 +4179,8 @@ let contrastPivotTimeout = null;
 function sendContrastPivot() {
     clearTimeout(contrastPivotTimeout);
     contrastPivotTimeout = setTimeout(() => {
-        const pivot = multiSubValues['contrast_adjust'][0];
-        const contrast = multiSubValues['contrast_adjust'][1];
+        const pivot = parseFloat(multiSubValues['contrast_adjust'][0].toFixed(2));
+        const contrast = parseFloat(multiSubValues['contrast_adjust'][1].toFixed(2));
         fetch(`/?cameraId=${currentCamera}&contrast_adjust=${pivot},${contrast}`);
     }, 50);
 }
@@ -4203,8 +4210,8 @@ let hueSatTimeout = null;
 function sendHueSat() {
     clearTimeout(hueSatTimeout);
     hueSatTimeout = setTimeout(() => {
-        const hue = multiSubValues['color_adjust'][0];
-        const sat = multiSubValues['color_adjust'][1];
+        const hue = parseFloat(multiSubValues['color_adjust'][0].toFixed(2));
+        const sat = parseFloat(multiSubValues['color_adjust'][1].toFixed(2));
         fetch(`/?cameraId=${currentCamera}&color_adjust=${hue},${sat}`);
     }, 50);
 }
@@ -4297,6 +4304,11 @@ function setShutterDouble() {
     setKnobValue('shutter', fps * 2);
 }
 
+function setShutterQuadruple() {
+    const fps = getCurrentFrameRate();
+    setKnobValue('shutter', fps * 4);
+}
+
 function updateShutterPresets() {
     const fps = getCurrentFrameRate();
     const presetsContainer = document.getElementById('shutter-presets');
@@ -4304,6 +4316,7 @@ function updateShutterPresets() {
         const buttons = presetsContainer.querySelectorAll('button');
         if (buttons[0]) buttons[0].textContent = `1/${fps}`;
         if (buttons[1]) buttons[1].textContent = `1/${fps * 2}`;
+        if (buttons[2]) buttons[2].textContent = `1/${fps * 4}`;
     }
 }
 
@@ -4823,12 +4836,13 @@ function resetSelectedGroupParams() {
                     el.dispatchEvent(new Event('change'));
                 }
                 
-                // Si es un knob-input, actualizar el indicador visual
+                // Si es un knob-input, actualizar el indicador visual y enviar
                 if (el.classList.contains('knob-input') && paramKey) {
                     const knobName = Object.keys(knobConfig).find(k => knobConfig[k].param === paramKey);
                     if (knobName) {
                         knobConfig[knobName].value = parseFloat(defVal);
                         updateKnobIndicator(knobName, parseFloat(defVal));
+                        sendKnobValue(knobName);
                     }
                 }
                 
