@@ -11,6 +11,8 @@
  */
 
 #include "SdUtils.h"
+#include "CCUBroadcast.h"
+#include "WebServer.h"
 
 // Static variable initialization
 SdFat SdUtils::_sd;
@@ -185,6 +187,9 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
   Serial.print(F("Applying preset to camera "));
   Serial.println(cameraId);
   
+  // Buffer for preset name
+  char presetName[32] = "Preset";
+  
   // Read line by line to static buffer
   while (presetFile.available()) {
     int len = 0;
@@ -205,10 +210,17 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
     char* paramKey = _lineBuffer;
     char* paramValue = colonPos + 1;
     
-    // Skip metadata
+    // Capture preset name
+    if (strcmp(paramKey, "name") == 0) {
+      strncpy(presetName, paramValue, 31);
+      presetName[31] = '\0';
+      urlDecodeInPlace(presetName);
+      continue;
+    }
+    
+    // Skip other metadata
     if (strcmp(paramKey, "cameraId") == 0 ||
-        strcmp(paramKey, "presetId") == 0 ||
-        strcmp(paramKey, "name") == 0) {
+        strcmp(paramKey, "presetId") == 0) {
       continue;
     }
     
@@ -220,6 +232,12 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
   CCUControl::setActiveCamera(originalCameraId);
   
   _applyingPreset = false;
+  
+  // Notify TCP clients (Companion)
+  CCUBroadcast::sendPresetLoaded(cameraId, presetId, presetName);
+  
+  // Notify SSE client (web)
+  WebServer::sendSSEPresetLoaded(cameraId, presetId, presetName);
   
   Serial.println(F("Preset applied"));
   return true;
