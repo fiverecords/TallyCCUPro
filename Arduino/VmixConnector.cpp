@@ -239,9 +239,9 @@ void VmixConnector::getVmixIP(byte vmixip[4]) {
 void VmixConnector::setConnectEnabled(bool enabled) {
   _connectEnabled = enabled;
   
-  bool dummyTally, dummyCCU;
-  StorageManager::loadOverrides(dummyTally, dummyCCU, dummyCCU);
-  StorageManager::saveOverrides(dummyTally, dummyCCU, _connectEnabled);
+  bool currentTally, currentCCU, currentVmix;
+  StorageManager::loadOverrides(currentTally, currentCCU, currentVmix);
+  StorageManager::saveOverrides(currentTally, currentCCU, _connectEnabled);
   
   Serial.print(F("vMix connection state changed to: "));
   Serial.println(_connectEnabled ? F("ON") : F("OFF"));
