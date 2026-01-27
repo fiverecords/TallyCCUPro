@@ -201,12 +201,14 @@ The main control interface featuring:
 - **vMix IP**: Address of computer running vMix
 - **Input Mapping**: Map vMix inputs to camera IDs
 - **Connection Status**: Real-time indicator
+![Front](Images/Tally.png)
 
 ### SD Card Manager (sdcard.html)
 
 - **Upload**: Drag and drop files
 - **Download**: Backup presets
 - **Delete/Rename**: File management
+![Front](Images/SDCard.png)
 
 ---
 
