@@ -30,6 +30,13 @@ TallyCCU Pro is an Arduino-based solution that provides full Camera Control Unit
 - **TCP API**: Real-time bidirectional sync on port 8098
 - **Serial Configuration**: Initial setup without network access
 
+### Real-Time Synchronization (v3.5+)
+- **Server-Sent Events (SSE)**: Instant parameter sync between web interface and Companion
+- **Bidirectional Sync**: Changes in Companion appear instantly in the web interface and vice versa
+- **Per-Camera State**: Browser maintains state for all 8 cameras, enabling seamless switching
+- **Automatic State Recovery**: When either client connects, it receives current state from the other
+- **Live Preset Updates**: Preset names sync instantly across all interfaces
+
 ### Preset System
 - **Save/Load Presets**: Store complete camera configurations
 - **Per-Camera Presets**: 5 presets per camera, stored on SD card
@@ -177,6 +184,8 @@ Available commands:
 
 Access at `http://YOUR_ARDUINO_IP/`
 
+> **Note**: Always use `http://` explicitly. Some modern browsers default to HTTPS, which is not supported. See [Limitations](#limitations).
+
 ### CCU Control (index.html)
 
 The main control interface featuring:
@@ -185,6 +194,7 @@ The main control interface featuring:
 - **Color Wheels**: Visual lift/gamma/gain/offset adjustment
 - **Sliders**: Precise control with step buttons and reset
 - **Presets**: Save and load 5 presets per camera
+- **Real-Time Sync**: Changes from Companion appear instantly via SSE
 
 ### Tally Configuration (tally.html)
 
@@ -216,6 +226,13 @@ The main control interface featuring:
 - Change active camera
 - vMix connection toggle
 
+### Real-Time Sync
+
+The Companion module automatically syncs with the web interface:
+- Parameters changed in Companion are instantly reflected in the web UI
+- Parameters changed in the web UI are instantly reflected in Companion variables
+- When either client connects, it receives the current state from the other
+
 ---
 
 ## TCP Protocol (Port 8098)
@@ -225,22 +242,52 @@ For custom integrations, connect via TCP to port 8098.
 ### Commands (send to Arduino)
 
 ```
-CAM:X                           Select camera (X = 1-8)
-PARAM:key=value                 Set parameter
-PRESET:LOAD:cameraId,presetId   Load preset
-PRESET:SAVE:cameraId,presetId   Save preset
-PING                            Keep-alive
+SUBSCRIBE                       Subscribe to real-time updates
+UNSUBSCRIBE                     Unsubscribe from updates
+PING                            Keep-alive (responds with PONG)
+STATUS                          Get connection status
 ```
 
-### Events (from Arduino)
+### Events (from Arduino to subscribed clients)
 
 ```
-CAM:X                           Camera changed
-PARAM:cameraId:key=value        Parameter updated
-TALLY:cameraId:state            Tally changed (P/V/O)
-PRESETSAVED:cameraId,presetId,name   Preset saved
-PONG                            Ping response
+CCU <cameraId> <paramKey> <value>           Parameter changed
+PRESET <cameraId> <presetId> <name>         Preset loaded
+PRESETSAVED <cameraId> <presetId> <name>    Preset saved
+REQUESTSYNC                                  Request client to send cached state
+PONG                                         Ping response
+SUBSCRIBED OK                                Subscription confirmed
 ```
+
+### Sync Commands (for bidirectional sync)
+
+```
+CCUSYNC <cameraId> <paramKey> <value>       Send cached parameter to Arduino
+                                            (forwarded to SSE clients)
+```
+
+---
+
+## Architecture
+
+### Synchronization Flow
+
+```
+┌─────────────┐         ┌─────────────┐         ┌─────────────┐
+│   Web UI    │◄──SSE───│   Arduino   │◄──TCP───│  Companion  │
+│  (Browser)  │───POST─►│  (Mega2560) │───TCP──►│   Module    │
+└─────────────┘         └─────────────┘         └─────────────┘
+      │                        │                       │
+      │   cameraStates[]       │                       │   cameraStates{}
+      │   (per-camera)         │                       │   (per-camera)
+      └────────────────────────┴───────────────────────┘
+                    Bidirectional Real-Time Sync
+```
+
+- **SSE (Server-Sent Events)**: Arduino pushes changes to web interface instantly
+- **TCP Broadcast**: Arduino pushes changes to Companion module
+- **POST /syncState**: Web sends cached state to Arduino for TCP broadcast
+- **REQUESTSYNC**: Arduino requests state from connected clients on new connections
 
 ---
 
@@ -248,11 +295,28 @@ PONG                            Ping response
 
 ```
 TallyCCUPro/
-|-- Arduino/               Arduino source code
-|-- sdcard/                 Web interface files  
-|-- companion-module/       Bitfocus Companion module
-|-- tools/                  Serial configurator
-+-- README.md
+├── firmware/              Arduino source code
+│   ├── TallyCCUPro.ino   Main sketch
+│   ├── CCUControl.*      Camera control
+│   ├── CCUBroadcast.*    TCP broadcast server
+│   ├── TallyManager.*    Tally light control
+│   ├── VmixConnector.*   vMix integration
+│   ├── WebServer.*       HTTP & SSE server
+│   ├── Storage.*         EEPROM management
+│   ├── SdUtils.*         SD card operations
+│   └── Configuration.h   Pin & address definitions
+├── sdcard/               Web interface files  
+│   ├── index.html        Main CCU interface
+│   ├── tally.html        Tally configuration
+│   └── sdcard.html       File manager
+├── companion-module/     Bitfocus Companion module
+│   ├── main.js           Module entry point
+│   ├── actions.js        CCU parameter actions
+│   ├── tcp.js            Real-time sync client
+│   ├── variables.js      Companion variables
+│   └── params.js         Parameter definitions
+├── tools/                Serial configurator
+└── README.md
 ```
 
 ---
@@ -260,10 +324,32 @@ TallyCCUPro/
 ## Memory Usage
 
 TallyCCU Pro is optimized for Arduino Mega's limited 8KB RAM:
-- Static buffers (no String objects)
-- Parameter caching
-- Efficient TCP handling
-- Typical free RAM: ~900 bytes
+- Static buffers (no String objects in critical paths)
+- SSE-based sync (state stored in browser, not Arduino)
+- Efficient TCP handling with connection pooling
+- Typical free RAM: ~1,500+ bytes (improved in v3.5)
+
+---
+
+## Limitations
+
+### HTTPS Not Supported
+The Arduino Mega cannot handle HTTPS connections due to hardware limitations (insufficient RAM and CPU for TLS encryption). Always use `http://` when accessing the web interface.
+
+> **Tip**: If your browser defaults to HTTPS and shows a connection error, manually type `http://` before the IP address.
+
+### Single SSE Client
+Only one SSE connection is supported at a time. Multiple browser tabs will share the same connection, but opening the interface on multiple devices simultaneously may cause sync issues.
+
+### Network Connections
+The Arduino Ethernet library supports a maximum of 4 simultaneous TCP connections, shared between:
+- HTTP requests (web interface)
+- SSE connection (real-time sync)
+- TCP clients (Companion, custom integrations)
+- vMix connection (tally)
+
+### Camera Protocol
+The Blackmagic SDI protocol is **write-only** - parameters can be sent to cameras but not read back. The system cannot query current camera settings; it only knows values that were set through TallyCCU Pro.
 
 ---
 
@@ -272,10 +358,33 @@ TallyCCU Pro is optimized for Arduino Mega's limited 8KB RAM:
 | Problem | Solution |
 |---------|----------|
 | Web interface not loading | Verify SD card is MBR/FAT16 or FAT32, reformat with SD Association tool |
-| SDI shield not responding | Check I2C bridge wires (A4-20, A5-21) |
+| SDI shield not responding | Check I2C bridge wires (A4→SCL, A5→SDA on SDI shield) |
 | System not booting | Connect external 9-12V power, USB is insufficient |
-| vMix tally not working | Verify vMix IP in tally.html, check vMix TCP API enabled |
-| Camera not responding | Verify camera ID, check SDI connection |
+| vMix tally not working | Verify vMix IP in tally.html, check vMix TCP API is enabled |
+| Camera not responding | Verify camera ID matches, check SDI connection and termination |
+| Browser shows HTTPS error | Type `http://` explicitly before the IP address |
+| Sync not working | Ensure both web and Companion are connected; check serial monitor for SSE status |
+| Settings reset after reboot | Update to v3.5+ which fixes the override persistence bug |
+
+---
+
+## Changelog
+
+### v3.5 (Latest)
+- **New**: Real-time synchronization via Server-Sent Events (SSE)
+- **New**: Bidirectional sync between web interface and Companion
+- **New**: Live preset name updates across all interfaces
+- **Improved**: ~600 bytes RAM freed by moving state to browser
+- **Improved**: Faster SSE connection establishment
+- **Fixed**: Override settings (Tally/CCU/vMix) persistence bug
+
+### v3.0
+- Complete rewrite with modular architecture
+- Web-based color correction with visual color wheels
+- Companion module with full parameter support
+- TCP broadcast for real-time updates
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for full version history.
 
 ---
 
@@ -301,4 +410,3 @@ You are free to use, modify and redistribute this project for non-commercial pur
 
 This project is not affiliated with, endorsed by, or sponsored by Blackmagic Design or vMix.
 Blackmagic Design and vMix are registered trademarks of their respective owners.
-
