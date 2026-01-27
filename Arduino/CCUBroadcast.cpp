@@ -5,6 +5,7 @@
  */
 
 #include "CCUBroadcast.h"
+#include "WebServer.h"
 #include <avr/wdt.h>
 
 // Static variable initialization
@@ -152,6 +153,12 @@ void CCUBroadcast::processClientCommand(int clientIndex, const char* command) {
     if (strncmp(command, "SUBSCRIBE", 9) == 0) {
         _subscribed[clientIndex] = true;
         sendToClient(clientIndex, "SUBSCRIBED OK");
+        
+        // Request sync from SSE client (web) to sync new TCP client
+        if (WebServer::hasSSEClient()) {
+            WebServer::sendSSERequestSync();
+            Serial.println(F("[CCUBcast] Sent REQUESTSYNC to SSE client"));
+        }
         return;
     }
     
@@ -159,6 +166,38 @@ void CCUBroadcast::processClientCommand(int clientIndex, const char* command) {
     if (strncmp(command, "UNSUBSCRIBE", 11) == 0) {
         _subscribed[clientIndex] = false;
         sendToClient(clientIndex, "UNSUBSCRIBED OK");
+        return;
+    }
+    
+    // CCUSYNC - Sync message from Companion, forward to SSE
+    if (strncmp(command, "CCUSYNC ", 8) == 0) {
+        // Parse: CCUSYNC cameraId paramKey value
+        const char* data = command + 8;
+        int cameraId = atoi(data);
+        
+        // Find space after cameraId
+        const char* p = data;
+        while (*p && *p != ' ') p++;
+        if (*p == ' ') p++;
+        
+        // Find paramKey
+        const char* paramKey = p;
+        while (*p && *p != ' ') p++;
+        
+        if (*p == ' ') {
+            // Extract paramKey
+            int keyLen = p - paramKey;
+            if (keyLen > 0 && keyLen < 32) {
+                char key[32];
+                strncpy(key, paramKey, keyLen);
+                key[keyLen] = '\0';
+                
+                const char* value = p + 1;
+                
+                // Forward to SSE client
+                WebServer::sendSSEEvent(cameraId, key, value);
+            }
+        }
         return;
     }
     
@@ -199,6 +238,12 @@ void CCUBroadcast::broadcast(const char* message) {
             _lastActivity[i] = currentTime;
         }
     }
+}
+
+void CCUBroadcast::requestSync() {
+    if (!hasClients()) return;
+    broadcast("REQUESTSYNC");
+    Serial.println(F("[CCUBcast] Sent REQUESTSYNC"));
 }
 
 void CCUBroadcast::sendParamChange(int cameraId, const char* paramKey, const char* value) {
