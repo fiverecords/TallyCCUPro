@@ -6,7 +6,6 @@
  */
 
 #include "WebServer.h"
-#include "CCUState.h"
 #include "CCUBroadcast.h"
 #include <SdFat.h>
 #include <avr/wdt.h>
@@ -21,6 +20,10 @@ EthernetServer WebServer::_server(HTTP_PORT);
 bool WebServer::_shouldReturnPresetValues = false;
 int WebServer::_presetCameraIdToReturn = 0;
 int WebServer::_presetIdToReturn = 0;
+
+// SSE client
+EthernetClient WebServer::_sseClient;
+unsigned long WebServer::_sseLastActivity = 0;
 
 // Static buffers
 char WebServer::_requestBuffer[WEB_REQUEST_BUFFER_SIZE];
@@ -123,6 +126,9 @@ bool WebServer::begin() {
 void WebServer::processRequests() {
   wdt_reset();
   
+  // Process existing SSE client
+  processSSEClient();
+  
   EthernetClient client = _server.available();
   if (!client) return;
   
@@ -147,6 +153,24 @@ void WebServer::processRequests() {
   _requestBuffer[bufferIndex] = '\0';
   
   wdt_reset();
+  
+  // Check for SSE endpoint FIRST (before consuming headers)
+  if (strncmp(_requestBuffer, "GET /events", 11) == 0) {
+    // Read and discard remaining headers quickly
+    unsigned long headerStart = millis();
+    while (client.connected() && (millis() - headerStart) < 1000) {
+      if (client.available()) {
+        client.read();
+        headerStart = millis(); // Reset timeout on activity
+      } else {
+        delay(1);
+      }
+      // Check for end of headers (empty line)
+      if (!client.available()) break;
+    }
+    handleSSEConnection(client);
+    return;  // Don't close client!
+  }
   
   // Detect request type
   if (strncmp(_requestBuffer, "POST ", 5) == 0) {
@@ -178,6 +202,12 @@ void WebServer::processPOSTRequest(const char* reqLine, EthernetClient &client) 
   // Check if savePreset
   if (strstr(reqLine, "POST /savePreset") != NULL) {
     handleSavePresetPOST(client);
+    return;
+  }
+  
+  // Sync state from web to TCP clients
+  if (strstr(reqLine, "POST /syncState") != NULL) {
+    handleSyncStatePOST(client);
     return;
   }
   
@@ -395,6 +425,101 @@ void WebServer::handleSavePresetPOST(EthernetClient &client) {
   // Notify TCP clients that preset was saved
   CCUBroadcast::sendPresetSaved(cameraId, presetId, presetName);
   
+  // Notify SSE client (web)
+  sendSSEPresetSaved(cameraId, presetId, presetName);
+  
+  sendJSONResponse(client, true, "OK", paramCount);
+}
+
+// ============================================================
+// SYNC STATE FROM WEB TO TCP CLIENTS
+// ============================================================
+
+void WebServer::handleSyncStatePOST(EthernetClient &client) {
+  Serial.println(F("[POST] syncState"));
+  
+  // Read headers to get Content-Length
+  int contentLength = 0;
+  char headerLine[64];
+  
+  while (client.connected()) {
+    int len = 0;
+    unsigned long headerStart = millis();
+    
+    while (client.connected() && len < 63) {
+      if (client.available()) {
+        char c = client.read();
+        if (c == '\n') break;
+        if (c != '\r') headerLine[len++] = c;
+      }
+      if (millis() - headerStart > 2000) break;
+    }
+    headerLine[len] = '\0';
+    
+    if (len == 0) break;
+    
+    if (strncasecmp(headerLine, "Content-Length:", 15) == 0) {
+      contentLength = atoi(headerLine + 15);
+    }
+    
+    wdt_reset();
+  }
+  
+  if (contentLength <= 0) {
+    sendJSONResponse(client, false, "No content");
+    return;
+  }
+  
+  // Read body line by line: format "cam:key:value\n"
+  int paramCount = 0;
+  int bytesRead = 0;
+  unsigned long bodyStart = millis();
+  
+  while (bytesRead < contentLength && client.connected() && (millis() - bodyStart) < 10000) {
+    if (!client.available()) {
+      delay(1);
+      continue;
+    }
+    
+    // Read one line
+    int len = 0;
+    while (client.available() && bytesRead < contentLength && len < WEB_LINE_BUFFER_SIZE - 1) {
+      char c = client.read();
+      bytesRead++;
+      if (c == '\n') break;
+      if (c != '\r') _lineBuffer[len++] = c;
+    }
+    _lineBuffer[len] = '\0';
+    
+    if (len == 0) continue;
+    
+    // Parse "cam:key:value"
+    char* firstColon = strchr(_lineBuffer, ':');
+    if (!firstColon) continue;
+    
+    *firstColon = '\0';
+    int cameraId = atoi(_lineBuffer);
+    
+    char* secondColon = strchr(firstColon + 1, ':');
+    if (!secondColon) continue;
+    
+    *secondColon = '\0';
+    const char* paramKey = firstColon + 1;
+    const char* value = secondColon + 1;
+    
+    if (cameraId >= 1 && cameraId <= MAX_CAMERAS && strlen(paramKey) > 0) {
+      // Broadcast to TCP clients (Companion)
+      CCUBroadcast::sendParamChange(cameraId, paramKey, value);
+      paramCount++;
+    }
+    
+    wdt_reset();
+  }
+  
+  Serial.print(F("[syncState] Forwarded "));
+  Serial.print(paramCount);
+  Serial.println(F(" params to TCP"));
+  
   sendJSONResponse(client, true, "OK", paramCount);
 }
 
@@ -470,14 +595,22 @@ void WebServer::processGETRequest(const char* reqLine, EthernetClient &client) {
     return;
   }
   
-  // getParams - Endpoint for web synchronization
+  // getParams - Legacy endpoint (SSE is now primary sync method)
+  // Returns empty - web uses SSE for real-time state
   if (strncmp(reqLine, "GET /?getParams=", 16) == 0) {
     int cameraId = atoi(reqLine + 16);
     if (cameraId < 1 || cameraId > MAX_CAMERAS) {
       cameraId = CCUControl::getActiveCamera();
     }
     
-    CCUState::writeStateAsJSON(client, cameraId);
+    client.println(F("HTTP/1.1 200 OK"));
+    client.println(F("Content-Type: application/json"));
+    client.println(F("Access-Control-Allow-Origin: *"));
+    client.println(F("Connection: close"));
+    client.println();
+    client.print(F("{\"cameraId\":"));
+    client.print(cameraId);
+    client.println(F(",\"paramCount\":0,\"params\":{}}"));
     return;
   }
   
@@ -1161,4 +1294,125 @@ void WebServer::handleUploadFile(EthernetClient &client) {
   }
   
   sendJSONResponse(client, filename[0] != '\0', filename[0] != '\0' ? filename : "No file");
+}
+
+// ============================================================
+// SSE (SERVER-SENT EVENTS) HANDLING
+// ============================================================
+
+void WebServer::handleSSEConnection(EthernetClient &client) {
+  // Close existing SSE client if any
+  if (_sseClient && _sseClient.connected()) {
+    Serial.println(F("[SSE] Closing old client"));
+    _sseClient.stop();
+  }
+  
+  Serial.println(F("[SSE] New client connected"));
+  
+  // Send SSE headers
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: text/event-stream"));
+  client.println(F("Cache-Control: no-cache"));
+  client.println(F("Access-Control-Allow-Origin: *"));
+  client.println(F("Connection: keep-alive"));
+  client.println();
+  
+  // Send initial connection event
+  client.println(F("event: connected"));
+  client.println(F("data: {\"status\":\"ok\"}"));
+  client.println();
+  
+  // Store client reference
+  _sseClient = client;
+  _sseLastActivity = millis();
+  
+  // Request state sync from TCP clients (Companion)
+  CCUBroadcast::requestSync();
+}
+
+void WebServer::processSSEClient() {
+  if (!_sseClient) return;
+  
+  // Check if still connected
+  if (!_sseClient.connected()) {
+    Serial.println(F("[SSE] Client disconnected"));
+    _sseClient.stop();
+    _sseClient = EthernetClient();
+    return;
+  }
+  
+  // Check timeout
+  if (millis() - _sseLastActivity > SSE_TIMEOUT) {
+    // Send keepalive comment
+    _sseClient.println(F(": keepalive"));
+    _sseClient.println();
+    _sseLastActivity = millis();
+  }
+  
+  // Discard any incoming data (browser might send something)
+  while (_sseClient.available()) {
+    _sseClient.read();
+  }
+}
+
+bool WebServer::hasSSEClient() {
+  return _sseClient && _sseClient.connected();
+}
+
+void WebServer::sendSSEEvent(int cameraId, const char* paramKey, const char* value) {
+  if (!_sseClient || !_sseClient.connected()) return;
+  
+  // Format: data: {"cam":1,"key":"gain_db","val":"6"}
+  _sseClient.print(F("data: {\"cam\":"));
+  _sseClient.print(cameraId);
+  _sseClient.print(F(",\"key\":\""));
+  _sseClient.print(paramKey);
+  _sseClient.print(F("\",\"val\":\""));
+  _sseClient.print(value);
+  _sseClient.println(F("\"}"));
+  _sseClient.println();  // Empty line marks end of event
+  
+  _sseLastActivity = millis();
+}
+
+void WebServer::sendSSEPresetLoaded(int cameraId, int presetId, const char* presetName) {
+  if (!_sseClient || !_sseClient.connected()) return;
+  
+  // Format: data: {"type":"presetLoaded","cam":1,"preset":0,"name":"Default"}
+  _sseClient.print(F("data: {\"type\":\"presetLoaded\",\"cam\":"));
+  _sseClient.print(cameraId);
+  _sseClient.print(F(",\"preset\":"));
+  _sseClient.print(presetId);
+  _sseClient.print(F(",\"name\":\""));
+  _sseClient.print(presetName ? presetName : "");
+  _sseClient.println(F("\"}"));
+  _sseClient.println();
+  
+  _sseLastActivity = millis();
+}
+
+void WebServer::sendSSEPresetSaved(int cameraId, int presetId, const char* presetName) {
+  if (!_sseClient || !_sseClient.connected()) return;
+  
+  // Format: data: {"type":"presetSaved","cam":1,"preset":0,"name":"My Preset"}
+  _sseClient.print(F("data: {\"type\":\"presetSaved\",\"cam\":"));
+  _sseClient.print(cameraId);
+  _sseClient.print(F(",\"preset\":"));
+  _sseClient.print(presetId);
+  _sseClient.print(F(",\"name\":\""));
+  _sseClient.print(presetName ? presetName : "");
+  _sseClient.println(F("\"}"));
+  _sseClient.println();
+  
+  _sseLastActivity = millis();
+}
+
+void WebServer::sendSSERequestSync() {
+  if (!_sseClient || !_sseClient.connected()) return;
+  
+  // Request web client to send its cached state
+  _sseClient.println(F("data: {\"type\":\"requestSync\"}"));
+  _sseClient.println();
+  
+  _sseLastActivity = millis();
 }
