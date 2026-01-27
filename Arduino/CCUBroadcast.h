@@ -36,6 +36,9 @@ public:
     static void sendPresetLoaded(int cameraId, int presetId, const char* presetName);
     static void sendPresetSaved(int cameraId, int presetId, const char* presetName);
     
+    // Request sync from TCP clients (for SSE initial state)
+    static void requestSync();
+    
     // Status
     static uint8_t getClientCount();
     static bool hasClients();
