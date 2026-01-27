@@ -6,7 +6,7 @@
 
 #include "CCUControl.h"
 #include "CCUBroadcast.h"
-#include "CCUState.h"
+#include "WebServer.h"
 #include <BMDSDIControl.h>
 #include <avr/wdt.h>
 
@@ -28,9 +28,6 @@ bool CCUControl::begin() {
   _sdiCameraControl.begin();
   _sdiCameraControl.setOverride(_overrideCameraControl);
   
-  // Initialize state storage
-  CCUState::begin();
-  
   // Initialize cache
   for (int i = 0; i < CCU_PARAM_CACHE_SIZE; i++) {
     _paramCache[i].key = NULL;
@@ -45,7 +42,6 @@ void CCUControl::setActiveCamera(int cameraId) {
   if (cameraId >= 1 && cameraId <= MAX_CAMERAS) {
     if (_activeCameraId != cameraId) {
       _activeCameraId = cameraId;
-      CCUState::setCurrentCamera(cameraId);
       Serial.print(F("Active camera: "));
       Serial.println(_activeCameraId);
     }
@@ -60,9 +56,9 @@ void CCUControl::setOverride(bool enabled) {
   _overrideCameraControl = enabled;
   _sdiCameraControl.setOverride(_overrideCameraControl);
   
-  bool dummyTally;
-  StorageManager::loadOverrides(dummyTally, dummyTally);
-  StorageManager::saveOverrides(dummyTally, _overrideCameraControl);
+  bool currentTally, currentCCU;
+  StorageManager::loadOverrides(currentTally, currentCCU);
+  StorageManager::saveOverrides(currentTally, _overrideCameraControl);
   
   Serial.print(F("CCU override: "));
   Serial.println(_overrideCameraControl ? F("ON") : F("OFF"));
@@ -336,13 +332,11 @@ bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, in
 
   _activeCameraId = oldCameraId;
   
-  // Store value in state for web sync
-  if (targetCameraId == CCUState::getCurrentCamera()) {
-    CCUState::storeValue(paramKey, value);
-  }
-  
-  // Broadcast change to connected TCP clients
+  // Broadcast change to connected TCP clients (Companion)
   CCUBroadcast::sendParamChange(targetCameraId, paramKey, value);
+  
+  // Send SSE event to web client (all cameras, real-time)
+  WebServer::sendSSEEvent(targetCameraId, paramKey, value);
   
   return true;
 }
