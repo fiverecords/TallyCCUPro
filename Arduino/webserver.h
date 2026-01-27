@@ -4,6 +4,7 @@
  * Version 3.0
  * 
  * RAM optimized with static buffers
+ * Includes SSE (Server-Sent Events) for real-time sync
  */
 
 #ifndef WEBSERVER_H
@@ -28,13 +29,27 @@ extern void changeVMixIP(const char* ip);
 #define WEB_LINE_BUFFER_SIZE 96
 #define WEB_TEMP_BUFFER_SIZE 48
 
+// SSE timeout (30 seconds without activity)
+#define SSE_TIMEOUT 30000
+
 class WebServer {
   public:
     static bool begin();
     static void processRequests();
+    
+    // SSE: Send event to connected client (called from CCUBroadcast)
+    static void sendSSEEvent(int cameraId, const char* paramKey, const char* value);
+    static void sendSSEPresetLoaded(int cameraId, int presetId, const char* presetName);
+    static void sendSSEPresetSaved(int cameraId, int presetId, const char* presetName);
+    static void sendSSERequestSync();  // Request web to send its state
+    static bool hasSSEClient();
 
   private:
     static EthernetServer _server;
+    
+    // SSE client
+    static EthernetClient _sseClient;
+    static unsigned long _sseLastActivity;
     
     // Variables for preset value return
     static bool _shouldReturnPresetValues;
@@ -56,6 +71,9 @@ class WebServer {
     // Handle preset save via POST
     static void handleSavePresetPOST(EthernetClient &client);
     
+    // Handle sync state from web via POST
+    static void handleSyncStatePOST(EthernetClient &client);
+    
     // Handle GET parameters
     static void handleParam(const char* key, const char* value, EthernetClient &client);
     
@@ -65,6 +83,10 @@ class WebServer {
     static void send404(EthernetClient &client);
     static void sendJSONPresetValues(EthernetClient &client, int cameraId, int presetId);
     static void sendJSONResponse(EthernetClient &client, bool success, const char* message, int paramCount = -1);
+    
+    // SSE handling
+    static void handleSSEConnection(EthernetClient &client);
+    static void processSSEClient();
     
     // SD file management
     static void handleListFiles(EthernetClient &client);
