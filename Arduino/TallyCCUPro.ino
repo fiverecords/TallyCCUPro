@@ -30,7 +30,6 @@
 #include "SdUtils.h"
 #include "WebServer.h"
 #include "CCUBroadcast.h"
-#include "CCUState.h"
 
 #include <avr/wdt.h>
 
@@ -271,10 +270,9 @@ void executeSerialCommand(const char* command) {
   }
   
   if (strcmp(command, "state") == 0) {
-    Serial.print(F("CCUState camera: "));
-    Serial.println(CCUState::getCurrentCamera());
-    Serial.print(F("CCUState params: "));
-    Serial.println(CCUState::getParamCount());
+    Serial.println(F("SSE active - state lives in browser"));
+    Serial.print(F("SSE client connected: "));
+    Serial.println(WebServer::hasSSEClient() ? F("Yes") : F("No"));
     return;
   }
   
@@ -329,8 +327,8 @@ void printStatus() {
   Serial.print(F("CCU Broadcast clients: "));
   Serial.println(CCUBroadcast::getClientCount());
   
-  Serial.print(F("CCU State params: "));
-  Serial.println(CCUState::getParamCount());
+  Serial.print(F("SSE client: "));
+  Serial.println(WebServer::hasSSEClient() ? F("Yes") : F("No"));
   
   Serial.print(F("Free RAM: "));
   Serial.print(freeRam());
