@@ -338,6 +338,11 @@ The Arduino Mega cannot handle HTTPS connections due to hardware limitations (in
 
 > **Tip**: If your browser defaults to HTTPS and shows a connection error, manually type `http://` before the IP address.
 
+### SDI Shield Resolution & Signal Limitations
+The Blackmagic 3G-SDI Arduino Shield has the following limitations:
+- **Maximum resolution**: 1080p60 (no 4K/UHD support)
+- **3G-SDI Level B only**: The shield only passes video when using 3G-SDI Level B. This is the default for Blackmagic devices, but other manufacturers may default to Level A. Check your camera/device settings if video is not passing through.
+
 ### Single SSE Client
 Only one SSE connection is supported at a time. Multiple browser tabs will share the same connection, but opening the interface on multiple devices simultaneously may cause sync issues.
 
