@@ -69,9 +69,9 @@ void TallyManager::setOverride(bool enabled) {
   _overrideTally = enabled;
   sdiTallyControl.setOverride(_overrideTally);
   
-  bool dummyCCU;
-  StorageManager::loadOverrides(dummyCCU, dummyCCU);
-  StorageManager::saveOverrides(_overrideTally, dummyCCU);
+  bool currentTally, currentCCU;
+  StorageManager::loadOverrides(currentTally, currentCCU);
+  StorageManager::saveOverrides(_overrideTally, currentCCU);
   
   Serial.print(F("Tally override: "));
   Serial.println(_overrideTally ? F("ON") : F("OFF"));
