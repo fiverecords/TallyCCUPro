@@ -2,7 +2,7 @@
  * webserver.cpp
  * Web server for control and configuration
  * 
- * TallyCCU Pro V3.0
+ * TallyCCU Pro V3.6
  */
 
 #include "WebServer.h"

@@ -1,7 +1,7 @@
 /*
  * CCUControl.cpp
  * Camera Control Unit (CCU) implementation
- * Version 3.0
+ * Version 3.6
  */
 
 #include "CCUControl.h"

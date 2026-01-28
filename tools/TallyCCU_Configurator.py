@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TallyCCU Pro Serial Configurator V3.0
+TallyCCU Pro Serial Configurator V3.6
 Configure Arduino network settings via serial port
 """
 
@@ -15,7 +15,7 @@ import time
 class SerialTerminal:
     def __init__(self, root):
         self.root = root
-        self.root.title("TallyCCU Pro Configurator V3.0")
+        self.root.title("TallyCCU Pro Configurator V3.6")
         self.root.resizable(False, False)
         
         # Try to load icon if exists
@@ -114,7 +114,7 @@ class SerialTerminal:
         info_frame = tk.Frame(root, bg=self.bg_color)
         info_frame.grid(column=0, row=3, padx=10, pady=10)
         
-        tk.Label(info_frame, text="TallyCCU Pro - Firmware V3.0", 
+        tk.Label(info_frame, text="TallyCCU Pro - Firmware V3.6", 
                 bg=self.bg_color, fg=self.fg_color, font=("Arial", 10, "bold")).pack()
         tk.Label(info_frame, text="Created by Joaquin Villodre - github.com/fiverecords", 
                 bg=self.bg_color, fg="#888888", font=("Arial", 8)).pack()

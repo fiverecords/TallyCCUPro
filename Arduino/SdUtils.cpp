@@ -1,7 +1,7 @@
 /*
  * SdUtils.cpp
  * SD card utilities and preset management implementation
- * Version 3.0
+ * Version 3.6
  * 
  * Features:
  * - No String usage in critical functions
