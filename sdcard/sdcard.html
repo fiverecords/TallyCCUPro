@@ -124,6 +124,11 @@ body {
   background: #6a3535;
 }
 
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn-rename {
   background: #2a3a4a;
   border-color: #3a5a6a;
@@ -298,6 +303,32 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* === SELECTION TOOLBAR === */
+.selection-toolbar {
+  display: none;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: #2a3545;
+  border: 1px solid #3a5a6a;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.selection-toolbar.show {
+  display: flex;
+}
+
+.selection-count {
+  color: var(--accent-blue);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.selection-toolbar .btn {
+  margin-left: auto;
+}
+
 /* === TABLE === */
 table {
   width: 100%;
@@ -323,6 +354,19 @@ tr:hover {
   background: var(--bg-hover);
 }
 
+tr.selected {
+  background: #1a2535;
+}
+
+tr.selected:hover {
+  background: #1f2a3a;
+}
+
+.col-checkbox {
+  width: 40px;
+  text-align: center;
+}
+
 .file-name {
   font-family: 'JetBrains Mono', monospace;
   color: var(--text-primary);
@@ -339,6 +383,14 @@ tr:hover {
   display: flex; 
   gap: 6px; 
   flex-wrap: wrap; 
+}
+
+/* === CHECKBOX === */
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-blue);
+  cursor: pointer;
 }
 
 /* === STATUS === */
@@ -442,6 +494,30 @@ tr:hover {
   background: var(--accent-blue-hover);
 }
 
+/* === DELETE PROGRESS === */
+.delete-progress {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-panel);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.delete-progress-bar {
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: 2px;
+  margin-top: var(--spacing-sm);
+  overflow: hidden;
+}
+
+.delete-progress-fill {
+  height: 100%;
+  background: var(--accent-red);
+  transition: width 0.2s ease;
+}
+
 /* === EMPTY STATE === */
 .empty-state {
   text-align: center;
@@ -474,6 +550,16 @@ tr:hover {
   .actions { flex-direction: column; }
   
   th, td { padding: var(--spacing-sm); }
+  
+  .selection-toolbar {
+    flex-wrap: wrap;
+  }
+  
+  .selection-toolbar .btn {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
 }
   </style>
 </head>
@@ -519,6 +605,12 @@ tr:hover {
         <button class="btn btn-small" onclick="loadFiles()">↻ Refresh</button>
       </div>
       <div class="control-panel-body">
+        <div class="selection-toolbar" id="selectionToolbar">
+          <span class="selection-count" id="selectionCount">0 selected</span>
+          <button class="btn btn-small" onclick="selectAll()">Select All</button>
+          <button class="btn btn-small" onclick="deselectAll()">Deselect All</button>
+          <button class="btn btn-small btn-danger" id="deleteSelectedBtn" onclick="deleteSelected()">🗑 Delete Selected</button>
+        </div>
         <div id="fileList">
           <div class="loading"><span class="spinner"></span> Loading files...</div>
         </div>
@@ -538,6 +630,23 @@ tr:hover {
     </div>
   </div>
 
+  <div class="modal" id="deleteModal">
+    <div class="modal-content">
+      <h3>🗑️ Delete Files</h3>
+      <p id="deleteMessage" style="color: var(--text-secondary); margin-bottom: var(--spacing-lg);"></p>
+      <div class="delete-progress" id="deleteProgress" style="display: none;">
+        <span id="deleteProgressText">Deleting...</span>
+        <div class="delete-progress-bar">
+          <div class="delete-progress-fill" id="deleteProgressFill" style="width: 0%"></div>
+        </div>
+      </div>
+      <div class="modal-buttons" id="deleteButtons">
+        <button class="btn" onclick="closeDeleteModal()">Cancel</button>
+        <button class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDeleteSelected()">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <script>
 const uploadArea = document.getElementById('uploadArea');
 const uploadIcon = document.getElementById('uploadIcon');
@@ -553,6 +662,12 @@ const statusEl = document.getElementById('status');
 
 let isUploading = false;
 let currentRenameFile = '';
+let selectedFiles = new Set();
+let allFiles = [];
+let isDeleting = false;
+
+// Protected files that cannot be deleted
+const PROTECTED_FILES = ['index.html', 'tally.html', 'sdcard.html'];
 
 uploadArea.addEventListener('click', () => {
   if (!isUploading) fileInput.click();
@@ -702,27 +817,34 @@ function finishUpload() {
 async function loadFiles() {
   const fileList = document.getElementById('fileList');
   fileList.innerHTML = '<div class="loading"><span class="spinner"></span> Loading files...</div>';
+  selectedFiles.clear();
+  updateSelectionUI();
   
   try {
     const response = await fetch('/?listFiles&t=' + Date.now());
     const data = await response.json();
     
     if (data.files && data.files.length > 0) {
-      let html = '<table><thead><tr><th>Name</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
+      allFiles = data.files.sort((a, b) => a.name.localeCompare(b.name));
+      let html = '<table><thead><tr><th class="col-checkbox"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)"></th><th>Name</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
       
       let totalSize = 0;
-      data.files.sort((a, b) => a.name.localeCompare(b.name));
       
-      data.files.forEach(file => {
+      allFiles.forEach(file => {
         totalSize += file.size;
         const safeName = escapeHtml(file.name);
-        html += '<tr>' +
-          '<td class="file-name">' + safeName + '</td>' +
+        const isProtected = PROTECTED_FILES.includes(file.name);
+        const checkboxDisabled = isProtected ? 'disabled' : '';
+        const rowClass = selectedFiles.has(file.name) ? 'selected' : '';
+        
+        html += '<tr class="' + rowClass + '" data-filename="' + safeName + '">' +
+          '<td class="col-checkbox"><input type="checkbox" ' + checkboxDisabled + ' onchange="toggleFileSelection(\'' + safeName + '\', this.checked)" ' + (selectedFiles.has(file.name) ? 'checked' : '') + '></td>' +
+          '<td class="file-name">' + safeName + (isProtected ? ' <span style="color:var(--text-muted);font-size:10px;">🔒</span>' : '') + '</td>' +
           '<td class="file-size">' + formatSize(file.size) + '</td>' +
           '<td class="actions">' +
             '<button class="btn btn-small" onclick="downloadFile(\'' + safeName + '\')" title="Download">⬇</button>' +
-            '<button class="btn btn-small btn-rename" onclick="renameFile(\'' + safeName + '\')" title="Rename">✏</button>' +
-            '<button class="btn btn-small btn-danger" onclick="deleteFile(\'' + safeName + '\')" title="Delete">🗑</button>' +
+            '<button class="btn btn-small btn-rename" onclick="renameFile(\'' + safeName + '\')" title="Rename">✎</button>' +
+            '<button class="btn btn-small btn-danger" onclick="deleteFile(\'' + safeName + '\')" title="Delete" ' + (isProtected ? 'disabled' : '') + '>🗑</button>' +
           '</td>' +
         '</tr>';
       });
@@ -733,11 +855,192 @@ async function loadFiles() {
       document.getElementById('totalInfo').textContent = 
         data.files.length + ' files • ' + formatSize(totalSize) + ' total';
     } else {
+      allFiles = [];
       fileList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No files on SD card</p></div>';
       document.getElementById('totalInfo').textContent = '';
     }
   } catch (e) {
     fileList.innerHTML = '<div class="empty-state" style="color:var(--accent-red)"><div class="empty-state-icon">⚠</div><p>Error loading files</p></div>';
+  }
+}
+
+// === SELECTION FUNCTIONS ===
+
+function toggleFileSelection(filename, checked) {
+  if (checked) {
+    selectedFiles.add(filename);
+  } else {
+    selectedFiles.delete(filename);
+  }
+  updateSelectionUI();
+  updateRowHighlight(filename, checked);
+}
+
+function toggleSelectAll(checked) {
+  if (checked) {
+    selectAll();
+  } else {
+    deselectAll();
+  }
+}
+
+function selectAll() {
+  allFiles.forEach(file => {
+    if (!PROTECTED_FILES.includes(file.name)) {
+      selectedFiles.add(file.name);
+    }
+  });
+  updateAllCheckboxes();
+  updateSelectionUI();
+}
+
+function deselectAll() {
+  selectedFiles.clear();
+  updateAllCheckboxes();
+  updateSelectionUI();
+}
+
+function updateAllCheckboxes() {
+  const checkboxes = document.querySelectorAll('tbody input[type="checkbox"]');
+  checkboxes.forEach(cb => {
+    const row = cb.closest('tr');
+    const filename = row.dataset.filename;
+    const isSelected = selectedFiles.has(filename);
+    cb.checked = isSelected;
+    row.classList.toggle('selected', isSelected);
+  });
+  
+  // Update "select all" checkbox
+  const selectAllCb = document.getElementById('selectAllCheckbox');
+  const selectableCount = allFiles.filter(f => !PROTECTED_FILES.includes(f.name)).length;
+  if (selectAllCb) {
+    selectAllCb.checked = selectedFiles.size === selectableCount && selectableCount > 0;
+    selectAllCb.indeterminate = selectedFiles.size > 0 && selectedFiles.size < selectableCount;
+  }
+}
+
+function updateRowHighlight(filename, selected) {
+  const row = document.querySelector('tr[data-filename="' + filename + '"]');
+  if (row) {
+    row.classList.toggle('selected', selected);
+  }
+  
+  // Update "select all" checkbox state
+  const selectAllCb = document.getElementById('selectAllCheckbox');
+  const selectableCount = allFiles.filter(f => !PROTECTED_FILES.includes(f.name)).length;
+  if (selectAllCb) {
+    selectAllCb.checked = selectedFiles.size === selectableCount && selectableCount > 0;
+    selectAllCb.indeterminate = selectedFiles.size > 0 && selectedFiles.size < selectableCount;
+  }
+}
+
+function updateSelectionUI() {
+  const toolbar = document.getElementById('selectionToolbar');
+  const count = document.getElementById('selectionCount');
+  const deleteBtn = document.getElementById('deleteSelectedBtn');
+  
+  if (selectedFiles.size > 0) {
+    toolbar.classList.add('show');
+    count.textContent = selectedFiles.size + ' selected';
+    deleteBtn.disabled = false;
+  } else {
+    toolbar.classList.remove('show');
+    deleteBtn.disabled = true;
+  }
+}
+
+// === DELETE FUNCTIONS ===
+
+function deleteSelected() {
+  if (selectedFiles.size === 0 || isDeleting) return;
+  
+  const fileList = Array.from(selectedFiles);
+  document.getElementById('deleteMessage').textContent = 
+    'Are you sure you want to delete ' + fileList.length + ' file' + (fileList.length > 1 ? 's' : '') + '?\n\nThis action cannot be undone.';
+  document.getElementById('deleteProgress').style.display = 'none';
+  document.getElementById('deleteButtons').style.display = 'flex';
+  document.getElementById('confirmDeleteBtn').disabled = false;
+  document.getElementById('deleteModal').classList.add('show');
+}
+
+function closeDeleteModal() {
+  if (!isDeleting) {
+    document.getElementById('deleteModal').classList.remove('show');
+  }
+}
+
+async function confirmDeleteSelected() {
+  if (isDeleting) return;
+  
+  const fileList = Array.from(selectedFiles);
+  if (fileList.length === 0) return;
+  
+  isDeleting = true;
+  document.getElementById('confirmDeleteBtn').disabled = true;
+  document.getElementById('deleteProgress').style.display = 'block';
+  
+  let deleted = 0;
+  let errors = 0;
+  
+  for (let i = 0; i < fileList.length; i++) {
+    const filename = fileList[i];
+    document.getElementById('deleteProgressText').textContent = 
+      'Deleting ' + (i + 1) + ' of ' + fileList.length + ': ' + filename;
+    document.getElementById('deleteProgressFill').style.width = 
+      Math.round(((i + 1) / fileList.length) * 100) + '%';
+    
+    try {
+      const response = await fetch('/?deleteFile=' + encodeURIComponent(filename));
+      const data = await response.json();
+      
+      if (data.success) {
+        deleted++;
+        selectedFiles.delete(filename);
+      } else {
+        errors++;
+      }
+    } catch (e) {
+      errors++;
+    }
+    
+    // Small delay between deletions to not overwhelm the Arduino
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  isDeleting = false;
+  document.getElementById('deleteModal').classList.remove('show');
+  
+  if (errors === 0) {
+    showStatus(deleted + ' file' + (deleted > 1 ? 's' : '') + ' deleted successfully', 'success');
+  } else {
+    showStatus(deleted + ' deleted, ' + errors + ' failed', errors === fileList.length ? 'error' : 'success');
+  }
+  
+  loadFiles();
+}
+
+async function deleteFile(filename) {
+  if (PROTECTED_FILES.includes(filename)) {
+    showStatus('Cannot delete protected system file', 'error');
+    return;
+  }
+  
+  if (!confirm('Delete "' + filename + '"?\n\nThis action cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    const response = await fetch('/?deleteFile=' + encodeURIComponent(filename));
+    const data = await response.json();
+    
+    if (data.success) {
+      showStatus('File "' + filename + '" deleted', 'success');
+      loadFiles();
+    } else {
+      showStatus('Error deleting file', 'error');
+    }
+  } catch (e) {
+    showStatus('Connection error', 'error');
   }
 }
 
@@ -789,26 +1092,6 @@ async function confirmRename() {
   closeRenameModal();
 }
 
-async function deleteFile(filename) {
-  if (!confirm('Delete "' + filename + '"?\n\nThis action cannot be undone.')) {
-    return;
-  }
-  
-  try {
-    const response = await fetch('/?deleteFile=' + encodeURIComponent(filename));
-    const data = await response.json();
-    
-    if (data.success) {
-      showStatus('File "' + filename + '" deleted', 'success');
-      loadFiles();
-    } else {
-      showStatus('Error deleting file', 'error');
-    }
-  } catch (e) {
-    showStatus('Connection error', 'error');
-  }
-}
-
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -828,7 +1111,10 @@ function showStatus(message, type) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeRenameModal();
+  if (e.key === 'Escape') {
+    closeRenameModal();
+    closeDeleteModal();
+  }
   if (e.key === 'Enter' && document.getElementById('renameModal').classList.contains('show')) {
     confirmRename();
   }
