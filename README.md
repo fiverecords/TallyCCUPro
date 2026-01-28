@@ -42,7 +42,7 @@ TallyCCU Pro is an Arduino-based solution that provides full Camera Control Unit
 - **Per-Camera Presets**: 5 presets per camera, stored on SD card
 - **Group Selection**: Choose which parameter groups to include in presets
 
-![Presets](Images/Presets.png)
+![Diagram](Images/Diagram.png)
 
 
 ---
@@ -195,13 +195,14 @@ The main control interface featuring:
 - **Sliders**: Precise control with step buttons and reset
 - **Presets**: Save and load 5 presets per camera
 - **Real-Time Sync**: Changes from Companion appear instantly via SSE
+![Presets](Images/Presets.png)
 
 ### Tally Configuration (tally.html)
 
 - **vMix IP**: Address of computer running vMix
 - **Input Mapping**: Map vMix inputs to camera IDs
 - **Connection Status**: Real-time indicator
-![Front](Images/Tally.png)
+![Tally](Images/Tally.png)
 
 ### SD Card Manager (sdcard.html)
 
