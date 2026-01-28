@@ -1,7 +1,7 @@
 /*
  * CCUControl.h
  * Camera Control Unit (CCU) management
- * Version 3.0
+ * Version 3.6
  */
 
 #ifndef CCU_CONTROL_H

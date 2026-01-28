@@ -372,13 +372,16 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 | Camera not responding | Verify camera ID matches, check SDI connection and termination |
 | Browser shows HTTPS error | Type `http://` explicitly before the IP address |
 | Sync not working | Ensure both web and Companion are connected; check serial monitor for SSE status |
-| Settings reset after reboot | Update to v3.5+ which fixes the override persistence bug |
+| Settings reset after reboot | Update to v3.6 which fixes the override persistence bug |
 
 ---
 
 ## Changelog
 
-### v3.5 (Latest)
+### v3.6 (Latest)
+- Version bump release
+
+### v3.5
 - **New**: Real-time synchronization via Server-Sent Events (SSE)
 - **New**: Bidirectional sync between web interface and Companion
 - **New**: Live preset name updates across all interfaces

@@ -1,7 +1,7 @@
 /*
  * bmd_params.cpp
  * Blackmagic camera parameter table
- * Version 3.0
+ * Version 3.6
  * 
  * Generated from Blackmagic Camera Control Protocol documentation
  */

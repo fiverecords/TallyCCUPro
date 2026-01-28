@@ -1,7 +1,7 @@
 /*
  * TallyManager.cpp
  * Tally management implementation
- * Version 3.0
+ * Version 3.6
  * 
  * O(n) mapping with n=10 is fast enough and saves 256 bytes of RAM
  */

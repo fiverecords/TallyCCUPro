@@ -1,7 +1,7 @@
 /*
  * Configuration.h
  * Central configuration file for TallyCCU Pro
- * Version 3.0
+ * Version 3.6
  */
 
 #ifndef CONFIGURATION_H
@@ -18,7 +18,7 @@
 // ============================================================
 // FIRMWARE VERSION
 // ============================================================
-#define FIRMWARE_VERSION "3.0"
+#define FIRMWARE_VERSION "3.6"
 
 // ============================================================
 // NETWORK CONFIGURATION

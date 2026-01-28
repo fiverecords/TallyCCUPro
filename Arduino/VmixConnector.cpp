@@ -1,7 +1,7 @@
 /*
  * VmixConnector.cpp
  * vMix connection implementation - Ultra-fast without String
- * Version 3.0
+ * Version 3.6
  * 
  * Features tally debounce to avoid flickering
  */

@@ -1,7 +1,7 @@
 /*
  * CCUBroadcast.h
  * TCP server for CCU change broadcasting
- * Version 3.0
+ * Version 3.6
  * 
  * Protocol (outgoing messages):
  * - CCU <cameraId> <paramKey> <value>        - Parameter change

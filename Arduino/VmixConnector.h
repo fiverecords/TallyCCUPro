@@ -1,7 +1,7 @@
 /*
  * VmixConnector.h
  * vMix connection management for Tally
- * Version 3.0
+ * Version 3.6
  */
 
 #ifndef VMIX_CONNECTOR_H

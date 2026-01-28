@@ -1,7 +1,7 @@
 /*
  * WebServer.h
  * Web server for control and configuration
- * Version 3.0
+ * Version 3.6
  * 
  * RAM optimized with static buffers
  * Includes SSE (Server-Sent Events) for real-time sync
