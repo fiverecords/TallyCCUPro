@@ -3360,6 +3360,15 @@ function restoreUIFromCache() {
     });
 }
 
+// Format number consistently (always use dot as decimal separator)
+function formatNumber(value, decimals = 2) {
+    const num = parseFloat(value);
+    if (isNaN(num)) return value;
+    // For integers or values that should be whole numbers
+    if (Number.isInteger(num) || decimals === 0) return Math.round(num).toString();
+    return num.toFixed(decimals);
+}
+
 function updateControlValue(el, value) {
     const type = el.dataset.paramtype;
     const paramKey = el.dataset.paramkey;
@@ -3372,7 +3381,16 @@ function updateControlValue(el, value) {
         el.value = value;
         const inputId = el.id.replace('_range', '_input');
         const input = document.getElementById(inputId);
-        if (input) input.value = parseFloat(value).toFixed(2);
+        if (input) input.value = formatNumber(value);
+    } else if (el.classList.contains('knob-input')) {
+        // Knob inputs - format based on knob config step
+        const knobName = Object.keys(knobConfig).find(k => knobConfig[k].param === paramKey);
+        if (knobName) {
+            const config = knobConfig[knobName];
+            el.value = config.step < 1 ? formatNumber(value) : Math.round(parseFloat(value));
+        } else {
+            el.value = formatNumber(value);
+        }
     } else {
         el.value = value;
     }
@@ -3415,6 +3433,11 @@ function setCameraId(num) {
     fetch(`/?cameraId=${num}`);
     restoreUIFromCache();
     updatePresetNames();
+    
+    // Apply SSE-received state for this camera
+    if (typeof applyCameraState === 'function') {
+        applyCameraState(num);
+    }
 }
 
 function saveCurrentStateToCache() {
@@ -3840,7 +3863,7 @@ function updateKnobDisplay(name, value) {
     const inputId = config.subIndex !== undefined ? 
         `${config.param}_${config.subIndex}_input` : `${config.param}_input`;
     const input = document.getElementById(inputId);
-    if (input) input.value = config.step < 1 ? value.toFixed(2) : Math.round(value);
+    if (input) input.value = config.step < 1 ? formatNumber(value) : Math.round(value);
 }
 
 function setKnobValue(name, value) {
@@ -4378,23 +4401,191 @@ function initJoystick() {
     document.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; resetJoystick(); } });
 }
 
-// === SYNC ===
-const SYNC_CONFIG = { enabled: true, interval: 2500, timeout: 2000 };
+// === SYNC via SSE (Server-Sent Events) ===
+const SYNC_CONFIG = { enabled: true, interval: 5000, timeout: 2000 };
 let syncTimer = null;
 let syncInProgress = false;
 let lastKnownState = {};
+let eventSource = null;
+let sseConnected = false;
+
+// Per-camera state storage (SSE sends all cameras)
+let cameraStates = {};
+for (let i = 1; i <= 8; i++) cameraStates[i] = {};
 
 function startSync() {
+    // Try SSE first
+    connectSSE();
+    
+    // Fallback polling (less frequent when SSE works)
     if (syncTimer) clearInterval(syncTimer);
-    syncFromArduino();
     syncTimer = setInterval(() => {
         if (!SYNC_CONFIG.enabled || syncInProgress) return;
-        syncFromArduino();
+        // Only poll if SSE is not connected
+        if (!sseConnected) {
+            syncFromArduino();
+        }
     }, SYNC_CONFIG.interval);
 }
 
 function stopSync() {
     if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+    disconnectSSE();
+}
+
+function connectSSE() {
+    if (eventSource) {
+        eventSource.close();
+    }
+    
+    console.log('[SSE] Connecting...');
+    eventSource = new EventSource('/events');
+    
+    eventSource.onopen = () => {
+        console.log('[SSE] Connected');
+        sseConnected = true;
+    };
+    
+    eventSource.onerror = (e) => {
+        console.log('[SSE] Error/Disconnected, falling back to polling');
+        sseConnected = false;
+        // Will reconnect automatically via EventSource
+    };
+    
+    eventSource.addEventListener('connected', (e) => {
+        console.log('[SSE] Server confirmed connection');
+        sseConnected = true;
+    });
+    
+    eventSource.onmessage = (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            handleSSEMessage(data);
+        } catch (err) {
+            console.log('[SSE] Parse error:', err);
+        }
+    };
+}
+
+function disconnectSSE() {
+    if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+    }
+    sseConnected = false;
+}
+
+function handleSSEMessage(data) {
+    // Handle requestSync - Arduino asking web to send its state
+    if (data.type === 'requestSync') {
+        console.log('[SSE] Received requestSync, sending cached state to Arduino');
+        sendCachedStateToArduino();
+        return;
+    }
+    
+    // Handle preset events
+    if (data.type === 'presetSaved' || data.type === 'presetLoaded') {
+        const camId = data.cam;
+        const presetId = data.preset;
+        const presetName = data.name;
+        
+        console.log(`[SSE] ${data.type}: Cam${camId} P${presetId} "${presetName}"`);
+        
+        // Update localStorage
+        localStorage.setItem(`preset_${camId}_${presetId}`, presetName);
+        
+        // Update UI if this is current camera
+        if (camId === currentCamera) {
+            const input = document.getElementById("presetName_" + presetId);
+            if (input) {
+                input.value = presetName;
+            }
+        }
+        return;
+    }
+    
+    // Handle parameter changes: { cam: 1, key: "gain_db", val: "6" }
+    const camId = data.cam;
+    const paramKey = data.key;
+    const value = data.val;
+    
+    // Store in per-camera state
+    cameraStates[camId] = cameraStates[camId] || {};
+    cameraStates[camId][paramKey] = value;
+    
+    // Update UI only if this is the currently selected camera
+    if (camId === currentCamera) {
+        // Parse value (could be array like "0.5,1")
+        let parsedValue = value;
+        if (typeof value === 'string' && value.includes(',')) {
+            parsedValue = value.split(',').map(v => parseFloat(v.trim()));
+        } else if (!isNaN(parseFloat(value))) {
+            parsedValue = parseFloat(value);
+        }
+        
+        updateFieldFromSync(paramKey, parsedValue);
+        
+        // Update lastKnownState for compatibility
+        const stateKey = `cam${camId}_${paramKey}`;
+        lastKnownState[stateKey] = parsedValue;
+    }
+}
+
+// Called when user switches camera - apply stored state
+function applyCameraState(camId) {
+    const state = cameraStates[camId];
+    if (!state) return;
+    
+    console.log(`[SSE] Applying stored state for camera ${camId}:`, Object.keys(state).length, 'params');
+    
+    for (const paramKey in state) {
+        let value = state[paramKey];
+        // Parse value
+        if (typeof value === 'string' && value.includes(',')) {
+            value = value.split(',').map(v => parseFloat(v.trim()));
+        } else if (!isNaN(parseFloat(value))) {
+            value = parseFloat(value);
+        }
+        updateFieldFromSync(paramKey, value);
+    }
+}
+
+// Send all cached camera states to Arduino (for TCP client sync)
+async function sendCachedStateToArduino() {
+    // Build body: lines of "cam:key:value"
+    let lines = [];
+    for (let camId = 1; camId <= 8; camId++) {
+        const state = cameraStates[camId];
+        if (!state) continue;
+        
+        for (const paramKey in state) {
+            const value = state[paramKey];
+            const valueStr = Array.isArray(value) ? value.join(',') : String(value);
+            lines.push(`${camId}:${paramKey}:${valueStr}`);
+        }
+    }
+    
+    if (lines.length === 0) {
+        console.log('[SSE] No cached state to send');
+        return;
+    }
+    
+    console.log(`[SSE] Sending ${lines.length} params to Arduino`);
+    
+    try {
+        const response = await fetch('/syncState', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: lines.join('\n')
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`[SSE] syncState response:`, data);
+        }
+    } catch (e) {
+        console.log('[SSE] syncState error:', e);
+    }
 }
 
 async function syncFromArduino() {
@@ -4417,6 +4608,7 @@ async function syncFromArduino() {
 
 function processSyncData(data) {
     const params = data.params;
+    console.log('Sync data received:', Object.keys(params));
     
     for (const paramKey in params) {
         const newValue = params[paramKey];
@@ -4425,11 +4617,13 @@ function processSyncData(data) {
         const hasChanged = JSON.stringify(oldValue) !== JSON.stringify(newValue);
         
         if (hasChanged) {
+            console.log('Changed:', paramKey, oldValue, '->', newValue);
             lastKnownState[stateKey] = newValue;
             updateFieldFromSync(paramKey, newValue);
         }
     }
 }
+
 
 function updateFieldFromSync(paramKey, value) {
     const activeEl = document.activeElement;
@@ -4457,6 +4651,7 @@ const specialParamHandlers = {
     'gain_adjust': (v) => updateWheelFromSync('gain', v),
     'offset_adjust': (v) => updateWheelFromSync('offset', v),
     'contrast_adjust': (v) => {
+        console.log('contrast_adjust sync received:', v);
         let values = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(x => parseFloat(x.trim())) : [0.5, 1]);
         const pivot = values.length > 0 ? parseFloat(values[0]) : 0.5;
         const contrast = values.length > 1 ? parseFloat(values[1]) : 1;
@@ -4900,6 +5095,63 @@ function resetSelectedGroupParams() {
         updateVideoModeToggleVisual(3, 0);
         multiSubOnChange('video_mode');
         updateShutterPresets();
+        
+        // Manual White Balance - reset a 5600K, tint 10
+        multiSubValues['manual_white_balance'] = [5600, 10];
+        document.getElementById('manual_white_balance_0_range').value = 5600;
+        document.getElementById('manual_white_balance_1_range').value = 10;
+        const wbTempInput = document.getElementById('manual_white_balance_0_input');
+        const wbTintInput = document.getElementById('manual_white_balance_1_input');
+        if (wbTempInput) wbTempInput.value = 5600;
+        if (wbTintInput) wbTintInput.value = 10;
+        multiSubOnChange('manual_white_balance');
+        
+        // Dynamic Range Mode - reset a Extended Video (2)
+        document.getElementById('dynamic_range_mode_range').value = 2;
+        updateToggleVisual('dynamic_range_mode', 2);
+        sendParam('dynamic_range_mode', 2);
+        
+        // Video Sharpening Level - reset a Off (0)
+        document.getElementById('video_sharpening_level_range').value = 0;
+        updateToggleVisual('video_sharpening_level', 0);
+        sendParam('video_sharpening_level', 0);
+        
+        // Auto Exposure Mode - reset a Manual (0)
+        document.getElementById('set_auto_exposure_mode_range').value = 0;
+        updateToggleVisual('set_auto_exposure_mode', 0);
+        sendParam('set_auto_exposure_mode', 0);
+        
+        // ND Filter - reset a 0 (single value for consistency with presets)
+        sendParam('nd_filter_stop', 0);
+        
+        count += 10;
+    }
+    
+    // Resetear controles especiales de Audio
+    if (selectedGroups.includes('audio')) {
+        // Input Levels - reset a 0.5, 0.5
+        multiSubValues['input_levels'] = [0.5, 0.5];
+        document.getElementById('input_levels_0_range').value = 0.5;
+        document.getElementById('input_levels_1_range').value = 0.5;
+        const il0Input = document.getElementById('input_levels_0_input');
+        const il1Input = document.getElementById('input_levels_1_input');
+        if (il0Input) il0Input.value = 0.5;
+        if (il1Input) il1Input.value = 0.5;
+        multiSubOnChange('input_levels');
+        
+        // Input Type - reset a Internal (0)
+        document.getElementById('input_type_range').value = 0;
+        updateToggleVisual('input_type', 0);
+        sendParam('input_type', 0);
+        
+        // Timecode Source - reset a Clip (0)
+        const tcSourceEl = document.getElementById('timecode_source_range');
+        if (tcSourceEl) {
+            tcSourceEl.value = 0;
+            updateToggleVisual('timecode_source', 0);
+            sendParam('timecode_source', 0);
+        }
+        
         count += 5;
     }
     
@@ -4949,6 +5201,27 @@ function resetSelectedGroupParams() {
         updateFocusAssistToggleVisual(1, 0);
         fetch(`/?cameraId=${currentCamera}&focus_assist=1,0`);
         count += 12;
+    }
+    
+    // Resetear controles especiales de PTZ
+    if (selectedGroups.includes('ptz_control')) {
+        // Pan/Tilt Velocity - reset a 0, 0
+        multiSubValues['pan_tilt_velocity'] = [0, 0];
+        document.getElementById('pan_tilt_velocity_0_range').value = 0;
+        document.getElementById('pan_tilt_velocity_1_range').value = 0;
+        multiSubOnChange('pan_tilt_velocity');
+        count += 2;
+    }
+    
+    // Resetear controles especiales de Output (source)
+    if (selectedGroups.includes('output')) {
+        // Source - reset a 0
+        const sourceEl = document.getElementById('source_range');
+        if (sourceEl) {
+            sourceEl.value = 0;
+            updateToggleVisual('source', 0);
+            sendParam('source', 0);
+        }
     }
     
     showSaveStatus(`${count} controls reset`, 'success');
