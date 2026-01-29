@@ -2,11 +2,12 @@
  * webserver.cpp
  * Web server for control and configuration
  * 
- * TallyCCU Pro V3.6
+ * TallyCCU Pro V3.7
  */
 
 #include "WebServer.h"
 #include "CCUBroadcast.h"
+#include "SafeMode.h"
 #include <SdFat.h>
 #include <avr/wdt.h>
 
@@ -198,6 +199,12 @@ void WebServer::processRequests() {
 
 void WebServer::processPOSTRequest(const char* reqLine, EthernetClient &client) {
   Serial.println(F("[POST] Received"));
+  
+  // Safe mode exit
+  if (strstr(reqLine, "POST /safemode-exit") != NULL) {
+    handleSafeModeExit(client);
+    return;
+  }
   
   // Check if savePreset
   if (strstr(reqLine, "POST /savePreset") != NULL) {
@@ -551,6 +558,30 @@ void WebServer::sendJSONResponse(EthernetClient &client, bool success, const cha
 // ============================================================
 
 void WebServer::processGETRequest(const char* reqLine, EthernetClient &client) {
+  
+  // ============================================================
+  // SAFE MODE HANDLING - CHECK FIRST
+  // ============================================================
+  
+  // Safe mode status API (always available)
+  if (strncmp(reqLine, "GET /safemode-status", 20) == 0) {
+    handleSafeModeStatus(client);
+    return;
+  }
+  
+  // In safe mode, redirect main pages to diagnostic page
+  if (SafeMode::isActive()) {
+    if (strncmp(reqLine, "GET / ", 6) == 0 || 
+        strncmp(reqLine, "GET /index", 10) == 0 ||
+        strncmp(reqLine, "GET /ccu", 8) == 0) {
+      SdUtils::serveFile(client, "safemode.html");
+      return;
+    }
+  }
+  
+  // ============================================================
+  // NORMAL REQUEST HANDLING
+  // ============================================================
   
   // Reboot
   if (strncmp(reqLine, "GET /reboot", 11) == 0) {
@@ -1042,7 +1073,8 @@ void WebServer::handleListFiles(EthernetClient &client) {
         // Hide system files
         if (strcmp(fileName, "index.html") == 0 ||
             strcmp(fileName, "tally.html") == 0 ||
-            strcmp(fileName, "sdcard.html") == 0) {
+            strcmp(fileName, "sdcard.html") == 0 ||
+            strcmp(fileName, "safemode.html") == 0) {
           entry.close();
           continue;
         }
@@ -1105,7 +1137,8 @@ void WebServer::handleDeleteFile(EthernetClient &client, const char* filename) {
   // Protect system files
   if (strcmp(filename, "index.html") == 0 ||
       strcmp(filename, "tally.html") == 0 ||
-      strcmp(filename, "sdcard.html") == 0) {
+      strcmp(filename, "sdcard.html") == 0 ||
+      strcmp(filename, "safemode.html") == 0) {
     client.println(F("{\"success\":false,\"error\":\"protected\"}"));
     return;
   }
@@ -1294,6 +1327,62 @@ void WebServer::handleUploadFile(EthernetClient &client) {
   }
   
   sendJSONResponse(client, filename[0] != '\0', filename[0] != '\0' ? filename : "No file");
+}
+
+// ============================================================
+// SAFE MODE HANDLERS
+// ============================================================
+
+void WebServer::handleSafeModeStatus(EthernetClient &client) {
+  // Send headers
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: application/json"));
+  client.println(F("Cache-Control: no-cache"));
+  client.println(F("Access-Control-Allow-Origin: *"));
+  client.println(F("Connection: close"));
+  client.println();
+  
+  // Calculate free RAM
+  extern int __heap_start, *__brkval;
+  int v;
+  int freeRam = (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+  
+  // Build JSON response
+  client.print(F("{"));
+  client.print(F("\"safeMode\":"));
+  client.print(SafeMode::isActive() ? F("true") : F("false"));
+  client.print(F(",\"resetCount\":"));
+  client.print(SafeMode::getResetCount());
+  client.print(F(",\"resetReason\":\""));
+  client.print(SafeMode::getResetReasonString());
+  client.print(F("\",\"uptime\":"));
+  client.print(SafeMode::getUptime());
+  client.print(F(",\"freeRam\":"));
+  client.print(freeRam);
+  client.print(F(",\"ip\":\""));
+  client.print(NetworkManager::getLocalIP());
+  client.println(F("\"}"));
+}
+
+void WebServer::handleSafeModeExit(EthernetClient &client) {
+  // Send response first
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: application/json"));
+  client.println(F("Access-Control-Allow-Origin: *"));
+  client.println(F("Connection: close"));
+  client.println();
+  client.println(F("{\"success\":true,\"message\":\"Restarting...\"}"));
+  
+  // Close connection
+  delay(100);
+  client.flush();
+  client.stop();
+  
+  // Small delay to ensure response is sent
+  delay(200);
+  
+  // Exit safe mode (this triggers a restart)
+  SafeMode::exitSafeMode();
 }
 
 // ============================================================
