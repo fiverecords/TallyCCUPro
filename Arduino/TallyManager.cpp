@@ -1,12 +1,14 @@
 /*
  * TallyManager.cpp
  * Tally management implementation
- * Version 3.6
+ * Version 3.7
  * 
  * O(n) mapping with n=10 is fast enough and saves 256 bytes of RAM
+ * Safe Mode support: SDI Shield not initialized when in safe mode
  */
 
 #include "TallyManager.h"
+#include "SafeMode.h"
 #include <BMDSDIControl.h>
 
 // Static variable initialization
@@ -27,8 +29,13 @@ bool TallyManager::begin() {
   bool dummyCCU;
   StorageManager::loadOverrides(_overrideTally, dummyCCU);
   
-  sdiTallyControl.begin();
-  sdiTallyControl.setOverride(_overrideTally);
+  // Only initialize SDI shield if NOT in safe mode
+  if (!SafeMode::isActive()) {
+    sdiTallyControl.begin();
+    sdiTallyControl.setOverride(_overrideTally);
+  } else {
+    Serial.println(F("[Tally] SDI Shield SKIPPED (Safe Mode)"));
+  }
   
   cacheInitialized = false;
   
@@ -67,7 +74,11 @@ void TallyManager::setMapping(byte inputIndex, byte inputNumber, byte cameraId) 
 
 void TallyManager::setOverride(bool enabled) {
   _overrideTally = enabled;
-  sdiTallyControl.setOverride(_overrideTally);
+  
+  // Only touch SDI shield if NOT in safe mode
+  if (!SafeMode::isActive()) {
+    sdiTallyControl.setOverride(_overrideTally);
+  }
   
   bool currentTally, currentCCU;
   StorageManager::loadOverrides(currentTally, currentCCU);
@@ -105,6 +116,11 @@ void TallyManager::setTallyState(byte camera, char state) {
     return;
   }
   
+  // Skip SDI output in safe mode
+  if (SafeMode::isActive()) {
+    return;
+  }
+  
   bool program = (state == '1');
   bool preview = (state == '2');
   
@@ -123,6 +139,11 @@ void TallyManager::setTallyState(byte camera, char state) {
 // Optimized: Only sends actual changes
 void TallyManager::setTallyStates(bool states[MAX_CAMERAS + 1][2]) {
   if (!_overrideTally) {
+    return;
+  }
+  
+  // Skip SDI output in safe mode
+  if (SafeMode::isActive()) {
     return;
   }
   
