@@ -2,7 +2,7 @@
  * TallyCCUPro.ino
  * Tally and CCU System for Blackmagic cameras with vMix
  * 
- * Version 3.6
+ * Version 3.7
  * 
  * Features:
  * - Tally via SDI from vMix
@@ -10,6 +10,7 @@
  * - Bidirectional sync with Bitfocus Companion
  * - Preset management with SD card storage
  * - Watchdog timer for reliability
+ * - Safe Mode for boot failure recovery
  * 
  * Hardware required:
  * - Arduino Mega 2560
@@ -22,6 +23,7 @@
  */
 
 #include "Configuration.h"
+#include "SafeMode.h"       // NEW: Safe mode system
 #include "Storage.h"
 #include "Network.h"
 #include "VmixConnector.h"
@@ -54,15 +56,40 @@ char serialBuffer[64];
 int serialBufferIndex = 0;
 
 void setup() {
-  wdt_disable();
-  
+  // ============================================================
+  // CRITICAL: SafeMode.begin() MUST be called FIRST!
+  // It enables watchdog and detects boot loops.
+  // ============================================================
   Serial.begin(115200);
   while (!Serial && millis() < 3000);
   
   Serial.println();
   Serial.println(F("========================================="));
-  Serial.println(F("   TallyCCU Pro V3.6"));
+  Serial.println(F("   TallyCCU Pro V3.7"));
   Serial.println(F("========================================="));
+  
+  // Initialize safe mode detection (enables watchdog internally)
+  Serial.println(F("[0/9] Initializing SafeMode..."));
+  SafeMode::begin();
+  
+  // Check if we're in safe mode
+  if (SafeMode::isActive()) {
+    Serial.println();
+    Serial.println(F("!!! SAFE MODE ACTIVE !!!"));
+    Serial.println(F("SDI Shield will NOT be initialized."));
+    Serial.println(F("Access web interface for diagnostics."));
+    Serial.println();
+    
+    // Initialize only essential systems (skip SDI Shield)
+    setupSafeMode();
+    return;
+  }
+  
+  // Normal boot sequence
+  setupNormal();
+}
+
+void setupNormal() {
   Serial.print(F("Firmware: "));
   Serial.println(FIRMWARE_VERSION);
   Serial.println();
@@ -70,12 +97,14 @@ void setup() {
   // Initialize EEPROM storage
   Serial.println(F("[1/9] Initializing EEPROM..."));
   StorageManager::begin();
+  wdt_reset();
   
   // Initialize SD card
   Serial.println(F("[2/9] Initializing SD..."));
   if (!SdUtils::begin()) {
     Serial.println(F("ERROR: SD not available"));
   }
+  wdt_reset();
   
   // Initialize network
   Serial.println(F("[3/9] Initializing network..."));
@@ -83,31 +112,44 @@ void setup() {
     Serial.println(F("ERROR: Network not available"));
   }
   NetworkManager::printConfig();
+  wdt_reset();
   
   // Initialize Tally Manager
   Serial.println(F("[4/9] Initializing Tally..."));
   TallyManager::begin();
+  wdt_reset();
   
-  // Initialize CCU Control
-  Serial.println(F("[5/9] Initializing CCU..."));
+  // Initialize CCU Control (THIS IS WHERE IT CAN HANG!)
+  Serial.println(F("[5/9] Initializing CCU (SDI Shield)..."));
+  Serial.println(F("      If system hangs here, check:"));
+  Serial.println(F("      - 12V power to SDI Shield"));
+  Serial.println(F("      - Valid SDI signal (1080p/i Level B)"));
   CCUControl::begin();
+  wdt_reset();
   
   // Load vMix IP from EEPROM
   Serial.println(F("[6/9] Loading vMix config..."));
   byte vmixip[4];
   loadVMixIPFromEEPROM(vmixip);
+  wdt_reset();
   
   // Initialize vMix connection
   Serial.println(F("[7/9] Connecting to vMix..."));
   VmixConnector::begin(vmixip);
+  wdt_reset();
   
   // Initialize web server
   Serial.println(F("[8/9] Starting web server..."));
   WebServer::begin();
+  wdt_reset();
   
   // Initialize CCU Broadcast server
   Serial.println(F("[9/9] Starting CCU Broadcast..."));
   CCUBroadcast::begin();
+  wdt_reset();
+  
+  // Mark boot as complete - this clears the crash counter
+  SafeMode::bootComplete();
   
   // Show final status
   Serial.println();
@@ -130,11 +172,71 @@ void setup() {
   printHelp();
   Serial.println();
   
-  // Enable watchdog (8 seconds)
-  wdt_enable(WDTO_8S);
-  
-  Serial.println(F("Watchdog enabled (8s)"));
+  Serial.println(F("Watchdog: 8s"));
   Serial.println(F("System ready."));
+  Serial.println();
+}
+
+void setupSafeMode() {
+  // Minimal initialization - NO SDI Shield!
+  
+  Serial.println(F("[1/5] Initializing EEPROM..."));
+  StorageManager::begin();
+  wdt_reset();
+  
+  Serial.println(F("[2/5] Initializing SD..."));
+  if (!SdUtils::begin()) {
+    Serial.println(F("ERROR: SD not available"));
+  }
+  wdt_reset();
+  
+  Serial.println(F("[3/5] Initializing network..."));
+  if (!NetworkManager::begin()) {
+    Serial.println(F("ERROR: Network not available"));
+  }
+  NetworkManager::printConfig();
+  wdt_reset();
+  
+  // Initialize Tally Manager (for vMix connection)
+  Serial.println(F("[4/5] Initializing Tally..."));
+  TallyManager::begin();
+  wdt_reset();
+  
+  // Load vMix IP and connect (tally still works!)
+  byte vmixip[4];
+  loadVMixIPFromEEPROM(vmixip);
+  VmixConnector::begin(vmixip);
+  wdt_reset();
+  
+  // Start web server (will serve safe mode page)
+  Serial.println(F("[5/5] Starting web server (Safe Mode)..."));
+  WebServer::begin();
+  wdt_reset();
+  
+  // CCU Broadcast still works (for Companion)
+  CCUBroadcast::begin();
+  wdt_reset();
+  
+  // Don't call bootComplete() - we want to stay in safe mode
+  
+  Serial.println();
+  Serial.println(F("========================================="));
+  Serial.println(F("   SAFE MODE - Limited functionality"));
+  Serial.println(F("========================================="));
+  Serial.print(F("Local IP: "));
+  Serial.println(NetworkManager::getLocalIP());
+  Serial.println();
+  Serial.println(F("Available:"));
+  Serial.println(F("  - Web interface (diagnostics)"));
+  Serial.println(F("  - vMix tally connection"));
+  Serial.println(F("  - Companion integration"));
+  Serial.println();
+  Serial.println(F("Disabled:"));
+  Serial.println(F("  - SDI Camera Control"));
+  Serial.println();
+  Serial.println(F("Access http://"));
+  Serial.print(NetworkManager::getLocalIP());
+  Serial.println(F(" for diagnostics."));
   Serial.println();
 }
 
@@ -154,7 +256,7 @@ void loop() {
     }
   }
   
-  // PRIORITY 1: vMix Tally (every cycle)
+  // PRIORITY 1: vMix Tally (every cycle) - works in safe mode too
   VmixConnector::processData();
   
   // PRIORITY 2: Web Server
@@ -165,7 +267,7 @@ void loop() {
     }
   }
   
-  // PRIORITY 3: CCU Broadcast
+  // PRIORITY 3: CCU Broadcast (works in safe mode for Companion)
   if (currentMillis - lastBroadcastProcess >= 20) {
     lastBroadcastProcess = currentMillis;
     CCUBroadcast::process();
@@ -206,6 +308,19 @@ void executeSerialCommand(const char* command) {
   
   if (strcmp(command, "help") == 0 || strcmp(command, "?") == 0) {
     printHelp();
+    return;
+  }
+  
+  // Safe mode commands
+  if (strcmp(command, "safemode") == 0) {
+    Serial.println(F("Entering safe mode on next boot..."));
+    SafeMode::enterSafeMode();
+    return;
+  }
+  
+  if (strcmp(command, "normalboot") == 0) {
+    Serial.println(F("Forcing normal boot..."));
+    SafeMode::exitSafeMode();
     return;
   }
   
@@ -291,11 +406,25 @@ void printHelp() {
   Serial.println(F("  state           - Show stored CCU params"));
   Serial.println(F("  ram             - Show free RAM"));
   Serial.println(F("  reset           - Reset Arduino"));
+  Serial.println(F("  safemode        - Enter safe mode on next boot"));
+  Serial.println(F("  normalboot      - Exit safe mode and restart"));
 }
 
 void printStatus() {
   Serial.println();
   Serial.println(F("=== SYSTEM STATUS ==="));
+  
+  // Safe mode status
+  Serial.print(F("Safe Mode: "));
+  Serial.println(SafeMode::isActive() ? F("ACTIVE") : F("OFF"));
+  Serial.print(F("Reset Count: "));
+  Serial.println(SafeMode::getResetCount());
+  Serial.print(F("Last Reset: "));
+  Serial.println(SafeMode::getResetReasonString());
+  Serial.print(F("Uptime: "));
+  Serial.print(SafeMode::getUptime());
+  Serial.println(F(" seconds"));
+  Serial.println();
   
   Serial.print(F("Local IP: "));
   Serial.println(NetworkManager::getLocalIP());
@@ -319,10 +448,14 @@ void printStatus() {
   Serial.print(F("Tally override: "));
   Serial.println(TallyManager::getOverride() ? F("ON") : F("OFF"));
   
-  Serial.print(F("CCU override: "));
-  Serial.println(CCUControl::getOverride() ? F("ON") : F("OFF"));
-  Serial.print(F("Active camera: "));
-  Serial.println(CCUControl::getActiveCamera());
+  if (!SafeMode::isActive()) {
+    Serial.print(F("CCU override: "));
+    Serial.println(CCUControl::getOverride() ? F("ON") : F("OFF"));
+    Serial.print(F("Active camera: "));
+    Serial.println(CCUControl::getActiveCamera());
+  } else {
+    Serial.println(F("CCU: DISABLED (Safe Mode)"));
+  }
   
   Serial.print(F("CCU Broadcast clients: "));
   Serial.println(CCUBroadcast::getClientCount());
