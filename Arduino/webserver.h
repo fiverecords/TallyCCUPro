@@ -1,10 +1,11 @@
 /*
  * WebServer.h
  * Web server for control and configuration
- * Version 3.6
+ * Version 3.7
  * 
  * RAM optimized with static buffers
  * Includes SSE (Server-Sent Events) for real-time sync
+ * Includes Safe Mode diagnostics
  */
 
 #ifndef WEBSERVER_H
@@ -94,6 +95,10 @@ class WebServer {
     static void handleDeleteFile(EthernetClient &client, const char* filename);
     static void handleRenameFile(EthernetClient &client, const char* oldName, const char* newName);
     static void handleUploadFile(EthernetClient &client);
+    
+    // Safe Mode handlers
+    static void handleSafeModeStatus(EthernetClient &client);
+    static void handleSafeModeExit(EthernetClient &client);
     
     // Utilities
     static bool isNumeric(const char* str);
