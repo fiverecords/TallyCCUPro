@@ -37,6 +37,13 @@ TallyCCU Pro is an Arduino-based solution that provides full Camera Control Unit
 - **Automatic State Recovery**: When either client connects, it receives current state from the other
 - **Live Preset Updates**: Preset names sync instantly across all interfaces
 
+### Safe Mode Recovery (v3.7+)
+- **Automatic Boot Loop Detection**: System detects consecutive boot failures
+- **Safe Mode**: After 3 failed boots, system starts without SDI Shield initialization
+- **Diagnostic Web Interface**: Access troubleshooting page at device IP when in Safe Mode
+- **Network Access Preserved**: Configure network, use vMix tally, and diagnose issues remotely
+- **One-Click Recovery**: Restart in normal mode from the web interface after fixing the issue
+
 ### Preset System
 - **Save/Load Presets**: Store complete camera configurations
 - **Per-Camera Presets**: 5 presets per camera, stored on SD card
@@ -89,6 +96,8 @@ These bridges route the I2C signals to the correct pins. Without them, the SDI s
 
 The system requires external power (9-12V DC) connected to the Blackmagic SDI Shield's power input. USB power alone does not provide enough current and the system will fail to boot properly.
 
+> **Note**: Starting with v3.7, if the system detects repeated boot failures (e.g., due to missing 12V power or invalid SDI signal), it will automatically enter Safe Mode. See [Safe Mode](#safe-mode) for details.
+
 ---
 
 ## SD Card Setup
@@ -122,9 +131,10 @@ After formatting, copy these files to the SD card root:
 
 ```
 SD Card Root/
-+-- index.html      (Main CCU interface)
-+-- tally.html      (Tally configuration)
-+-- sdcard.html     (SD Card File manager)
+├── index.html      (Main CCU interface)
+├── tally.html      (Tally configuration)
+├── sdcard.html     (SD Card File manager)
+└── safemode.html   (Safe Mode diagnostics - v3.7+)
 ```
 
 ---
@@ -170,6 +180,8 @@ Available commands:
   vmixip 192.168.1.50     Set vMix computer IP
   status                  Show current configuration
   reset                   Restart Arduino
+  safemode                Force safe mode on next boot (v3.7+)
+  normalboot              Exit safe mode and restart (v3.7+)
 ```
 
 ### Step 4: Verify Installation
@@ -210,6 +222,48 @@ The main control interface featuring:
 - **Download**: Backup presets
 - **Delete/Rename**: File management
 ![Front](Images/SDCard.png)
+
+---
+
+## Safe Mode
+
+Safe Mode is a recovery feature introduced in v3.7 that helps diagnose and recover from hardware-related boot failures.
+
+### When Does Safe Mode Activate?
+
+The system enters Safe Mode automatically after **3 consecutive boot failures**. Common causes:
+
+1. **Missing 12V Power**: SDI Shield requires external 12V power
+2. **Invalid SDI Signal**: 4K signals or Level A 3G-SDI are not supported
+3. **SDI Cable Disconnected**: No signal during boot
+4. **I2C Bus Conflict**: Missing or incorrect bridge wires
+
+### What Works in Safe Mode?
+
+| Feature | Status |
+|---------|--------|
+| Web Interface | ✓ Available (diagnostic page) |
+| Network Configuration | ✓ Available |
+| vMix Tally Connection | ✓ Receive only (no SDI output) |
+| Companion TCP | ✓ Available |
+| Serial Console | ✓ Available |
+| **SDI Tally Output** | ✗ Disabled |
+| **CCU Camera Control** | ✗ Disabled |
+
+### Exiting Safe Mode
+
+1. **Fix the underlying issue** (connect 12V power, valid SDI signal, etc.)
+2. Access the diagnostic page at `http://YOUR_ARDUINO_IP/`
+3. Click **"Restart Normal Mode"**
+4. The system will restart and attempt normal boot
+
+Alternatively, use the serial command `normalboot` to exit Safe Mode.
+
+### Manual Safe Mode Entry
+
+For testing or troubleshooting, you can force Safe Mode on the next boot:
+- Serial command: `safemode`
+- The system will enter Safe Mode on the next restart
 
 ---
 
@@ -292,6 +346,37 @@ CCUSYNC <cameraId> <paramKey> <value>       Send cached parameter to Arduino
 - **POST /syncState**: Web sends cached state to Arduino for TCP broadcast
 - **REQUESTSYNC**: Arduino requests state from connected clients on new connections
 
+### Safe Mode Boot Flow (v3.7+)
+
+```
+Power On
+    │
+    ▼
+SafeMode::begin()
+    │
+    ├─► Check EEPROM boot flag
+    │
+    ▼
+┌───────────────────┐
+│ Previous boot     │──NO──► Clean boot, reset counter
+│ completed?        │
+└────────┬──────────┘
+         │YES (flag present = crash)
+         ▼
+    Increment counter
+         │
+         ▼
+┌───────────────────┐
+│ Counter >= 3?     │──NO──► Try normal boot
+└────────┬──────────┘
+         │YES
+         ▼
+    SAFE MODE
+    - Skip SDI Shield init
+    - Network/Web only
+    - Serve diagnostic page
+```
+
 ---
 
 ## Project Structure
@@ -307,11 +392,13 @@ TallyCCUPro/
 │   ├── WebServer.*       HTTP & SSE server
 │   ├── Storage.*         EEPROM management
 │   ├── SdUtils.*         SD card operations
+│   ├── SafeMode.*        Boot failure recovery (v3.7+)
 │   └── Configuration.h   Pin & address definitions
 ├── sdcard/               Web interface files  
 │   ├── index.html        Main CCU interface
 │   ├── tally.html        Tally configuration
-│   └── sdcard.html       File manager
+│   ├── sdcard.html       File manager
+│   └── safemode.html     Safe Mode diagnostics (v3.7+)
 ├── companion-module/     Bitfocus Companion module
 │   ├── main.js           Module entry point
 │   ├── actions.js        CCU parameter actions
@@ -368,17 +455,28 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 | Web interface not loading | Verify SD card is MBR/FAT16 or FAT32, reformat with SD Association tool |
 | SDI shield not responding | Check I2C bridge wires (A4→SCL, A5→SDA on SDI shield) |
 | System not booting | Connect external 9-12V power, USB is insufficient |
+| System stuck in boot loop | Check 12V power and SDI signal; after 3 failures, Safe Mode activates automatically |
+| Safe Mode activated | Fix hardware issue (12V power, valid SDI signal), then click "Restart Normal Mode" |
 | vMix tally not working | Verify vMix IP in tally.html, check vMix TCP API is enabled |
 | Camera not responding | Verify camera ID matches, check SDI connection and termination |
 | Browser shows HTTPS error | Type `http://` explicitly before the IP address |
 | Sync not working | Ensure both web and Companion are connected; check serial monitor for SSE status |
-| Settings reset after reboot | Update to v3.6 which fixes the override persistence bug |
+| Settings reset after reboot | Update to v3.6+ which fixes the override persistence bug |
 
 ---
 
 ## Changelog
 
-### v3.6 (Latest)
+### v3.7 (Latest)
+- **New**: Safe Mode recovery system for boot failures
+- **New**: Automatic boot loop detection (enters Safe Mode after 3 consecutive failures)
+- **New**: Diagnostic web interface (`safemode.html`) for troubleshooting
+- **New**: Serial commands `safemode` and `normalboot` for manual control
+- **New**: `/safemode-status` and `/safemode-exit` API endpoints
+- **Improved**: TallyManager skips SDI Shield initialization in Safe Mode
+- **Improved**: WebServer redirects to diagnostic page when in Safe Mode
+
+### v3.6
 - Version bump release
 
 ### v3.5
