@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TallyCCU Pro - Safe Mode</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #e8e8e8;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .warning-icon {
+      font-size: 64px;
+      margin-bottom: 10px;
+    }
+    h1 {
+      color: #ffc107;
+      font-size: 28px;
+      margin-bottom: 5px;
+    }
+    .subtitle {
+      color: #888;
+      font-size: 14px;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .card-title {
+      color: #ffc107;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    .status-item {
+      background: rgba(0,0,0,0.2);
+      padding: 12px;
+      border-radius: 8px;
+    }
+    .status-label {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+    .status-value {
+      font-size: 16px;
+      font-weight: 500;
+    }
+    .status-value.warning { color: #ffc107; }
+    .status-value.danger { color: #dc3545; }
+    .status-value.success { color: #28a745; }
+    
+    .problem-list {
+      list-style: none;
+    }
+    .problem-list li {
+      padding: 12px;
+      margin-bottom: 10px;
+      background: rgba(220,53,69,0.1);
+      border-left: 3px solid #dc3545;
+      border-radius: 0 8px 8px 0;
+    }
+    .problem-list li strong {
+      display: block;
+      color: #ff6b6b;
+      margin-bottom: 4px;
+    }
+    .problem-list li span {
+      font-size: 13px;
+      color: #aaa;
+    }
+    
+    .solution-list {
+      list-style: none;
+      counter-reset: solution;
+    }
+    .solution-list li {
+      padding: 12px;
+      margin-bottom: 10px;
+      background: rgba(40,167,69,0.1);
+      border-left: 3px solid #28a745;
+      border-radius: 0 8px 8px 0;
+      position: relative;
+      padding-left: 45px;
+    }
+    .solution-list li::before {
+      counter-increment: solution;
+      content: counter(solution);
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 22px;
+      height: 22px;
+      background: #28a745;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      flex: 1;
+      min-width: 150px;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #28a745;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #218838;
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      color: #e8e8e8;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.15);
+    }
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+    .btn-danger:hover {
+      background: #c82333;
+    }
+    
+    .info-box {
+      background: rgba(23,162,184,0.1);
+      border: 1px solid rgba(23,162,184,0.3);
+      border-radius: 8px;
+      padding: 15px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .info-box strong {
+      color: #17a2b8;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #888;
+    }
+    
+    @media (max-width: 500px) {
+      .status-grid { grid-template-columns: 1fr; }
+      .actions { flex-direction: column; }
+      .btn { min-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="warning-icon">⚠️</div>
+      <h1>Safe Mode Active</h1>
+      <p class="subtitle">TallyCCU Pro has entered safe mode due to repeated boot failures</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📊 System Status</div>
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="status-label">Mode</div>
+          <div class="status-value warning" id="mode">Safe Mode</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Reset Count</div>
+          <div class="status-value danger" id="resetCount">-</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Last Reset</div>
+          <div class="status-value" id="resetReason">-</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Uptime</div>
+          <div class="status-value success" id="uptime">-</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Free RAM</div>
+          <div class="status-value" id="freeRam">-</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">IP Address</div>
+          <div class="status-value" id="ipAddress">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔍 Possible Causes</div>
+      <ul class="problem-list">
+        <li>
+          <strong>SDI Shield without 12V power</strong>
+          <span>The Blackmagic SDI Shield requires external 12V power. Without it, I2C communication hangs during initialization.</span>
+        </li>
+        <li>
+          <strong>Invalid SDI input signal</strong>
+          <span>The shield only supports 1080p/1080i at 3G-SDI Level B. 4K signals, Level A, or other formats can cause the shield to freeze.</span>
+        </li>
+        <li>
+          <strong>SDI cable disconnected during boot</strong>
+          <span>Some shield firmware versions don't handle missing input gracefully during initialization.</span>
+        </li>
+        <li>
+          <strong>I2C bus conflict</strong>
+          <span>Another I2C device on the bus may be interfering with shield communication.</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-title">✅ How to Fix</div>
+      <ul class="solution-list">
+        <li>Verify that the SDI Shield has 12V DC power connected (check the power LED on the shield)</li>
+        <li>Connect a valid 1080p or 1080i SDI signal at 3G-SDI Level B from your camera or video source</li>
+        <li>Check all SDI cable connections are secure</li>
+        <li>Once fixed, click "Restart Normal Mode" below to retry</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🎛️ Actions</div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="restartNormal()">
+          Restart Normal Mode
+        </button>
+        <button class="btn btn-secondary" onclick="stayInSafeMode()">
+          Stay in Safe Mode
+        </button>
+      </div>
+      <br>
+      <div class="info-box">
+        <strong>Note:</strong> In Safe Mode, the SDI Shield is completely disabled. 
+        No SDI output is possible - this means no tally lights and no camera control commands 
+        will reach your cameras. Network connectivity and web interface remain functional for 
+        diagnostics and configuration changes.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📡 Available in Safe Mode</div>
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="status-label">Web Interface</div>
+          <div class="status-value success">✓ Working</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">vMix Connection</div>
+          <div class="status-value warning">⚡ Receive only</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Companion TCP</div>
+          <div class="status-value success">✓ Working</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Network Config</div>
+          <div class="status-value success">✓ Working</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">SDI Tally Output</div>
+          <div class="status-value danger">✗ Disabled</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">SDI Camera Control</div>
+          <div class="status-value danger">✗ Disabled</div>
+        </div>
+      </div>
+      <br>
+      <div class="info-box" style="background: rgba(220,53,69,0.1); border-color: rgba(220,53,69,0.3);">
+        <strong style="color: #dc3545;">Important:</strong> The SDI Shield is completely disabled. 
+        No tally lights or camera control commands will be sent to cameras via SDI.
+        vMix connection is receive-only (for monitoring connection status).
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Load status on page load
+    async function loadStatus() {
+      try {
+        const response = await fetch('/safemode-status');
+        const data = await response.json();
+        
+        document.getElementById('resetCount').textContent = data.resetCount || '0';
+        document.getElementById('resetReason').textContent = data.resetReason || 'Unknown';
+        document.getElementById('uptime').textContent = formatUptime(data.uptime || 0);
+        document.getElementById('freeRam').textContent = (data.freeRam || 0) + ' bytes';
+        document.getElementById('ipAddress').textContent = data.ip || '-';
+      } catch (e) {
+        console.error('Failed to load status:', e);
+      }
+    }
+    
+    function formatUptime(seconds) {
+      if (seconds < 60) return seconds + 's';
+      if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      return h + 'h ' + m + 'm';
+    }
+    
+    async function restartNormal() {
+      var msg = 'This will restart the system and attempt normal boot.';
+      msg += '\n\nMake sure you have:';
+      msg += '\n• Connected 12V power to SDI Shield';
+      msg += '\n• Connected valid SDI signal';
+      msg += '\n\nContinue?';
+      if (!confirm(msg)) {
+        return;
+      }
+      
+      try {
+        await fetch('/safemode-exit', { method: 'POST' });
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;"><h2>Restarting...</h2><p style="color:#888;margin-top:10px;">Please wait 10-15 seconds, then refresh.</p></div>';
+      } catch (e) {
+        alert('Failed to restart: ' + e.message);
+      }
+    }
+    
+    function stayInSafeMode() {
+      var msg = 'System will remain in Safe Mode.';
+      msg += '\n\nYou can:';
+      msg += '\n• Access the network configuration';
+      msg += '\n• Use vMix tally (if connected)';
+      msg += '\n• Use Companion integration';
+      msg += '\n\nSDI camera control is disabled until you restart in normal mode.';
+      alert(msg);
+    }
+    
+    // Load status on page load and refresh every 5 seconds
+    loadStatus();
+    setInterval(loadStatus, 5000);
+  </script>
+</body>
+</html>
