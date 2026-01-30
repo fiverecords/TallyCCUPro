@@ -1,5 +1,6 @@
 # TallyCCU Pro
-https://github.com/fiverecords/TallyCCUPro
+
+https://github.com/fiverecords/TallyCCUPro](https://github.com/fiverecords/TallyCCUPro.git
 
 ![Front](Images/Color%20Wheels.png)
 
