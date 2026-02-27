@@ -18,7 +18,7 @@
  * - Blackmagic 3G-SDI Shield
  * - SD Card (FAT16/FAT32)
  * 
- * Repository: https://github.com/YOUR_USERNAME/TallyCCUPro
+ * Repository: https://github.com/fiverecords/TallyCCUPro
  * License: GPL-3.0
  */
 

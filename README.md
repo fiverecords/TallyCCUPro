@@ -208,6 +208,7 @@ The main control interface featuring:
 - **Sliders**: Precise control with step buttons and reset
 - **Presets**: Save and load 5 presets per camera
 - **Real-Time Sync**: Changes from Companion appear instantly via SSE
+- **Touch Support**: Full touch control on tablets and phones (v3.7.1+)
 ![Presets](Images/Presets.png)
 
 ### Tally Configuration (tally.html)
@@ -384,7 +385,7 @@ SafeMode::begin()
 
 ```
 TallyCCUPro/
-├── firmware/              Arduino source code
+├── Arduino/              Arduino source code
 │   ├── TallyCCUPro.ino   Main sketch
 │   ├── CCUControl.*      Camera control
 │   ├── CCUBroadcast.*    TCP broadcast server
@@ -394,21 +395,18 @@ TallyCCUPro/
 │   ├── Storage.*         EEPROM management
 │   ├── SdUtils.*         SD card operations
 │   ├── SafeMode.*        Boot failure recovery (v3.7+)
+│   ├── bmd_params.*      Blackmagic protocol definitions
 │   └── Configuration.h   Pin & address definitions
 ├── sdcard/               Web interface files  
 │   ├── index.html        Main CCU interface
 │   ├── tally.html        Tally configuration
 │   ├── sdcard.html       File manager
 │   └── safemode.html     Safe Mode diagnostics (v3.7+)
-├── companion-module/     Bitfocus Companion module
-│   ├── main.js           Module entry point
-│   ├── actions.js        CCU parameter actions
-│   ├── tcp.js            Real-time sync client
-│   ├── variables.js      Companion variables
-│   └── params.js         Parameter definitions
 ├── tools/                Serial configurator
 └── README.md
 ```
+
+> **Note**: The Bitfocus Companion module is maintained in a separate repository: [companion-module-tallyccu-pro](https://github.com/fiverecords/companion-module-tallyccu-pro)
 
 ---
 
@@ -418,7 +416,7 @@ TallyCCU Pro is optimized for Arduino Mega's limited 8KB RAM:
 - Static buffers (no String objects in critical paths)
 - SSE-based sync (state stored in browser, not Arduino)
 - Efficient TCP handling with connection pooling
-- Typical free RAM: ~1,500+ bytes (improved in v3.5)
+- Typical free RAM: ~2,000+ bytes (improved in v3.7.1)
 
 ---
 
@@ -462,13 +460,32 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 | Camera not responding | Verify camera ID matches, check SDI connection and termination |
 | Browser shows HTTPS error | Type `http://` explicitly before the IP address |
 | Sync not working | Ensure both web and Companion are connected; check serial monitor for SSE status |
-| Settings reset after reboot | Update to v3.6+ which fixes the override persistence bug |
+| Settings reset after reboot | Resolved in v3.5+; update firmware if running an older version |
+| Controls not working on tablet | Requires v3.7.1+ which adds touch support for knobs, wheels, and joystick |
 
 ---
 
 ## Changelog
 
-### v3.7 (Latest)
+### v3.7.1 (Latest)
+- **Fixed**: vMix reconnection loop flooding network (now uses progressive backoff)
+- **Fixed**: Tally lights stuck ON after vMix disconnect
+- **Fixed**: CCU Broadcast TCP buffer truncation (64→128 bytes)
+- **Fixed**: Tally mappings not loading from EEPROM on page open
+- **Fixed**: SD card deadlock in preset error paths
+- **Fixed**: Virgin EEPROM loading invalid network config (255.255.255.255)
+- **Fixed**: MAC address generation off-by-one
+- **Fixed**: Safe Mode page deletable from SD card manager
+- **Fixed**: Filenames with apostrophes breaking SD card manager UI
+- **Fixed**: JSON filename escaping in file listing endpoint
+- **New**: Touch support for knobs, color wheels, and PTZ joystick (tablet/phone)
+- **New**: `getTallyMap` API endpoint for reading stored mappings
+- **Improved**: Color wheel drag throttled to ~30fps
+- **Improved**: Fetch error handling across entire web interface
+- **Improved**: Eliminated unnecessary String allocations in serial commands
+- **Improved**: Free RAM ~2,000+ bytes (up from ~1,500 in v3.5)
+
+### v3.7
 - **New**: Safe Mode recovery system for boot failures
 - **New**: Automatic boot loop detection (enters Safe Mode after 3 consecutive failures)
 - **New**: Diagnostic web interface (`safemode.html`) for troubleshooting
