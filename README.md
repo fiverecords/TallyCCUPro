@@ -271,12 +271,15 @@ For testing or troubleshooting, you can force Safe Mode on the next boot:
 
 ## Bitfocus Companion Module
 
+TallyCCU Pro is available as an **official Bitfocus Companion module**, so you can install it directly from within Companion — no manual setup required.
+
 ### Installation
 
-1. Copy `companion-module/` to Companion's dev modules directory
-2. Run `yarn install` inside the folder
-3. In Companion Settings, set developer modules path
-4. Add connection: "TallyCCU Pro"
+1. Open Bitfocus Companion (v4 or later)
+2. Go to the **Connections** tab
+3. Click **Add connection**
+4. Search for **"TallyCCU Pro"** (or *Fiverecords*)
+5. Add the connection and configure it with your Arduino's IP address
 
 ### Actions Available
 
@@ -405,8 +408,6 @@ TallyCCUPro/
 ├── tools/                Serial configurator
 └── README.md
 ```
-
-> **Note**: The Bitfocus Companion module is maintained in a separate repository: [companion-module-tallyccu-pro](https://github.com/fiverecords/companion-module-tallyccu-pro)
 
 ---
 
