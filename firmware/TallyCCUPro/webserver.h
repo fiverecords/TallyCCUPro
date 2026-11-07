@@ -54,12 +54,28 @@ class WebServer {
     // SSE client
     static EthernetClient _sseClient;
     static unsigned long _sseLastActivity;
-    
-    // Variables for preset value return
-    static bool _shouldReturnPresetValues;
-    static int _presetCameraIdToReturn;
-    static int _presetIdToReturn;
-    
+
+    // Result of one GET parameter; the first error of a query decides the response
+    enum ParamResult : uint8_t {
+      PARAM_OK = 0,
+      PARAM_ERR_KEY,         // 400 malformed or unknown key
+      PARAM_ERR_LENGTH,      // 400 key or value too long for the buffers
+      PARAM_ERR_CAMERA,      // 400 cameraId out of 1..MAX_CAMERAS
+      PARAM_ERR_SLOT,        // 400 tally slot out of 0..MAXTALLIES-1
+      PARAM_ERR_INPUT,       // 400 vMix input out of 1..MAX_VMIX_INPUTS
+      PARAM_ERR_MAP_CAMERA,  // 400 tally camera out of 1..MAX_CAMERAS
+      PARAM_ERR_VALUE,       // 400 value rejected
+      PARAM_ERR_SAFE_MODE    // 503 CCU not available
+    };
+
+    // Per-request state of a GET with parameters
+    struct ParamContext {
+      int8_t camera;               // cameraId of this request: 0 none, -1 invalid
+      bool badRequest;             // a 400 happened: tally map edits are dropped
+      byte mapInput[MAXTALLIES];   // staged tally map edits (0 = unchanged)
+      byte mapCam[MAXTALLIES];
+    };
+
     // Static buffers
     static char _requestBuffer[WEB_REQUEST_BUFFER_SIZE];
     static char _queryBuffer[WEB_QUERY_BUFFER_SIZE];
@@ -78,15 +94,22 @@ class WebServer {
     // Handle sync state from web via POST
     static void handleSyncStatePOST(EthernetClient &client);
     
-    // Handle GET parameters
-    static void handleParam(const char* key, const char* value, EthernetClient &client);
-    
+    // Handle GET parameters (value is URL-decoded in place)
+    static ParamResult handleParam(const char* key, char* value, ParamContext &ctx);
+
+    // /?loadPreset=cam,idx[&returnValues=1]
+    static void handleLoadPreset(EthernetClient &client, char* args);
+
     // HTTP responses
+    static void sendHeaders(EthernetClient &client, int httpCode, bool json);
+    static void sendParamResult(EthernetClient &client, ParamResult result);
     static void handleGetOverrides(EthernetClient &client);
     static void listPresetsAsJSON(EthernetClient &client);
     static void send404(EthernetClient &client);
     static void sendJSONPresetValues(EthernetClient &client, int cameraId, int presetId);
-    static void sendJSONResponse(EthernetClient &client, bool success, const char* message, int paramCount = -1);
+    static void sendJSONResponse(EthernetClient &client, int httpCode, bool success, const __FlashStringHelper* message, int paramCount = -1);
+    static void sendJSONResponse(EthernetClient &client, int httpCode, bool success, const char* message, int paramCount = -1);
+    static void sendJSONTail(EthernetClient &client, int paramCount);
     
     // SSE handling
     static void handleSSEConnection(EthernetClient &client);
@@ -107,7 +130,6 @@ class WebServer {
     static bool isNumeric(const char* str);
     static void urlDecodeInPlace(char* str);
     static int findChar(const char* str, char c, int start);
-    static int parseIntAt(const char* str, int start, int end);
     static bool startsWithConst(const char* str, const char* prefix);
     static void extractSubstring(const char* src, char* dest, int start, int end, int maxLen);
 };

@@ -18,9 +18,6 @@
 // ============================================================
 
 EthernetServer WebServer::_server(HTTP_PORT);
-bool WebServer::_shouldReturnPresetValues = false;
-int WebServer::_presetCameraIdToReturn = 0;
-int WebServer::_presetIdToReturn = 0;
 
 // SSE client
 EthernetClient WebServer::_sseClient;
@@ -35,6 +32,80 @@ char WebServer::_lineBuffer[WEB_LINE_BUFFER_SIZE];
 char WebServer::_tempBuffer[WEB_TEMP_BUFFER_SIZE];
 
 // ============================================================
+// STRICT PARSERS (no RAM literals, no truncation)
+// ============================================================
+
+// Parses "<prefix><digits><suffix>" with the suffix at the very end.
+// Returns the number (saturated at LONG_MAX) or -1 if str does not match.
+static long parseIndexed(const char* str, PGM_P prefix, PGM_P suffix) {
+  size_t n = strlen_P(prefix);
+  if (strncmp_P(str, prefix, n) != 0) return -1;
+  str += n;
+  if (!isdigit((unsigned char)*str)) return -1;   // no sign, space or empty number
+  char* end;
+  long v = strtol(str, &end, 10);
+  if (strcmp_P(end, suffix) != 0) return -1;
+  return v;
+}
+
+// tallyCam<N>Input -> N (isInput = true), cam<N>ID -> N (isInput = false), else -1
+static long parseTallyMapKey(const char* key, bool &isInput) {
+  long slot = parseIndexed(key, PSTR("tallyCam"), PSTR("Input"));
+  isInput = (slot >= 0);
+  if (!isInput) slot = parseIndexed(key, PSTR("cam"), PSTR("ID"));
+  return slot;
+}
+
+// "a.b.c.d" with four decimal octets 0..255 and nothing else
+static bool parseIPv4(const char* s, byte out[4]) {
+  for (byte i = 0; i < 4; i++) {
+    if (!isdigit((unsigned char)*s)) return false;
+    char* end;
+    long v = strtol(s, &end, 10);
+    if (v > 255 || *end != (i < 3 ? '.' : '\0')) return false;
+    out[i] = (byte)v;
+    s = end + 1;
+  }
+  return true;
+}
+
+// "0" or "1" only: anything else is rejected instead of meaning false
+static int8_t parseFlag(const char* s) {
+  if ((s[0] == '0' || s[0] == '1') && s[1] == '\0') return s[0] - '0';
+  return -1;
+}
+
+// Cuts s to size-1 bytes, drops an incomplete trailing UTF-8 sequence and
+// replaces control characters (they would break the file and JSON)
+static void clampPresetName(char* s, size_t size) {
+  size_t len = strlen(s);
+  if (len >= size) len = size - 1;
+  size_t lead = len;
+  while (lead > 0 && ((uint8_t)s[lead - 1] & 0xC0) == 0x80) lead--;
+  if (lead > 0 && (uint8_t)s[lead - 1] >= 0xC0) {
+    uint8_t c = s[lead - 1];
+    size_t need = (c >= 0xF0) ? 4 : (c >= 0xE0) ? 3 : 2;
+    if (len - (lead - 1) < need) len = lead - 1;
+  }
+  s[len] = '\0';
+  for (size_t i = 0; i < len; i++) {
+    if ((uint8_t)s[i] < 0x20 || s[i] == 0x7F) s[i] = ' ';
+  }
+}
+
+// Discards the rest of a request body (bounded wait)
+static void drainBody(EthernetClient &client, long remaining) {
+  unsigned long start = millis();
+  while (remaining > 0 && client.connected() && millis() - start < 2000) {
+    if (client.available()) {
+      client.read();
+      remaining--;
+    }
+    wdt_reset();
+  }
+}
+
+// ============================================================
 // HELPER FUNCTIONS
 // ============================================================
 
@@ -44,16 +115,6 @@ int WebServer::findChar(const char* str, char c, int start) {
     if (str[i] == c) return i;
   }
   return -1;
-}
-
-int WebServer::parseIntAt(const char* str, int start, int end) {
-  if (!str || start < 0 || end <= start) return 0;
-  char temp[16];
-  int len = end - start;
-  if (len > 15) len = 15;
-  strncpy(temp, str + start, len);
-  temp[len] = '\0';
-  return atoi(temp);
 }
 
 bool WebServer::startsWithConst(const char* str, const char* prefix) {
@@ -210,8 +271,10 @@ void WebServer::processRequests() {
 // ============================================================
 
 void WebServer::processPOSTRequest(const char* reqLine, EthernetClient &client) {
+#if DEBUG_HOT
   Serial.println(F("[POST] Received"));
-  
+#endif
+
   // Safe mode exit
   if (strstr(reqLine, "POST /safemode-exit") != NULL) {
     handleSafeModeExit(client);
@@ -247,7 +310,9 @@ void WebServer::processPOSTRequest(const char* reqLine, EthernetClient &client) 
 // ============================================================
 
 void WebServer::handleSavePresetPOST(EthernetClient &client) {
+#if DEBUG_HOT
   Serial.println(F("[POST] savePreset"));
+#endif
   
   // Read headers to get Content-Length
   int contentLength = 0;
@@ -276,91 +341,108 @@ void WebServer::handleSavePresetPOST(EthernetClient &client) {
     wdt_reset();
   }
   
+#if DEBUG_HOT
   Serial.print(F("Content-Length: "));
   Serial.println(contentLength);
+#endif
   
   if (contentLength <= 0) {
-    sendJSONResponse(client, false, "No content");
+    sendJSONResponse(client, 400, false, F("No content"));
     return;
   }
   
-  // Read body header until "data="
-  char headerBuf[96];
-  int headerLen = 0;
+  // Body "cameraId=X&presetId=Y&name=Z&data=...": parse field by field
+  // up to data= (no fixed prefix limit; a long name is cut, not rejected)
+  long cameraId = -1;
+  long presetId = -1;
+  char presetName[MAX_PRESET_NAME_LENGTH];
+  strcpy_P(presetName, PSTR("Preset"));
+  
   int bytesRead = 0;
+  int keyLen = 0;
+  int valLen = 0;
+  bool inValue = false;
+  bool valOverflow = false;
   bool foundData = false;
   
   unsigned long bodyStart = millis();
-  while (client.connected() && headerLen < 95 && bytesRead < contentLength && !foundData) {
-    if (client.available()) {
-      char c = client.read();
-      bytesRead++;
-      headerBuf[headerLen++] = c;
-      
-      if (headerLen >= 5 && strncmp(headerBuf + headerLen - 5, "data=", 5) == 0) {
-        foundData = true;
-      }
-    }
+  while (!foundData && bytesRead < contentLength && client.connected()) {
     if (millis() - bodyStart > 3000) break;
     wdt_reset();
-  }
-  headerBuf[headerLen] = '\0';
-  
-  // Decode header
-  urlDecodeInPlace(headerBuf);
-  
-  // Parse cameraId, presetId, name
-  int cameraId = 0;
-  int presetId = 0;
-  char presetName[32] = "Preset";
-  
-  char* camPtr = strstr(headerBuf, "cameraId=");
-  if (camPtr) cameraId = atoi(camPtr + 9);
-  
-  char* presetPtr = strstr(headerBuf, "presetId=");
-  if (presetPtr) presetId = atoi(presetPtr + 9);
-  
-  char* namePtr = strstr(headerBuf, "name=");
-  if (namePtr) {
-    namePtr += 5;
-    int i = 0;
-    while (namePtr[i] && namePtr[i] != '&' && i < 31) {
-      presetName[i] = namePtr[i];
-      i++;
+    if (!client.available()) continue;
+    
+    char c = client.read();
+    bytesRead++;
+    
+    if (!inValue) {
+      if (c == '=') {
+        _keyBuffer[keyLen] = '\0';
+        if (strcmp_P(_keyBuffer, PSTR("data")) == 0) {
+          foundData = true;
+        } else {
+          inValue = true;
+          valLen = 0;
+          valOverflow = false;
+        }
+      } else if (c == '&') {
+        keyLen = 0;
+      } else if (keyLen < WEB_KEY_BUFFER_SIZE - 1) {
+        _keyBuffer[keyLen++] = c;
+      }
+      continue;
     }
-    presetName[i] = '\0';
+    
+    if (c != '&') {
+      if (valLen < WEB_VALUE_BUFFER_SIZE - 1) _valueBuffer[valLen++] = c;
+      else valOverflow = true;
+      if (bytesRead < contentLength) continue;
+    }
+    
+    // End of a field value
+    _valueBuffer[valLen] = '\0';
+    if (strcmp_P(_keyBuffer, PSTR("cameraId")) == 0) {
+      cameraId = valOverflow ? -1 : parseIndexed(_valueBuffer, PSTR(""), PSTR(""));
+    } else if (strcmp_P(_keyBuffer, PSTR("presetId")) == 0) {
+      presetId = valOverflow ? -1 : parseIndexed(_valueBuffer, PSTR(""), PSTR(""));
+    } else if (strcmp_P(_keyBuffer, PSTR("name")) == 0) {
+      // 95 encoded bytes decode to >= 31 bytes: overflow only loses the tail
+      urlDecodeInPlace(_valueBuffer);
+      clampPresetName(_valueBuffer, sizeof(presetName));
+      strcpy(presetName, _valueBuffer);
+    }
+    inValue = false;
+    keyLen = 0;
   }
   
+#if DEBUG_HOT
   Serial.print(F("Cam:")); Serial.print(cameraId);
   Serial.print(F(" P:")); Serial.print(presetId);
   Serial.print(F(" N:")); Serial.println(presetName);
+#endif
   
-  if (!foundData || cameraId < 1 || cameraId > 8 || presetId < 0 || presetId > 9) {
-    // Discard rest of body
-    while (bytesRead < contentLength && client.connected()) {
-      if (client.available()) { client.read(); bytesRead++; }
-      wdt_reset();
-    }
-    sendJSONResponse(client, false, "Invalid params");
+  if (!foundData || cameraId < 1 || cameraId > MAX_CAMERAS || presetId < 0 || presetId >= MAX_PRESETS) {
+    drainBody(client, contentLength - bytesRead);
+    sendJSONResponse(client, 400, false, F("Invalid params"));
     return;
   }
   
-  // Create file
-  char filename[24];
-  snprintf(filename, sizeof(filename), "preset_%d_%d.dat", cameraId, presetId);
+  // Create file (name kept in _tempBuffer: removed again if the save fails)
+  char* filename = _tempBuffer;
+  SdUtils::getPresetFilename(filename, WEB_TEMP_BUFFER_SIZE, cameraId, presetId);
   
   if (SD.exists(filename)) {
-    SD.remove(filename);
+    if (!SD.remove(filename)) {
+      drainBody(client, contentLength - bytesRead);
+      sendJSONResponse(client, 500, false, F("File error"));
+      return;
+    }
     delay(30);
   }
   
   File presetFile = SD.open(filename, FILE_WRITE);
   if (!presetFile) {
-    while (bytesRead < contentLength && client.connected()) {
-      if (client.available()) { client.read(); bytesRead++; }
-      wdt_reset();
-    }
-    sendJSONResponse(client, false, "File error");
+    drainBody(client, contentLength - bytesRead);
+    sendJSONResponse(client, 500, false, F("File error"));
     return;
   }
   
@@ -374,8 +456,9 @@ void WebServer::handleSavePresetPOST(EthernetClient &client) {
   
   // Read data with real-time URL decode
   int paramCount = 0;
-  char paramBuf[72];
   int paramLen = 0;
+  bool paramOverflow = false;
+  int skipped = 0;   // over-long params: dropped whole, never cut
   
   unsigned long dataStart = millis();
   
@@ -403,9 +486,11 @@ void WebServer::handleSavePresetPOST(EthernetClient &client) {
       
       // Process decoded character
       if (c == ';') {
-        paramBuf[paramLen] = '\0';
-        if (paramLen > 0) {
-          presetFile.println(paramBuf);
+        _lineBuffer[paramLen] = '\0';
+        if (paramOverflow) {
+          skipped++;
+        } else if (paramLen > 0) {
+          presetFile.println(_lineBuffer);
           paramCount++;
           
           if (paramCount % 15 == 0) {
@@ -414,8 +499,11 @@ void WebServer::handleSavePresetPOST(EthernetClient &client) {
           }
         }
         paramLen = 0;
-      } else if (paramLen < 71) {
-        paramBuf[paramLen++] = c;
+        paramOverflow = false;
+      } else if (paramLen < WEB_LINE_BUFFER_SIZE - 1) {
+        _lineBuffer[paramLen++] = c;
+      } else {
+        paramOverflow = true;
       }
     }
     
@@ -424,22 +512,40 @@ void WebServer::handleSavePresetPOST(EthernetClient &client) {
       break;
     }
     
-    if (bytesRead % 150 == 0) wdt_reset();
+    wdt_reset();
   }
   
   // Last parameter
-  if (paramLen > 0) {
-    paramBuf[paramLen] = '\0';
-    presetFile.println(paramBuf);
+  if (paramOverflow) {
+    skipped++;
+  } else if (paramLen > 0) {
+    _lineBuffer[paramLen] = '\0';
+    presetFile.println(_lineBuffer);
     paramCount++;
   }
   
-  presetFile.flush();
-  presetFile.close();
+  bool writeOk = !presetFile.getWriteError();
+  writeOk = presetFile.close() && writeOk;   // close() syncs to the card
   
+  if (!writeOk || bytesRead < contentLength) {
+    // A partial preset would load only some values: do not keep it
+    SD.remove(filename);
+    drainBody(client, contentLength - bytesRead);
+    Serial.print(F("Preset save failed: "));
+    Serial.println(filename);
+    if (!writeOk) {
+      sendJSONResponse(client, 500, false, F("Write error"));
+    } else {
+      sendJSONResponse(client, 400, false, F("Incomplete data"));
+    }
+    return;
+  }
+  
+#if DEBUG_HOT
   Serial.print(F("OK: "));
   Serial.print(paramCount);
   Serial.println(F(" params"));
+#endif
   
   // Notify TCP clients that preset was saved
   CCUBroadcast::sendPresetSaved(cameraId, presetId, presetName);
@@ -447,7 +553,15 @@ void WebServer::handleSavePresetPOST(EthernetClient &client) {
   // Notify SSE client (web)
   sendSSEPresetSaved(cameraId, presetId, presetName);
   
-  sendJSONResponse(client, true, "OK", paramCount);
+  if (skipped > 0) {
+    sendHeaders(client, 200, true);
+    client.print(F("{\"success\":true,\"message\":\"OK, "));
+    client.print(skipped);
+    client.print(F(" skipped (too long)"));
+    sendJSONTail(client, paramCount);
+  } else {
+    sendJSONResponse(client, 200, true, F("OK"), paramCount);
+  }
 }
 
 // ============================================================
@@ -455,7 +569,9 @@ void WebServer::handleSavePresetPOST(EthernetClient &client) {
 // ============================================================
 
 void WebServer::handleSyncStatePOST(EthernetClient &client) {
+#if DEBUG_HOT
   Serial.println(F("[POST] syncState"));
+#endif
   
   // Read headers to get Content-Length
   int contentLength = 0;
@@ -485,7 +601,7 @@ void WebServer::handleSyncStatePOST(EthernetClient &client) {
   }
   
   if (contentLength <= 0) {
-    sendJSONResponse(client, false, "No content");
+    sendJSONResponse(client, 200, false, F("No content"));
     return;
   }
   
@@ -535,34 +651,81 @@ void WebServer::handleSyncStatePOST(EthernetClient &client) {
     wdt_reset();
   }
   
+#if DEBUG_HOT
   Serial.print(F("[syncState] Forwarded "));
   Serial.print(paramCount);
   Serial.println(F(" params to TCP"));
+#endif
   
-  sendJSONResponse(client, true, "OK", paramCount);
+  sendJSONResponse(client, 200, true, F("OK"), paramCount);
 }
 
 // ============================================================
-// SEND JSON RESPONSE
+// SEND RESPONSES
 // ============================================================
 
-void WebServer::sendJSONResponse(EthernetClient &client, bool success, const char* message, int paramCount) {
-  client.println(F("HTTP/1.1 200 OK"));
-  client.println(F("Content-Type: application/json"));
-  client.println(F("Access-Control-Allow-Origin: *"));
+// Status line and headers (JSON responses also carry CORS)
+void WebServer::sendHeaders(EthernetClient &client, int httpCode, bool json) {
+  client.print(F("HTTP/1.1 "));
+  client.print(httpCode);
+  switch (httpCode) {
+    case 200: client.println(F(" OK")); break;
+    case 400: client.println(F(" Bad Request")); break;
+    case 404: client.println(F(" Not Found")); break;
+    case 503: client.println(F(" Service Unavailable")); break;
+    default:  client.println(F(" Internal Server Error")); break;
+  }
+  if (json) {
+    client.println(F("Content-Type: application/json"));
+    client.println(F("Access-Control-Allow-Origin: *"));
+  } else {
+    client.println(F("Content-Type: text/plain"));
+  }
   client.println(F("Connection: close"));
   client.println();
-  
-  client.print(F("{\"success\":"));
-  client.print(success ? F("true") : F("false"));
-  client.print(F(",\"message\":\""));
+}
+
+// Plain-text answer to a GET with parameters: "OK" or "ERROR <reason>"
+void WebServer::sendParamResult(EthernetClient &client, ParamResult result) {
+  int code = 400;
+  const __FlashStringHelper* msg;
+  switch (result) {
+    case PARAM_OK:             code = 200; msg = F("OK"); break;
+    case PARAM_ERR_SAFE_MODE:  code = 503; msg = F("ERROR safe mode"); break;
+    case PARAM_ERR_LENGTH:     msg = F("ERROR key or value too long"); break;
+    case PARAM_ERR_CAMERA:     msg = F("ERROR bad cameraId"); break;
+    case PARAM_ERR_SLOT:       msg = F("ERROR bad tally slot"); break;
+    case PARAM_ERR_INPUT:      msg = F("ERROR bad vMix input"); break;
+    case PARAM_ERR_MAP_CAMERA: msg = F("ERROR bad tally camera"); break;
+    case PARAM_ERR_VALUE:      msg = F("ERROR bad value"); break;
+    default:                   msg = F("ERROR unknown key"); break;
+  }
+  sendHeaders(client, code, false);
+  client.println(msg);
+}
+
+// {"success":bool,"message":str[,"paramCount":n]}
+void WebServer::sendJSONResponse(EthernetClient &client, int httpCode, bool success, const __FlashStringHelper* message, int paramCount) {
+  sendHeaders(client, httpCode, true);
+  client.print(success ? F("{\"success\":true,\"message\":\"") : F("{\"success\":false,\"message\":\""));
   client.print(message);
-  client.print(F("\""));
+  sendJSONTail(client, paramCount);
+}
+
+void WebServer::sendJSONResponse(EthernetClient &client, int httpCode, bool success, const char* message, int paramCount) {
+  sendHeaders(client, httpCode, true);
+  client.print(success ? F("{\"success\":true,\"message\":\"") : F("{\"success\":false,\"message\":\""));
+  printJsonSafe(client, message);
+  sendJSONTail(client, paramCount);
+}
+
+void WebServer::sendJSONTail(EthernetClient &client, int paramCount) {
+  client.print('"');
   if (paramCount >= 0) {
     client.print(F(",\"paramCount\":"));
     client.print(paramCount);
   }
-  client.println(F("}"));
+  client.println('}');
 }
 
 // ============================================================
@@ -606,8 +769,7 @@ void WebServer::processGETRequest(const char* reqLine, EthernetClient &client) {
     client.flush();
     client.stop();
     delay(100);
-    wdt_enable(WDTO_15MS);
-    while(1);
+    SafeMode::restart();   // intentional: not counted as a boot failure
     return;
   }
 
@@ -730,7 +892,7 @@ void WebServer::processGETRequest(const char* reqLine, EthernetClient &client) {
         toPtr += 4;
         handleRenameFile(client, _queryBuffer, toPtr);
       } else {
-        sendJSONResponse(client, false, "Missing newname");
+        sendJSONResponse(client, 200, false, F("Missing newname"));
       }
     } else {
       send404(client);
@@ -761,7 +923,9 @@ void WebServer::processGETRequest(const char* reqLine, EthernetClient &client) {
   
   // listPresets
   if (strncmp(reqLine, "GET /?listPresets", 17) == 0) {
+#if DEBUG_HOT
     Serial.println(F("Listing presets"));
+#endif
     listPresetsAsJSON(client);
     return;
   }
@@ -812,39 +976,16 @@ void WebServer::processGETRequest(const char* reqLine, EthernetClient &client) {
   extractSubstring(reqLine, _queryBuffer, queryStartPos, spacePos, WEB_QUERY_BUFFER_SIZE);
   
   // loadPreset con returnValues
-  if (strncmp(_queryBuffer, "loadPreset=", 11) == 0) {
-    char* returnValuesPos = strstr(_queryBuffer, "&returnValues=");
-    bool returnValues = (returnValuesPos != NULL);
-    
-    if (returnValuesPos) *returnValuesPos = '\0';
-    
-    int commaPos = findChar(_queryBuffer, ',', 11);
-    if (commaPos > 0) {
-      int cameraId = parseIntAt(_queryBuffer, 11, commaPos);
-      int presetIdx = parseIntAt(_queryBuffer, commaPos + 1, strlen(_queryBuffer));
-      
-      Serial.print(F("Cargando preset cam:"));
-      Serial.print(cameraId);
-      Serial.print(F(" preset:"));
-      Serial.println(presetIdx);
-      
-      bool success = SdUtils::applyPreset(cameraId, presetIdx);
-      
-      if (success && returnValues) {
-        sendJSONPresetValues(client, cameraId, presetIdx);
-        return;
-      }
-    }
-    
-    client.println(F("HTTP/1.1 200 OK"));
-    client.println(F("Content-Type: text/plain"));
-    client.println(F("Connection: close"));
-    client.println();
-    client.println(F("OK"));
+  if (strncmp_P(_queryBuffer, PSTR("loadPreset="), 11) == 0) {
+    handleLoadPreset(client, _queryBuffer + 11);
     return;
   }
   
-  // Parse normal parameters
+  // Parse normal parameters. Every valid pair is applied; the first
+  // error decides the answer (200 OK, 400 or 503 "ERROR <reason>").
+  ParamContext ctx;
+  memset(&ctx, 0, sizeof(ctx));
+  ParamResult result = PARAM_OK;
   int idx = 0;
   int queryLen = strlen(_queryBuffer);
   
@@ -852,26 +993,91 @@ void WebServer::processGETRequest(const char* reqLine, EthernetClient &client) {
     int ampPos = findChar(_queryBuffer, '&', idx);
     int pairEnd = (ampPos < 0) ? queryLen : ampPos;
     
-    int eqPos = findChar(_queryBuffer, '=', idx);
-    if (eqPos > 0 && eqPos < pairEnd) {
-      extractSubstring(_queryBuffer, _keyBuffer, idx, eqPos, WEB_KEY_BUFFER_SIZE);
-      extractSubstring(_queryBuffer, _valueBuffer, eqPos + 1, pairEnd, WEB_VALUE_BUFFER_SIZE);
-      handleParam(_keyBuffer, _valueBuffer, client);
+    if (pairEnd > idx) {   // skip empty pairs ("&&", trailing '&')
+      int eqPos = findChar(_queryBuffer, '=', idx);
+      ParamResult r;
+      if (eqPos <= idx || eqPos >= pairEnd) {
+        r = PARAM_ERR_KEY;      // empty key or no '='
+      } else if (eqPos - idx >= WEB_KEY_BUFFER_SIZE || pairEnd - eqPos - 1 >= WEB_VALUE_BUFFER_SIZE) {
+        r = PARAM_ERR_LENGTH;   // never act on a truncated key or value
+      } else {
+        extractSubstring(_queryBuffer, _keyBuffer, idx, eqPos, WEB_KEY_BUFFER_SIZE);
+        extractSubstring(_queryBuffer, _valueBuffer, eqPos + 1, pairEnd, WEB_VALUE_BUFFER_SIZE);
+        r = handleParam(_keyBuffer, _valueBuffer, ctx);
+      }
+      if (r != PARAM_OK) {
+        if (r != PARAM_ERR_SAFE_MODE) ctx.badRequest = true;
+        if (result == PARAM_OK) result = r;
+      }
     }
     
     idx = (ampPos < 0) ? queryLen : ampPos + 1;
   }
+  
+  // Tally map edits are all-or-nothing: after a 400 the map is untouched
+  if (!ctx.badRequest) {
+    for (byte s = 0; s < MAXTALLIES; s++) {
+      if (ctx.mapInput[s] || ctx.mapCam[s]) {
+        TallyManager::setMapping(s, ctx.mapInput[s], ctx.mapCam[s]);
+      }
+    }
+  }
+  
+  sendParamResult(client, result);
+}
 
-  // Respuesta por defecto
-  if (_shouldReturnPresetValues) {
-    sendJSONPresetValues(client, _presetCameraIdToReturn, _presetIdToReturn);
-    _shouldReturnPresetValues = false;
+// ============================================================
+// LOAD PRESET
+// ============================================================
+
+void WebServer::handleLoadPreset(EthernetClient &client, char* args) {
+  char* rv = strstr_P(args, PSTR("&returnValues="));
+  bool returnValues = (rv != NULL && rv[14] == '1');
+  char* amp = strchr(args, '&');
+  if (amp) *amp = '\0';
+  
+  // "cam,idx", both strict decimal
+  long cameraId = -1;
+  long presetId = -1;
+  char* comma = strchr(args, ',');
+  if (comma) {
+    *comma = '\0';
+    cameraId = parseIndexed(args, PSTR(""), PSTR(""));
+    presetId = parseIndexed(comma + 1, PSTR(""), PSTR(""));
+  }
+  
+  if (cameraId < 1 || cameraId > MAX_CAMERAS || presetId < 0 || presetId >= MAX_PRESETS) {
+    sendJSONResponse(client, 400, false, F("Invalid params"));
+    return;
+  }
+  
+  if (!CCUControl::isReady()) {
+    sendJSONResponse(client, 503, false, F("safe mode"));
+    return;
+  }
+  
+  SdUtils::getPresetFilename(_tempBuffer, WEB_TEMP_BUFFER_SIZE, cameraId, presetId);
+  if (!SdUtils::fileExists(_tempBuffer)) {
+    sendJSONResponse(client, 404, false, F("Preset not found"));
+    return;
+  }
+  
+#if DEBUG_HOT
+  Serial.print(F("Loading preset cam:"));
+  Serial.print(cameraId);
+  Serial.print(F(" preset:"));
+  Serial.println(presetId);
+#endif
+  
+  if (!SdUtils::applyPreset(cameraId, presetId)) {
+    sendJSONResponse(client, 500, false, F("Preset load error"));
+    return;
+  }
+  
+  if (returnValues) {
+    sendJSONPresetValues(client, cameraId, presetId);
   } else {
-    client.println(F("HTTP/1.1 200 OK"));
-    client.println(F("Content-Type: text/plain"));
-    client.println(F("Connection: close"));
-    client.println();
-    client.println(F("OK"));
+    sendJSONResponse(client, 200, true, F("OK"));
   }
 }
 
@@ -879,23 +1085,19 @@ void WebServer::processGETRequest(const char* reqLine, EthernetClient &client) {
 // ENVIAR JSON CON VALORES DEL PRESET
 // ============================================================
 
+// Only called after a successful applyPreset: always "success":true
 void WebServer::sendJSONPresetValues(EthernetClient &client, int cameraId, int presetId) {
-  client.println(F("HTTP/1.1 200 OK"));
-  client.println(F("Content-Type: application/json"));
-  client.println(F("Access-Control-Allow-Origin: *"));
-  client.println(F("Connection: close"));
-  client.println();
+  sendHeaders(client, 200, true);
   
-  char filename[32];
-  snprintf(filename, sizeof(filename), "preset_%d_%d.dat", cameraId, presetId);
+  SdUtils::getPresetFilename(_tempBuffer, WEB_TEMP_BUFFER_SIZE, cameraId, presetId);
   
-  File presetFile = SD.open(filename);
+  File presetFile = SD.open(_tempBuffer);
   if (!presetFile) {
-    client.println(F("{\"parameters\":{}}"));
+    client.println(F("{\"success\":true,\"parameters\":{}}"));
     return;
   }
   
-  client.print(F("{\"parameters\":{"));
+  client.print(F("{\"success\":true,\"parameters\":{"));
   bool firstParam = true;
   
   while (presetFile.available()) {
@@ -916,7 +1118,7 @@ void WebServer::sendJSONPresetValues(EthernetClient &client, int cameraId, int p
     extractSubstring(_lineBuffer, _valueBuffer, colonPos + 1, len, WEB_VALUE_BUFFER_SIZE);
     urlDecodeInPlace(_valueBuffer);
     
-    if (strcmp(_keyBuffer, "cameraId") == 0 || strcmp(_keyBuffer, "presetId") == 0) {
+    if (strcmp_P(_keyBuffer, PSTR("cameraId")) == 0 || strcmp_P(_keyBuffer, PSTR("presetId")) == 0) {
       continue;
     }
     
@@ -957,97 +1159,81 @@ void WebServer::sendJSONPresetValues(EthernetClient &client, int cameraId, int p
 // HANDLE GET PARAMETERS
 // ============================================================
 
-void WebServer::handleParam(const char* key, const char* value, EthernetClient &client) {
+WebServer::ParamResult WebServer::handleParam(const char* key, char* value, ParamContext &ctx) {
   wdt_reset();
+  urlDecodeInPlace(value);
   
   // vmixConnect
-  if (strcmp(key, "vmixConnect") == 0) {
-    VmixConnector::setConnectEnabled(value[0] == '1');
-    return;
+  if (strcmp_P(key, PSTR("vmixConnect")) == 0) {
+    int8_t on = parseFlag(value);
+    if (on < 0) return PARAM_ERR_VALUE;
+    VmixConnector::setConnectEnabled(on == 1);
+    return PARAM_OK;
   }
 
   // vmixIP
-  if (strcmp(key, "vmixIP") == 0) {
-    int parts[4] = {0, 0, 0, 0};
-    int partIdx = 0;
-    int start = 0;
-    int len = strlen(value);
-    
-    for (int i = 0; i <= len && partIdx < 4; i++) {
-      if (value[i] == '.' || value[i] == '\0') {
-        parts[partIdx++] = parseIntAt(value, start, i);
-        start = i + 1;
-      }
-    }
-    
-    if (partIdx == 4) {
-      snprintf(_tempBuffer, WEB_TEMP_BUFFER_SIZE, "%d.%d.%d.%d", parts[0], parts[1], parts[2], parts[3]);
-      changeVMixIP(_tempBuffer);
-    }
-    return;
+  if (strcmp_P(key, PSTR("vmixIP")) == 0) {
+    byte ip[4];
+    if (!parseIPv4(value, ip)) return PARAM_ERR_VALUE;
+    snprintf_P(_tempBuffer, WEB_TEMP_BUFFER_SIZE, PSTR("%u.%u.%u.%u"), ip[0], ip[1], ip[2], ip[3]);
+    changeVMixIP(_tempBuffer);
+    return PARAM_OK;
   }
 
-  // Tally map - tallyCamXInput
-  if (strncmp(key, "tallyCam", 8) == 0 && strstr(key, "Input") != NULL) {
-    const char* numStart = key + 8;
-    const char* inputPos = strstr(key, "Input");
-    if (inputPos > numStart) {
-      int len = inputPos - numStart;
-      char numBuf[8];
-      strncpy(numBuf, numStart, len);
-      numBuf[len] = '\0';
-      int idx = atoi(numBuf);
-      int v = atoi(value);
-      if (idx >= 0 && idx < MAXTALLIES) {
-        TallyManager::setMapping(idx, v, 0);
-      }
+  // cameraId: target of the CCU params that follow
+  if (strcmp_P(key, PSTR("cameraId")) == 0) {
+    long cam = parseIndexed(value, PSTR(""), PSTR(""));
+    if (cam < 1 || cam > MAX_CAMERAS) {
+      ctx.camera = -1;   // following CCU params must not go to another camera
+      return PARAM_ERR_CAMERA;
     }
-    return;
-  }
-
-  // Camera map - camXID
-  if (strncmp(key, "cam", 3) == 0 && strstr(key, "ID") != NULL) {
-    const char* numStart = key + 3;
-    const char* idPos = strstr(key, "ID");
-    if (idPos > numStart) {
-      int len = idPos - numStart;
-      char numBuf[8];
-      strncpy(numBuf, numStart, len);
-      numBuf[len] = '\0';
-      int idx = atoi(numBuf);
-      int v = atoi(value);
-      if (idx >= 0 && idx < MAXTALLIES) {
-        TallyManager::setMapping(idx, 0, v);
-      }
-    }
-    return;
-  }
-
-  // cameraId
-  if (strcmp(key, "cameraId") == 0) {
-    int cameraId = atoi(value);
-    if (cameraId >= 1 && cameraId <= MAX_CAMERAS) {
-      CCUControl::setActiveCamera(cameraId);
-    }
-    return;
+    ctx.camera = (int8_t)cam;
+    CCUControl::setActiveCamera(cam);
+    return PARAM_OK;
   }
 
   // Overrides
-  if (strcmp(key, "overrideTally") == 0) {
-    TallyManager::setOverride(value[0] == '1');
-    return;
+  if (strcmp_P(key, PSTR("overrideTally")) == 0) {
+    int8_t on = parseFlag(value);
+    if (on < 0) return PARAM_ERR_VALUE;
+    TallyManager::setOverride(on == 1);
+    return PARAM_OK;
   }
 
-  if (strcmp(key, "overrideCCU") == 0) {
-    CCUControl::setOverride(value[0] == '1');
-    return;
+  if (strcmp_P(key, PSTR("overrideCCU")) == 0) {
+    if (!CCUControl::isReady()) return PARAM_ERR_SAFE_MODE;
+    int8_t on = parseFlag(value);
+    if (on < 0) return PARAM_ERR_VALUE;
+    CCUControl::setOverride(on == 1);
+    return PARAM_OK;
   }
 
-  // CCU params por defecto
-  strncpy(_valueBuffer, value, WEB_VALUE_BUFFER_SIZE - 1);
-  _valueBuffer[WEB_VALUE_BUFFER_SIZE - 1] = '\0';
-  urlDecodeInPlace(_valueBuffer);
-  CCUControl::applyParameterByKey(key, _valueBuffer);
+  // Tally map: tallyCam<slot>Input=<vMix input>, cam<slot>ID=<camera>.
+  // Staged in ctx; processGETRequest commits it if the query had no 400.
+  bool isInput;
+  long slot = parseTallyMapKey(key, isInput);
+  if (slot >= 0) {
+    if (slot >= MAXTALLIES) return PARAM_ERR_SLOT;
+    long v = parseIndexed(value, PSTR(""), PSTR(""));
+    if (isInput) {
+      if (v < 1 || v > MAX_VMIX_INPUTS) return PARAM_ERR_INPUT;
+      ctx.mapInput[slot] = (byte)v;
+    } else {
+      if (v < 1 || v > MAX_CAMERAS) return PARAM_ERR_MAP_CAMERA;
+      ctx.mapCam[slot] = (byte)v;
+    }
+    return PARAM_OK;
+  }
+
+  // Anything else is a CCU parameter
+  if (ctx.camera < 0) return PARAM_ERR_CAMERA;
+  if (!CCUControl::isReady()) {
+    return CCUControl::findParamDefByKey(key) ? PARAM_ERR_SAFE_MODE : PARAM_ERR_KEY;
+  }
+  if (CCUControl::applyParameterByKey(key, value, ctx.camera > 0 ? ctx.camera : -1)) {
+    return PARAM_OK;
+  }
+  return CCUControl::findParamDefByKey(key) ? PARAM_ERR_VALUE : PARAM_ERR_KEY;
 }
 
 // ============================================================
@@ -1064,6 +1250,8 @@ void WebServer::handleGetOverrides(EthernetClient &client) {
   client.print(TallyManager::getOverride() ? F("true") : F("false"));
   client.print(F(",\"overrideCCU\":"));
   client.print(CCUControl::getOverride() ? F("true") : F("false"));
+  client.print(F(",\"ccuAvailable\":"));
+  client.print(CCUControl::isReady() ? F("true") : F("false"));
   client.println(F("}"));
 }
 
@@ -1207,7 +1395,9 @@ void WebServer::handleRenameFile(EthernetClient &client, const char* oldName, co
 }
 
 void WebServer::handleUploadFile(EthernetClient &client) {
+#if DEBUG_HOT
   Serial.println(F("[POST] upload"));
+#endif
   
   // Read headers HTTP
   long contentLength = 0;
@@ -1251,7 +1441,7 @@ void WebServer::handleUploadFile(EthernetClient &client) {
   
   if (contentLength <= 0 || boundary[0] == '\0') {
     while (client.available()) client.read();
-    sendJSONResponse(client, false, "Bad request");
+    sendJSONResponse(client, 200, false, F("Bad request"));
     return;
   }
   
@@ -1312,7 +1502,7 @@ void WebServer::handleUploadFile(EthernetClient &client) {
           while (bytesRead < contentLength && client.available()) {
             client.read(); bytesRead++;
           }
-          sendJSONResponse(client, false, "SD error");
+          sendJSONResponse(client, 200, false, F("SD error"));
           return;
         }
       }
@@ -1354,7 +1544,11 @@ void WebServer::handleUploadFile(EthernetClient &client) {
     uploadFile.close();
   }
   
-  sendJSONResponse(client, filename[0] != '\0', filename[0] != '\0' ? filename : "No file");
+  if (filename[0] != '\0') {
+    sendJSONResponse(client, 200, true, filename);
+  } else {
+    sendJSONResponse(client, 200, false, F("No file"));
+  }
 }
 
 // ============================================================
