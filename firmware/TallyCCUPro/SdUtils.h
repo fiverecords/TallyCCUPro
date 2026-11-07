@@ -1,7 +1,7 @@
 /*
  * SdUtils.h
  * SD card utilities and preset management
- * Version 3.7.1
+ * Version 3.8
  */
 
 #ifndef SD_UTILS_H

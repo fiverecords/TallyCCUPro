@@ -1,7 +1,7 @@
 /*
  * Storage.cpp
  * EEPROM storage implementation
- * Version 3.7.1
+ * Version 3.8
  * 
  * Features EEPROM wear leveling (only writes if value changed)
  */

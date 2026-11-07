@@ -7,7 +7,7 @@
  * - Invalid SDI input signal (4K, Level A, etc.)
  * - I2C communication failures
  * 
- * TallyCCU Pro V3.7.1
+ * TallyCCU Pro V3.8
  */
 
 #ifndef SAFEMODE_H

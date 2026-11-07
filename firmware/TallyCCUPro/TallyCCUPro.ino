@@ -2,7 +2,7 @@
  * TallyCCUPro.ino
  * Tally and CCU System for Blackmagic cameras with vMix
  * 
- * Version 3.7.1
+ * Version 3.8
  * 
  * Features:
  * - Tally via SDI from vMix
@@ -79,7 +79,7 @@ void setup() {
   
   Serial.println();
   Serial.println(F("========================================="));
-  Serial.println(F("   TallyCCU Pro V3.7.1"));
+  Serial.println(F("   TallyCCU Pro V3.8"));
   Serial.println(F("========================================="));
   
   // Initialize safe mode detection (enables watchdog internally)

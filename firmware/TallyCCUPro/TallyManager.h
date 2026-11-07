@@ -1,7 +1,7 @@
 /*
  * TallyManager.h
  * Tally map and camera control management
- * Version 3.7.1
+ * Version 3.8
  */
 
 #ifndef TALLY_MANAGER_H

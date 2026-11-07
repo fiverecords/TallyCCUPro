@@ -1,7 +1,7 @@
 /*
  * bmd_params.h
  * Blackmagic camera parameter definitions
- * Version 3.7.1
+ * Version 3.8
  * 
  * Based on Blackmagic Camera Control Protocol
  */

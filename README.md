@@ -472,7 +472,53 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 
 ## Changelog
 
-### v3.7.1 (Latest)
+### v3.8 (Latest)
+Phase 1 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/AUDITORIA-v3.7.1.md)).
+
+**Tally / vMix**
+- **Fixed**: Only vMix inputs 1-10 drove tally; any mapped input up to 63 now works
+- **Fixed**: Several inputs mapped to the same camera overwrote each other; states are combined and program wins over preview (one input can also drive several cameras)
+- **Fixed**: Tally now turns off when the vMix connection is lost, disabled or its IP changes (the 3.7.1 entry below claimed this, but it was not in the code)
+- **Fixed**: After a refused vMix connection the firmware kept a stale socket that the web server or Companion could reuse
+- **Fixed**: Debounce could leave a stale tally state after a quick B->A change
+- **Improved**: vMix connect attempts time out after 250 ms instead of ~1 s, so the loop is not frozen while vMix is down
+
+**Camera control**
+- **Fixed**: Exponent values from Companion (e.g. `2.7e-17`) reached the camera as huge numbers; malformed values are now rejected
+- **Fixed**: Loading a preset re-ran actions (auto white balance, autofocus, color correction reset); actions are no longer broadcast as parameter state
+- **Fixed**: Boolean `true` was applied as false
+- **Fixed**: Fixed-point values of 16.0 (e.g. gain adjust max) wrapped to -16.0
+- **Changed**: Presets no longer store or apply video mode, pan/tilt and zoom speed, PTZ memory or color bars
+
+**Web server and Safe Mode**
+- **Fixed**: Malformed tally map keys could write past a stack buffer
+- **New**: Proper HTTP status codes: `400` for invalid parameters, `503` for camera commands in Safe Mode, `404`/`500` for presets. Saving or loading a preset no longer reports success when it fails
+- **New**: `getOverrides` reports `ccuAvailable`
+- **Fixed**: In Safe Mode, camera commands no longer write to the uninitialized SDI shield
+
+**Boot and network**
+- **Fixed**: Boot-loop detection now requires 20 s of stable operation, so hangs right after boot also lead to Safe Mode
+- **Fixed**: Web `/reboot` and the serial `reset` command no longer count as boot failures
+- **Fixed**: With a blank EEPROM, tally and CCU overrides started OFF; they now default to ON, and the default vMix IP is in the same subnet as the default Arduino IP
+- **Fixed**: SPI chip selects are deselected before SD init, and SD init is retried up to 3 times
+- **Improved**: TCP retransmissions are bounded (~3 s) so a vanished client no longer blocks the loop for ~30 s
+- **Improved**: Per-parameter, per-command and per-tally serial logs are off by default (`DEBUG_HOT` in `Configuration.h`); a full serial TX buffer was blocking the loop
+
+**Web interface**
+- **Fixed**: PTZ joystick and continuous zoom: one request in flight, latest value wins, and the stop command is retried, so the head no longer keeps moving after release
+- **Fixed**: The joystick uses Pointer Events and always stops on release, cancel, window blur or tab switch
+- **Fixed**: Synced or preset values for multi-value parameters (white balance, input levels, LUT, ND) were reverted by the next local change
+- **Fixed**: A preset loaded while switching cameras was shown on the wrong camera
+- **Fixed**: Preset save and load show the real result and error message; names are limited to 31 bytes
+- **Fixed**: Gain adjust maximum is 15.99
+- **Fixed**: Tally page accepts vMix inputs 1-63 and shows server errors
+
+**Project**
+- **Changed**: Sketch moved to `firmware/TallyCCUPro/` (Arduino requires the folder to match the `.ino` name)
+- **Fixed**: `#include "WebServer.h"` did not match `webserver.h`, breaking builds on case-sensitive file systems (Linux, CI)
+- **Fixed**: README I2C bridge wiring: A4 -> SDA (Mega pin 20), A5 -> SCL (Mega pin 21)
+
+### v3.7.1
 - **Fixed**: vMix reconnection loop flooding network (now uses progressive backoff)
 - **Fixed**: Tally lights stuck ON after vMix disconnect
 - **Fixed**: CCU Broadcast TCP buffer truncation (64→128 bytes)

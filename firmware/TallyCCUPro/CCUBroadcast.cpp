@@ -1,7 +1,7 @@
 /*
  * CCUBroadcast.cpp
  * TCP server for CCU change broadcasting
- * Version 3.7.1
+ * Version 3.8
  */
 
 #include "CCUBroadcast.h"

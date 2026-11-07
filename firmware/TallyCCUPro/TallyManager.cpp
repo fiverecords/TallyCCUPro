@@ -1,7 +1,7 @@
 /*
  * TallyManager.cpp
  * Tally management implementation
- * Version 3.7.1
+ * Version 3.8
  * 
  * O(n) mapping with n=10 is fast enough and saves 256 bytes of RAM
  * Safe Mode support: SDI Shield not initialized when in safe mode

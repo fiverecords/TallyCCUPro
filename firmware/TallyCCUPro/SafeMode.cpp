@@ -2,7 +2,7 @@
  * SafeMode.cpp
  * Safe mode detection and recovery system
  * 
- * TallyCCU Pro V3.7.1
+ * TallyCCU Pro V3.8
  * 
  * NOTE: Arduino bootloader clears MCUSR before sketch runs,
  * so we cannot rely on it to detect watchdog resets.
