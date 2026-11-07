@@ -30,7 +30,7 @@
 #include "TallyManager.h"
 #include "CCUControl.h"
 #include "SdUtils.h"
-#include "WebServer.h"
+#include "webserver.h"
 #include "CCUBroadcast.h"
 
 #include <avr/wdt.h>

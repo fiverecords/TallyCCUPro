@@ -31,10 +31,14 @@ class CCUControl {
     static void applyMultiValue(const BMDParamDef &paramDef, float *values, int count);
     
     // Apply parameter by key (optimized const char* version)
-    static bool applyParameterByKey(const char *paramKey, const char *value, int cameraId = -1);
+    // fromPreset: true when called while applying a stored preset
+    static bool applyParameterByKey(const char *paramKey, const char *value, int cameraId = -1, bool fromPreset = false);
     
     // String wrapper for compatibility
-    static bool applyParameterByKey(const char *paramKey, const String &value, int cameraId = -1);
+    static bool applyParameterByKey(const char *paramKey, const String &value, int cameraId = -1, bool fromPreset = false);
+    
+    // True when the SDI shield was initialized and we are not in Safe Mode
+    static bool isReady();
     
     // Find parameter definition by key (with cache)
     static const BMDParamDef* findParamDefByKey(const char *paramKey);
@@ -48,6 +52,7 @@ class CCUControl {
   private:
     static int _activeCameraId;
     static bool _overrideCameraControl;
+    static bool _initialized;
     static BMD_SDICameraControl_I2C _sdiCameraControl;
     
     // Parameter cache (avoids O(n) search)

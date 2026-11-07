@@ -37,6 +37,9 @@ class TallyManager {
     // Set all states at once (direct application)
     static void setTallyStates(bool states[MAX_CAMERAS + 1][2]);
     
+    // Turn every camera tally off (e.g. when vMix is lost or disabled)
+    static void clearAll();
+    
     // Print current tally map
     static void printCurrentMap();
 

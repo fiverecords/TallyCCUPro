@@ -6,13 +6,15 @@
 
 #include "CCUControl.h"
 #include "CCUBroadcast.h"
-#include "WebServer.h"
+#include "webserver.h"
+#include "SafeMode.h"
 #include <BMDSDIControl.h>
 #include <avr/wdt.h>
 
 // Static variable initialization
 int CCUControl::_activeCameraId = 1;
 bool CCUControl::_overrideCameraControl = true;
+bool CCUControl::_initialized = false;
 BMD_SDICameraControl_I2C CCUControl::_sdiCameraControl(BMD_I2C_ADDRESS);
 
 // Parameter cache
@@ -35,7 +37,12 @@ bool CCUControl::begin() {
   }
   _cacheIndex = 0;
   
+  _initialized = true;
   return true;
+}
+
+bool CCUControl::isReady() {
+  return _initialized && !SafeMode::isActive();
 }
 
 void CCUControl::setActiveCamera(int cameraId) {
@@ -285,7 +292,7 @@ void CCUControl::parseFloatList(const String &str, float *out, int maxCount) {
 }
 
 // Main optimized version (const char*)
-bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, int cameraId) {
+bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, int cameraId, bool fromPreset) {
   wdt_reset();
   
   int targetCameraId = (cameraId > 0) ? cameraId : _activeCameraId;
@@ -342,6 +349,6 @@ bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, in
 }
 
 // String wrapper for compatibility
-bool CCUControl::applyParameterByKey(const char *paramKey, const String &value, int cameraId) {
-  return applyParameterByKey(paramKey, value.c_str(), cameraId);
+bool CCUControl::applyParameterByKey(const char *paramKey, const String &value, int cameraId, bool fromPreset) {
+  return applyParameterByKey(paramKey, value.c_str(), cameraId, fromPreset);
 }

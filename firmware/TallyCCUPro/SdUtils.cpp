@@ -12,7 +12,7 @@
 
 #include "SdUtils.h"
 #include "CCUBroadcast.h"
-#include "WebServer.h"
+#include "webserver.h"
 
 // Static variable initialization
 SdFat SdUtils::_sd;

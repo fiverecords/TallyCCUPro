@@ -192,3 +192,8 @@ void TallyManager::setTallyStates(bool states[MAX_CAMERAS + 1][2]) {
     }
   }
 }
+
+void TallyManager::clearAll() {
+  bool states[MAX_CAMERAS + 1][2] = {{false}};
+  setTallyStates(states);
+}

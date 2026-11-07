@@ -161,7 +161,7 @@ SD Card Root/
 2. Copy to Arduino libraries folder
 
 **Upload Firmware**:
-1. Open `Arduino/TallyCCUPro.ino` in Arduino IDE
+1. Open `firmware/TallyCCUPro/TallyCCUPro.ino` in Arduino IDE
 2. Select Board: `Arduino Mega or Mega 2560`
 3. Select Port: Your Arduino's COM port
 4. Click Upload
@@ -388,24 +388,26 @@ SafeMode::begin()
 
 ```
 TallyCCUPro/
-├── Arduino/              Arduino source code
-│   ├── TallyCCUPro.ino   Main sketch
-│   ├── CCUControl.*      Camera control
-│   ├── CCUBroadcast.*    TCP broadcast server
-│   ├── TallyManager.*    Tally light control
-│   ├── VmixConnector.*   vMix integration
-│   ├── WebServer.*       HTTP & SSE server
-│   ├── Storage.*         EEPROM management
-│   ├── SdUtils.*         SD card operations
-│   ├── SafeMode.*        Boot failure recovery (v3.7+)
-│   ├── bmd_params.*      Blackmagic protocol definitions
-│   └── Configuration.h   Pin & address definitions
+├── firmware/
+│   └── TallyCCUPro/      Arduino sketch (folder name must match the .ino)
+│       ├── TallyCCUPro.ino   Main sketch
+│       ├── CCUControl.*      Camera control
+│       ├── CCUBroadcast.*    TCP broadcast server
+│       ├── TallyManager.*    Tally light control
+│       ├── VmixConnector.*   vMix integration
+│       ├── webserver.*       HTTP & SSE server
+│       ├── Storage.*         EEPROM management
+│       ├── SdUtils.*         SD card operations
+│       ├── SafeMode.*        Boot failure recovery (v3.7+)
+│       ├── bmd_params.*      Blackmagic protocol definitions
+│       └── Configuration.h   Pin & address definitions
 ├── sdcard/               Web interface files  
 │   ├── index.html        Main CCU interface
 │   ├── tally.html        Tally configuration
 │   ├── sdcard.html       File manager
 │   └── safemode.html     Safe Mode diagnostics (v3.7+)
 ├── tools/                Serial configurator
+├── docs/                 Code audit reports
 └── README.md
 ```
 
