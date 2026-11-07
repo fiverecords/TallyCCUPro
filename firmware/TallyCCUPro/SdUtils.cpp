@@ -592,7 +592,7 @@ bool SdUtils::finalizePresetFragmented(int cameraId, int presetId, int totalFrag
   return success;
 }
 
-bool SdUtils::serveFile(EthernetClient &client, const char* filename) {
+bool SdUtils::serveFile(EthernetClient &client, const char* filename, bool acceptsGzip) {
   File f = _sd.open(filename);
   if (!f) {
     client.println(F("HTTP/1.1 404 Not Found"));
@@ -658,4 +658,9 @@ bool SdUtils::tryLockSD(unsigned long timeout) {
 
 void SdUtils::unlockSD() {
   g_isBusyWithSD = false;
+}
+
+bool SdUtils::isAvailable() {
+  // Implemented in phase 2 (SD group)
+  return true;
 }

@@ -27,6 +27,9 @@ class TallyManager {
     // Get mapping at index
     static void getMapping(byte index, byte &inputNumber, byte &cameraId);
     
+    // Empty a mapping slot (input 0, camera 0)
+    static void clearMapping(byte index);
+    
     // Override management
     static void setOverride(bool enabled);
     static bool getOverride();

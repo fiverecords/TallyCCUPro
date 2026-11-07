@@ -367,3 +367,7 @@ void VmixConnector::applyTallyDirectly(const char* tallyData) {
   // that only sends I2C commands for cameras that actually changed
   TallyManager::setTallyStates(states);
 }
+
+void VmixConnector::pollTally() {
+  // Implemented in phase 2 (vMix group)
+}

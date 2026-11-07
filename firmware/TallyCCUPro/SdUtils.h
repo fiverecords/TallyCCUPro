@@ -18,6 +18,9 @@ class SdUtils {
   public:
     static bool begin();
     
+    // True while the card is mounted and usable
+    static bool isAvailable();
+    
     // SD instance access
     static SdFat& getSd();
     
@@ -41,7 +44,8 @@ class SdUtils {
     static bool finalizePresetFragmented(int cameraId, int presetId, int totalFragments);
     
     // Serve files for web
-    static bool serveFile(EthernetClient &client, const char* filename);
+    // acceptsGzip: the request had Accept-Encoding: gzip (serve <file>.gz if present)
+    static bool serveFile(EthernetClient &client, const char* filename, bool acceptsGzip = false);
     
     // URL decode functions
     static void urlDecodeInPlace(char* str);

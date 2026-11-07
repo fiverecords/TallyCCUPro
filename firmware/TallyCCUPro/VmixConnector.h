@@ -25,6 +25,10 @@ class VmixConnector {
     // Process received data (optimized - no String)
     static void processData();
     
+    // Read and apply pending vMix tally data without reconnecting. Cheap and
+    // safe to call from long-running loops (file transfers).
+    static void pollTally();
+    
     // Change IP and save to EEPROM
     static bool setVmixIP(const byte vmixip[4]);
     

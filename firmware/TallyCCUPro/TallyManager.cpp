@@ -203,3 +203,11 @@ void TallyManager::clearAll() {
   bool states[MAX_CAMERAS + 1][2] = {{false}};
   setTallyStates(states);
 }
+
+void TallyManager::clearMapping(byte index) {
+  if (index < MAXTALLIES) {
+    _inputs[index] = 0;
+    _cams[index] = 0;
+    saveMap();
+  }
+}
