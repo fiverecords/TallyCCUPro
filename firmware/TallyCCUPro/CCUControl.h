@@ -43,11 +43,17 @@ class CCUControl {
     // Find parameter definition by key (with cache)
     static const BMDParamDef* findParamDefByKey(const char *paramKey);
     
-    // Parse float list (optimized const char* version)
-    static void parseFloatList(const char *str, float *out, int maxCount);
+    // Parse comma-separated numbers (strtod, no truncation).
+    // Returns values read (rest of out[] zero-filled) or -1 if malformed:
+    // empty token, trailing garbage, NaN/Inf or more than maxCount values.
+    static int parseFloatList(const char *str, float *out, int maxCount);
     
     // String wrapper for compatibility
-    static void parseFloatList(const String &str, float *out, int maxCount);
+    static int parseFloatList(const String &str, float *out, int maxCount);
+    
+    // 1/true/on/yes -> 1, 0/false/off/no -> 0 (case-insensitive),
+    // other numbers -> (v != 0). Returns -1 if not a boolean.
+    static int8_t parseBool(const char *str);
 
   private:
     static int _activeCameraId;

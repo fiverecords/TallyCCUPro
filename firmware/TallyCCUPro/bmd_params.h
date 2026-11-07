@@ -43,4 +43,7 @@ struct BMDParamDef {
 extern BMDParamDef bmdParams[];
 extern const int BMD_PARAM_COUNT;
 
+// True if key is a TYPE_VOID (action) parameter: an event, not state
+bool bmdIsVoidParam(const char *paramKey);
+
 #endif // BMD_PARAMS_H

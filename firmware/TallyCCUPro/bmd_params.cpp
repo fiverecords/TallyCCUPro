@@ -96,3 +96,14 @@ BMDParamDef bmdParams[] = {
 };
 
 const int BMD_PARAM_COUNT = sizeof(bmdParams)/sizeof(bmdParams[0]);
+
+bool bmdIsVoidParam(const char *paramKey) {
+  if (!paramKey) return false;
+  for (int i = 0; i < BMD_PARAM_COUNT; i++) {
+    // Type test first: only the few VOID entries cost a strcmp
+    if (bmdParams[i].paramType == TYPE_VOID && strcmp(bmdParams[i].paramKey, paramKey) == 0) {
+      return true;
+    }
+  }
+  return false;
+}

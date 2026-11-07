@@ -26,6 +26,27 @@ char SdUtils::_lineBuffer[SD_LINE_BUFFER_SIZE];
 
 static bool _applyingPreset = false;
 
+// Keys never applied from a preset (TYPE_VOID actions are skipped by
+// CCUControl). video_mode changes the SDI format; the rest are momentary
+// commands/actions: velocities/speeds would leave the head or zoom moving,
+// memory_preset would store/recall a PTZ memory, color bars go on air.
+// Keep in step with NO_PRESET_PARAMS in sdcard/index.html.
+static const char kSkipVideoMode[] PROGMEM = "video_mode";
+static const char kSkipPanTilt[] PROGMEM = "pan_tilt_velocity";
+static const char kSkipZoomSpeed[] PROGMEM = "set_continuous_zoom_speed";
+static const char kSkipMemPreset[] PROGMEM = "memory_preset";
+static const char kSkipColorBars[] PROGMEM = "color_bars_display_time_seconds";
+static PGM_P const kPresetSkipKeys[] PROGMEM = {
+  kSkipVideoMode, kSkipPanTilt, kSkipZoomSpeed, kSkipMemPreset, kSkipColorBars
+};
+
+static bool isPresetSkipKey(const char* key) {
+  for (uint8_t i = 0; i < sizeof(kPresetSkipKeys) / sizeof(kPresetSkipKeys[0]); i++) {
+    if (strcmp_P(key, (PGM_P)pgm_read_ptr(&kPresetSkipKeys[i])) == 0) return true;
+  }
+  return false;
+}
+
 bool SdUtils::isApplyingPreset() {
   return _applyingPreset;
 }
@@ -135,8 +156,11 @@ bool SdUtils::savePreset(int cameraId, int presetId, const char* presetName, con
   
   bool success = false;
   
-  if (fileExists(filename)) {
-    removeFile(filename);
+  if (fileExists(filename) && !removeFile(filename)) {
+    Serial.print(F("Error removing file: "));
+    Serial.println(filename);
+    unlockSD();
+    return false;
   }
   
   File presetFile = _sd.open(filename, FILE_WRITE);
@@ -149,21 +173,36 @@ bool SdUtils::savePreset(int cameraId, int presetId, const char* presetName, con
     presetFile.print(F("presetId:"));
     presetFile.println(presetId);
     presetFile.print(F("name:"));
-    presetFile.println(presetName);
-    presetFile.print(presetData);
-    presetFile.flush();
-    presetFile.close();
+    presetFile.println(presetName ? presetName : "");
+    if (presetData) presetFile.print(presetData);
+    bool writeOk = !presetFile.getWriteError();
+    // close() syncs to the card: its result counts too
+    success = presetFile.close() && writeOk;
     
-    Serial.print(F("Preset saved: "));
+    if (success) {
+      Serial.print(F("Preset saved: "));
+    } else {
+      Serial.print(F("Error writing preset: "));
+    }
     Serial.println(filename);
-    success = true;
   }
   
   unlockSD();
   return success;
 }
 
+// True only if the file was opened and fully read. Lines with unknown keys
+// or malformed values are skipped (counted) but do not fail the preset.
 bool SdUtils::applyPreset(int cameraId, int presetId) {
+  // Safe Mode / shield not initialized: no I2C writes
+  if (!CCUControl::isReady()) {
+    return false;
+  }
+  
+  if (cameraId < 1 || cameraId > MAX_CAMERAS || presetId < 0) {
+    return false;
+  }
+  
   if (!tryLockSD(2000)) {
     Serial.println(F("Error: Could not access SD for preset"));
     return false;
@@ -188,25 +227,40 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
   
   _applyingPreset = true;
   
-  int originalCameraId = CCUControl::getActiveCamera();
-  CCUControl::setActiveCamera(cameraId);
-  
   Serial.print(F("Applying preset to camera "));
   Serial.println(cameraId);
   
   // Buffer for preset name
   char presetName[32] = "Preset";
+  bool readError = false;
+  int skipped = 0;
   
   // Read line by line to static buffer
   while (presetFile.available()) {
     int len = 0;
+    bool overflow = false;
     
-    while (presetFile.available() && len < SD_LINE_BUFFER_SIZE - 1) {
-      char c = presetFile.read();
+    while (presetFile.available()) {
+      int c = presetFile.read();
+      if (c < 0) {
+        readError = true;
+        break;
+      }
       if (c == '\n' || c == '\r') break;
-      _lineBuffer[len++] = c;
+      if (len < SD_LINE_BUFFER_SIZE - 1) {
+        _lineBuffer[len++] = (char)c;
+      } else {
+        overflow = true;   // keep reading to the end of the line
+      }
     }
+    if (readError) break;
     _lineBuffer[len] = '\0';
+    
+    // A truncated value could still parse as a wrong number: drop it
+    if (overflow) {
+      skipped++;
+      continue;
+    }
     
     if (len == 0) continue;
     
@@ -218,7 +272,7 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
     char* paramValue = colonPos + 1;
     
     // Capture preset name
-    if (strcmp(paramKey, "name") == 0) {
+    if (strcmp_P(paramKey, PSTR("name")) == 0) {
       strncpy(presetName, paramValue, 31);
       presetName[31] = '\0';
       urlDecodeInPlace(presetName);
@@ -226,20 +280,39 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
     }
     
     // Skip other metadata
-    if (strcmp(paramKey, "cameraId") == 0 ||
-        strcmp(paramKey, "presetId") == 0) {
+    if (strcmp_P(paramKey, PSTR("cameraId")) == 0 ||
+        strcmp_P(paramKey, PSTR("presetId")) == 0) {
+      continue;
+    }
+    
+    if (isPresetSkipKey(paramKey)) {
+#if DEBUG_HOT
+      Serial.print(F("[Preset] skip "));
+      Serial.println(paramKey);
+#endif
       continue;
     }
     
     urlDecodeInPlace(paramValue);
-    CCUControl::applyParameterByKey(paramKey, paramValue);
+    if (!CCUControl::applyParameterByKey(paramKey, paramValue, cameraId, true)) {
+      skipped++;
+#if DEBUG_HOT
+      Serial.print(F("[Preset] rejected "));
+      Serial.println(paramKey);
+#endif
+    }
   }
   
   presetFile.close();
-  CCUControl::setActiveCamera(originalCameraId);
   
   _applyingPreset = false;
   unlockSD();
+  
+  if (readError) {
+    Serial.print(F("Error reading preset: "));
+    Serial.println(filename);
+    return false;
+  }
   
   // Notify TCP clients (Companion)
   CCUBroadcast::sendPresetLoaded(cameraId, presetId, presetName);
@@ -247,7 +320,12 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
   // Notify SSE client (web)
   WebServer::sendSSEPresetLoaded(cameraId, presetId, presetName);
   
-  Serial.println(F("Preset applied"));
+  Serial.print(F("Preset applied"));
+  if (skipped > 0) {
+    Serial.print(F(", lines rejected: "));
+    Serial.print(skipped);
+  }
+  Serial.println();
   return true;
 }
 
@@ -328,8 +406,9 @@ bool SdUtils::initPresetFragmented(int cameraId, int presetId, const char* prese
   char filename[SD_PATH_BUFFER_SIZE];
   getPresetFilename(filename, SD_PATH_BUFFER_SIZE, cameraId, presetId, true);
   
-  if (fileExists(filename)) {
-    removeFile(filename);
+  if (fileExists(filename) && !removeFile(filename)) {
+    Serial.println(F("ERROR: Could not remove temp file"));
+    return false;
   }
   
   _presetFragmentedFile = _sd.open(filename, FILE_WRITE);
@@ -343,8 +422,15 @@ bool SdUtils::initPresetFragmented(int cameraId, int presetId, const char* prese
   _presetFragmentedFile.print(F("presetId:"));
   _presetFragmentedFile.println(presetId);
   _presetFragmentedFile.print(F("name:"));
-  _presetFragmentedFile.println(presetName);
+  _presetFragmentedFile.println(presetName ? presetName : "");
   _presetFragmentedFile.flush();
+  
+  if (_presetFragmentedFile.getWriteError()) {
+    Serial.println(F("ERROR: Could not write temp file"));
+    _presetFragmentedFile.close();
+    removeFile(filename);
+    return false;
+  }
   
   _presetFragmentedInProgress = true;
   
@@ -363,19 +449,18 @@ bool SdUtils::addPresetFragment(int cameraId, int presetId, int fragmentNumber, 
     return false;
   }
   
-  if (!_presetFragmentedFile) {
-    char filename[SD_PATH_BUFFER_SIZE];
-    getPresetFilename(filename, SD_PATH_BUFFER_SIZE, cameraId, presetId, true);
-    _presetFragmentedFile = _sd.open(filename, FILE_WRITE);
-    if (!_presetFragmentedFile) {
-      _presetFragmentedInProgress = false;
-      return false;
-    }
-    _presetFragmentedFile.seek(_presetFragmentedFile.size());
+  if (!fragmentData) {
+    abortPresetFragmented();
+    return false;
   }
   
+  // A truncated fragment would store a cut value: fail the whole preset
   int dataLen = strlen(fragmentData);
-  if (dataLen >= SD_LINE_BUFFER_SIZE) dataLen = SD_LINE_BUFFER_SIZE - 1;
+  if (dataLen >= SD_LINE_BUFFER_SIZE) {
+    Serial.println(F("ERROR: Fragment too long"));
+    abortPresetFragmented();
+    return false;
+  }
   strncpy(_lineBuffer, fragmentData, dataLen);
   _lineBuffer[dataLen] = '\0';
   urlDecodeInPlace(_lineBuffer);
@@ -397,13 +482,35 @@ bool SdUtils::addPresetFragment(int cameraId, int presetId, int fragmentNumber, 
   _receivedFragmentsCount++;
   _presetFragmentedFile.flush();
   
+  if (_presetFragmentedFile.getWriteError()) {
+    Serial.println(F("ERROR: Could not write fragment"));
+    abortPresetFragmented();
+    return false;
+  }
+  
   Serial.print(F("Frag #"));
   Serial.print(fragmentNumber);
   Serial.print(F(": "));
   Serial.print(pairsProcessed);
   Serial.println(F(" pairs"));
-  
+
   return true;
+}
+
+// Drop a fragmented preset in progress (temp file removed, final file untouched)
+void SdUtils::abortPresetFragmented() {
+  if (_presetFragmentedFile) {
+    _presetFragmentedFile.close();
+  }
+  char filename[SD_PATH_BUFFER_SIZE];
+  getPresetFilename(filename, SD_PATH_BUFFER_SIZE, _currentFragmentedPresetCamera, _currentFragmentedPresetId, true);
+  if (fileExists(filename)) {
+    removeFile(filename);
+  }
+  _presetFragmentedInProgress = false;
+  _currentFragmentedPresetCamera = 0;
+  _currentFragmentedPresetId = 0;
+  _receivedFragmentsCount = 0;
 }
 
 bool SdUtils::finalizePresetFragmented(int cameraId, int presetId, int totalFragments) {
@@ -412,14 +519,26 @@ bool SdUtils::finalizePresetFragmented(int cameraId, int presetId, int totalFrag
     return false;
   }
   
+  if (cameraId != _currentFragmentedPresetCamera || presetId != _currentFragmentedPresetId) {
+    Serial.println(F("ERROR: IDs don't match"));
+    return false;
+  }
+  
+  // Missing fragments or a failed final sync: keep the previous preset
+  bool closeOk = true;
   if (_presetFragmentedFile) {
-    _presetFragmentedFile.flush();
-    _presetFragmentedFile.close();
+    closeOk = !_presetFragmentedFile.getWriteError();
+    closeOk = _presetFragmentedFile.close() && closeOk;
+  }
+  if (!closeOk || (totalFragments > 0 && _receivedFragmentsCount != totalFragments)) {
+    Serial.println(F("ERROR: Incomplete preset"));
+    abortPresetFragmented();
+    return false;
   }
   
   if (!tryLockSD(2000)) {
     Serial.println(F("ERROR: Could not access SD"));
-    return false;
+    return false;   // temp file kept closed: finalize can be retried
   }
   
   bool success = false;
@@ -433,6 +552,7 @@ bool SdUtils::finalizePresetFragmented(int cameraId, int presetId, int totalFrag
     if (!_sd.remove(finalFilename)) {
       Serial.println(F("ERROR: Could not delete existing file"));
       unlockSD();
+      abortPresetFragmented();
       return false;
     }
     delay(50);

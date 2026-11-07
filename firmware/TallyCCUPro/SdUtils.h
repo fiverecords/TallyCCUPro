@@ -64,6 +64,7 @@ class SdUtils {
     static int _currentFragmentedPresetCamera;
     static int _currentFragmentedPresetId;
     static int _receivedFragmentsCount;
+    static void abortPresetFragmented();
     
     // Buffers for optimized operations
     static uint8_t _sdBuffer[SD_BUFFER_SIZE];
