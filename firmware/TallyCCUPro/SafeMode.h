@@ -66,6 +66,7 @@ public:
   static void exitSafeMode();       // Clear counters and restart
   static void enterSafeMode();      // Force safe mode on next boot
   static void forceNormalBoot();    // Force normal boot (for testing)
+  static void restart();            // Intentional restart: not counted as a boot failure
   
   // Diagnostic strings
   static const char* getResetReasonString();

@@ -143,6 +143,18 @@ void SafeMode::enterSafeMode() {
   while(1);
 }
 
+void SafeMode::restart() {
+  // Intentional restart (web /reboot, serial "reset"): clear the crash
+  // detection flag first so the next boot is not counted as a failure.
+  EEPROM.put(EEPROM_RESET_FLAG_ADDR, (uint16_t)0);
+  
+  delay(100);
+  
+  // Trigger watchdog reset
+  wdt_enable(WDTO_15MS);
+  while(1);
+}
+
 void SafeMode::forceNormalBoot() {
   Serial.println(F("[SafeMode] Forcing normal boot..."));
   
