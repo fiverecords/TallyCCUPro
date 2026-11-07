@@ -473,7 +473,7 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 ## Changelog
 
 ### v3.8 (Latest)
-Phase 1 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/AUDITORIA-v3.7.1.md)).
+Phase 1 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/AUDITORIA-v3.7.1.md)). Compatible with the current Bitfocus Companion module (v3.1.0), checked with differential tests of v3.7.1 vs v3.8 driving the unmodified module.
 
 **Tally / vMix**
 - **Fixed**: Only vMix inputs 1-10 drove tally; any mapped input up to 63 now works
@@ -488,7 +488,8 @@ Phase 1 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/A
 - **Fixed**: Loading a preset re-ran actions (auto white balance, autofocus, color correction reset); actions are no longer broadcast as parameter state
 - **Fixed**: Boolean `true` was applied as false
 - **Fixed**: Fixed-point values of 16.0 (e.g. gain adjust max) wrapped to -16.0
-- **Changed**: Presets no longer store or apply video mode, pan/tilt and zoom speed, PTZ memory or color bars
+- **Changed**: Loading a preset no longer applies pan/tilt or zoom speed (the head could keep moving) or color bars. PTZ memory recall is still applied, but a stored "memory store" is ignored (it overwrote the memory). Video mode is still applied, except the never-set default `60,0,6,0,0` (UHD 60p) that older web presets and the Companion module store
+- **Changed**: The web interface no longer stores video mode, actions, motion commands or color bars in presets
 
 **Web server and Safe Mode**
 - **Fixed**: Malformed tally map keys could write past a stack buffer
@@ -501,7 +502,6 @@ Phase 1 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/A
 - **Fixed**: Web `/reboot` and the serial `reset` command no longer count as boot failures
 - **Fixed**: With a blank EEPROM, tally and CCU overrides started OFF; they now default to ON, and the default vMix IP is in the same subnet as the default Arduino IP
 - **Fixed**: SPI chip selects are deselected before SD init, and SD init is retried up to 3 times
-- **Improved**: TCP retransmissions are bounded (~3 s) so a vanished client no longer blocks the loop for ~30 s
 - **Improved**: Per-parameter, per-command and per-tally serial logs are off by default (`DEBUG_HOT` in `Configuration.h`); a full serial TX buffer was blocking the loop
 
 **Web interface**

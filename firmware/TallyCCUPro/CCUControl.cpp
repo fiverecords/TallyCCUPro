@@ -260,19 +260,31 @@ int CCUControl::parseFloatList(const char *str, float *out, int maxCount) {
     return -1;
   }
   
+  // Positional: inside a list an empty field is 0 (v3.7.1 also sent 0, e.g.
+  // Companion's default "," for exposure_and_focus_tools). Non-numeric
+  // fields, NaN/Inf, trailing garbage or extra fields reject the whole list.
+  bool isList = (strchr(str, ',') != NULL);
   int idx = 0;
   const char* ptr = str;
   
   for (;;) {
-    char* end;
-    double v = strtod(ptr, &end);
-    if (end == ptr || !isfinite(v)) return -1;   // empty, non-numeric, NaN/Inf
-    while (*end == ' ') end++;
-    if (*end != ',' && *end != '\0') return -1;  // trailing garbage
+    while (*ptr == ' ') ptr++;
+    double v = 0.0;
+    const char* end = ptr;
+    if (*ptr == ',' || *ptr == '\0') {
+      if (!isList) return -1;                    // a single value can't be empty
+    } else {
+      char* e;
+      v = strtod(ptr, &e);
+      if (e == ptr || !isfinite(v)) return -1;   // non-numeric, NaN/Inf
+      end = e;
+      while (*end == ' ') end++;
+      if (*end != ',' && *end != '\0') return -1; // trailing garbage
+    }
     if (idx >= maxCount) return -1;              // too many values
     out[idx++] = (float)v;
     if (*end == '\0') break;
-    ptr = end + 1;                               // a token must follow ','
+    ptr = end + 1;
   }
   
   // Fill remaining with zeros

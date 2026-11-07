@@ -27,18 +27,34 @@ char SdUtils::_lineBuffer[SD_LINE_BUFFER_SIZE];
 static bool _applyingPreset = false;
 
 // Keys never applied from a preset (TYPE_VOID actions are skipped by
-// CCUControl). video_mode changes the SDI format; the rest are momentary
-// commands/actions: velocities/speeds would leave the head or zoom moving,
-// memory_preset would store/recall a PTZ memory, color bars go on air.
-// Keep in step with NO_PRESET_PARAMS in sdcard/index.html.
-static const char kSkipVideoMode[] PROGMEM = "video_mode";
+// CCUControl): velocities/speeds would leave the head or zoom moving and
+// color bars go on air. video_mode and memory_preset are filtered by value
+// in presetValueAllowed(). The web UI never stores any of them
+// (NO_PRESET_PARAMS in sdcard/index.html); Companion presets may.
 static const char kSkipPanTilt[] PROGMEM = "pan_tilt_velocity";
 static const char kSkipZoomSpeed[] PROGMEM = "set_continuous_zoom_speed";
-static const char kSkipMemPreset[] PROGMEM = "memory_preset";
 static const char kSkipColorBars[] PROGMEM = "color_bars_display_time_seconds";
 static PGM_P const kPresetSkipKeys[] PROGMEM = {
-  kSkipVideoMode, kSkipPanTilt, kSkipZoomSpeed, kSkipMemPreset, kSkipColorBars
+  kSkipPanTilt, kSkipZoomSpeed, kSkipColorBars
 };
+
+// video_mode is applied (Companion presets may switch format on purpose),
+// except "60,0,6,0,0": the never-read default that the web UI (before v3.8)
+// and the Companion module store when the format was never set, which
+// switched cameras to UHD 60p on load.
+// memory_preset: recall ("2,N") is applied as in v3.7.1; store ("1,N") is
+// dropped, it would overwrite the PTZ memory with the current position.
+static bool presetValueAllowed(const char* key, const char* value) {
+  float v[5];
+  if (strcmp_P(key, PSTR("video_mode")) == 0) {
+    if (CCUControl::parseFloatList(value, v, 5) != 5) return true;  // CCU rejects it
+    return !(v[0] == 60 && v[1] == 0 && v[2] == 6 && v[3] == 0 && v[4] == 0);
+  }
+  if (strcmp_P(key, PSTR("memory_preset")) == 0) {
+    return CCUControl::parseFloatList(value, v, 2) == 2 && v[0] == 2;
+  }
+  return true;
+}
 
 static bool isPresetSkipKey(const char* key) {
   for (uint8_t i = 0; i < sizeof(kPresetSkipKeys) / sizeof(kPresetSkipKeys[0]); i++) {
@@ -285,7 +301,8 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
       continue;
     }
     
-    if (isPresetSkipKey(paramKey)) {
+    urlDecodeInPlace(paramValue);
+    if (isPresetSkipKey(paramKey) || !presetValueAllowed(paramKey, paramValue)) {
 #if DEBUG_HOT
       Serial.print(F("[Preset] skip "));
       Serial.println(paramKey);
@@ -293,7 +310,6 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
       continue;
     }
     
-    urlDecodeInPlace(paramValue);
     if (!CCUControl::applyParameterByKey(paramKey, paramValue, cameraId, true)) {
       skipped++;
 #if DEBUG_HOT
