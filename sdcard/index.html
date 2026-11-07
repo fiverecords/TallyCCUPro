@@ -857,6 +857,8 @@ body {
   box-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
   position: relative;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
 }
 
 .knob:hover {
@@ -1380,6 +1382,8 @@ body {
   position: relative;
   cursor: crosshair;
   box-shadow: inset 0 0 25px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
+  touch-action: none;
+  user-select: none;
 }
 
 .color-wheel::before {
@@ -1817,6 +1821,8 @@ body {
   border-radius: 50%;
   position: relative;
   cursor: crosshair;
+  touch-action: none;
+  user-select: none;
 }
 
 .joystick::before {
@@ -2665,7 +2671,7 @@ let multiSubValues = {};
             <div class="wheel-pointer" id="pointer-gain"></div>
           </div>
           <div class="wheel-master">
-            <input type="range" class="master-slider gain" min="0" max="16" step="0.01" value="1" id="gain-master"
+            <input type="range" class="master-slider gain" min="0" max="15.99" step="0.01" value="1" id="gain-master"
               oninput="updateWheelMaster('gain', this.value)">
           </div>
           <div class="wheel-values">
@@ -3351,6 +3357,50 @@ for (let i = 1; i <= MAX_CAMERAS; i++) cameraValues[i] = {};
 // multiSubValues ya definido al inicio del body
 let selectedParamGroups = {};
 
+// Never stored in presets nor sent by Reset: video format and TYPE_VOID actions
+const NO_PRESET_RESET_PARAMS = new Set([
+    'video_mode',
+    'instantaneous_autofocus', 'instantaneous_auto_aperture',
+    'set_auto_wb', 'restore_auto_wb', 'correction_reset_default'
+]);
+// Never stored in presets: commands with a visible or motion effect
+const NO_PRESET_PARAMS = new Set([
+    ...NO_PRESET_RESET_PARAMS,
+    'color_bars_display_time_seconds',
+    'pan_tilt_velocity', 'set_continuous_zoom_speed', 'memory_preset'
+]);
+// Action params whose sync echo must not touch multiSubValues
+const NO_SYNC_MERGE_PARAMS = new Set(['pan_tilt_velocity', 'memory_preset']);
+
+// Firmware stores up to 31 bytes of preset name
+const PRESET_NAME_MAX_BYTES = 31;
+const utf8Encoder = new TextEncoder();
+
+function truncateUtf8(str, maxBytes) {
+    if (utf8Encoder.encode(str).length <= maxBytes) return str;
+    let out = '';
+    let bytes = 0;
+    for (const ch of str) {
+        const n = utf8Encoder.encode(ch).length;
+        if (bytes + n > maxBytes) break;
+        out += ch;
+        bytes += n;
+    }
+    return out;
+}
+
+// Reads a JSON or text/plain reply; message is the server's reason if any
+async function readReply(response) {
+    const text = await response.text().catch(() => '');
+    let data = null;
+    try { data = JSON.parse(text); } catch (e) {}
+    const fallback = `HTTP ${response.status}`;
+    const message = (data && typeof data === 'object')
+        ? (data.message || fallback)
+        : (text.trim().slice(0, 80) || fallback);
+    return { data, message };
+}
+
 // === FUNCIONES DE CACHÉ ===
 function cacheValue(paramKey, value, subIndex = null) {
     const key = subIndex !== null ? `${paramKey}[${subIndex}]` : paramKey;
@@ -3406,8 +3456,14 @@ function updateControlValue(el, value) {
     if (paramKey && el.classList.contains('knob-input')) {
         const knobName = Object.keys(knobConfig).find(k => knobConfig[k].param === paramKey);
         if (knobName) {
-            knobConfig[knobName].value = parseFloat(value);
-            updateKnobIndicator(knobName, parseFloat(value));
+            const config = knobConfig[knobName];
+            config.value = parseFloat(value);
+            updateKnobIndicator(knobName, config.value);
+            // Multi-valued knob (ND): keep its sub-index in multiSubValues
+            if (config.subIndex !== undefined && Number.isFinite(config.value)) {
+                if (!multiSubValues[config.param]) multiSubValues[config.param] = [];
+                multiSubValues[config.param][config.subIndex] = config.value;
+            }
         }
     }
     
@@ -3474,6 +3530,68 @@ function toggleCheckbox(key, cb) {
     sendParam(key, v);
 }
 
+// === CONTINUOUS MOTION SENDERS ===
+// One request in flight per param, last value wins, ~14 Hz max.
+// stop() drops pending values and retries the stop until the server answers OK.
+const MOTION_MIN_INTERVAL_MS = 70;
+const MOTION_TIMEOUT_MS = 2000;
+const MOTION_STOP_RETRIES = 5;
+const MOTION_STOP_RETRY_MS = 100;
+
+function makeMotionSender(key, stopValue) {
+    const pending = new Map();   // cameraId -> { value, isStop, retries }
+    let busy = false;
+
+    const pump = async () => {
+        if (busy || pending.size === 0) return;
+        busy = true;
+        const [cam, item] = pending.entries().next().value;
+        pending.delete(cam);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), MOTION_TIMEOUT_MS);
+        let ok = false;
+        try {
+            // keepalive: a stop still goes out if the page is closing
+            const r = await fetch(`/?cameraId=${cam}&${key}=${item.value}`,
+                { signal: ctrl.signal, cache: 'no-store', keepalive: item.isStop });
+            ok = r.ok;
+        } catch (e) {}
+        clearTimeout(timer);
+        let wait = MOTION_MIN_INTERVAL_MS;
+        // Retry a failed stop unless a newer value for that camera is queued
+        if (item.isStop && !ok && !pending.has(cam)) {
+            if (item.retries < MOTION_STOP_RETRIES) {
+                item.retries++;
+                pending.set(cam, item);
+                wait = MOTION_STOP_RETRY_MS;
+            } else {
+                showSaveStatus(`CAM ${cam}: ${key} stop not confirmed`, 'error');
+                hideSaveStatus(3000);
+            }
+        }
+        setTimeout(() => { busy = false; pump(); }, wait);
+    };
+
+    return {
+        send(cam, value) {
+            pending.delete(cam);
+            pending.set(cam, { value, isStop: false, retries: 0 });
+            pump();
+        },
+        stop(cam) {
+            pending.delete(cam);
+            pending.set(cam, { value: stopValue, isStop: true, retries: 0 });
+            pump();
+        }
+    };
+}
+
+const motionSenders = {
+    pan_tilt_velocity: makeMotionSender('pan_tilt_velocity', '0,0'),
+    set_continuous_zoom_speed: makeMotionSender('set_continuous_zoom_speed', '0')
+};
+const motionCam = {};   // paramKey -> camera being moved
+
 // === SLIDERS SIMPLES ===
 function simpleSliderInput(paramKey, slider) {
     const value = parseFloat(slider.value);
@@ -3527,7 +3645,7 @@ function styledSliderInput(paramKey, subIndex, slider) {
 function multiSubOnChange(key) {
     if (key === "pan_tilt_velocity") {
         multiSubValues[key] = [0, 0];
-        fetch(`/?cameraId=${currentCamera}&${key}=0,0`).catch(() => {});
+        motionSenders.pan_tilt_velocity.stop(currentCamera);
     } else {
         const arr = multiSubValues[key] || [];
         const valStr = arr.map(v => typeof v === 'number' ? parseFloat(v.toFixed(2)) : v).join(",");
@@ -3561,7 +3679,9 @@ function continuousSliderInput(paramKey, slider) {
     const input = document.getElementById(paramKey + '_input');
     if (input) input.value = value.toFixed(2);
     cacheValue(paramKey, value);
-    sendParam(paramKey, value);
+    // Keep the camera that started moving until release
+    if (motionCam[paramKey] === undefined) motionCam[paramKey] = currentCamera;
+    motionSenders[paramKey].send(motionCam[paramKey], parseFloat(value.toFixed(2)));
 }
 
 function continuousSliderRelease(paramKey, slider) {
@@ -3569,7 +3689,20 @@ function continuousSliderRelease(paramKey, slider) {
     const input = document.getElementById(paramKey + '_input');
     if (input) input.value = "0.00";
     cacheValue(paramKey, 0);
-    sendParam(paramKey, 0);
+    const cam = motionCam[paramKey];
+    if (cam === undefined) return;   // already stopped
+    delete motionCam[paramKey];
+    motionSenders[paramKey].stop(cam);
+}
+
+// Release a continuous slider on any end of gesture, not only on 'change'
+function initContinuousSlider(paramKey) {
+    const slider = document.getElementById(paramKey + '_range');
+    if (!slider) return;
+    const end = () => { if (motionCam[paramKey] !== undefined) continuousSliderRelease(paramKey, slider); };
+    ['pointerup', 'pointercancel', 'blur'].forEach(t => slider.addEventListener(t, end));
+    window.addEventListener('blur', end);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) end(); });
 }
 
 // === OVERRIDES ===
@@ -3594,16 +3727,28 @@ function getOverrides() {
         });
 }
 
+// Flip the button only when the server accepts the change
+function sendOverride(key, val, btnId) {
+    fetch(`/?${key}=${val}`)
+        .then(async r => {
+            if (r.ok) return updateToggleBtn(btnId, val);
+            const { message } = await readReply(r);
+            showSaveStatus(`${key}: ${message}`, 'error');
+            hideSaveStatus(3000);
+        })
+        .catch(() => {});
+}
+
 function toggleOverrideTally() {
     const btn = document.getElementById('btnTally');
     const newVal = btn.classList.contains('active') ? 0 : 1;
-    fetch(`/?overrideTally=${newVal}`).then(() => updateToggleBtn('btnTally', newVal));
+    sendOverride('overrideTally', newVal, 'btnTally');
 }
 
 function toggleOverrideCCU() {
     const btn = document.getElementById('btnCCU');
     const newVal = btn.classList.contains('active') ? 0 : 1;
-    fetch(`/?overrideCCU=${newVal}`).then(() => updateToggleBtn('btnCCU', newVal));
+    sendOverride('overrideCCU', newVal, 'btnCCU');
 }
 
 let vmixConnectEnabled = true;
@@ -3625,9 +3770,18 @@ function getVmixConnectStatus() {
 }
 
 function toggleVmixConnect() {
-    vmixConnectEnabled = !vmixConnectEnabled;
-    fetch(`/?vmixConnect=${vmixConnectEnabled ? 1 : 0}`)
-        .then(() => updateToggleBtn('btnVmix', vmixConnectEnabled));
+    const newVal = !vmixConnectEnabled;
+    fetch(`/?vmixConnect=${newVal ? 1 : 0}`)
+        .then(async r => {
+            if (r.ok) {
+                vmixConnectEnabled = newVal;
+                return updateToggleBtn('btnVmix', vmixConnectEnabled);
+            }
+            const { message } = await readReply(r);
+            showSaveStatus(`vmixConnect: ${message}`, 'error');
+            hideSaveStatus(3000);
+        })
+        .catch(() => {});
 }
 
 function rebootArduino() {
@@ -3800,6 +3954,34 @@ function setMemoryPresetAction(action) {
     fetch(`/?cameraId=${currentCamera}&memory_preset=${action},${presetValue}`);
 }
 
+// === POINTER DRAG ===
+// Captured pointer drag: move listener only while dragging, and onEnd runs
+// once on pointerup, pointercancel, lost capture, window blur or hidden page.
+function bindPointerDrag(el, onStart, onMove, onEnd) {
+    let activeId = null;
+    const move = (e) => { if (e.pointerId === activeId) onMove(e); };
+    const end = (e) => {
+        if (activeId === null) return;
+        if (e && e.pointerId !== undefined && e.pointerId !== activeId) return;
+        const id = activeId;
+        activeId = null;
+        el.removeEventListener('pointermove', move);
+        try { if (el.hasPointerCapture(id)) el.releasePointerCapture(id); } catch (err) {}
+        onEnd();
+    };
+    el.addEventListener('pointerdown', (e) => {
+        if (activeId !== null || !e.isPrimary || e.button !== 0) return;
+        e.preventDefault();
+        activeId = e.pointerId;
+        try { el.setPointerCapture(e.pointerId); } catch (err) {}
+        el.addEventListener('pointermove', move);
+        onStart(e);
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => el.addEventListener(t, end));
+    window.addEventListener('blur', () => end());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) end(); });
+}
+
 // === KNOB CONTROLS ===
 const knobConfig = {
     aperture: { min: 0, max: 1, value: 0, param: 'aperture_normalised', step: 0.05 },
@@ -3814,21 +3996,17 @@ function initKnob(name) {
     const knob = document.getElementById(`knob-${name}`);
     if (!knob) return;
     const config = knobConfig[name];
-    let isDragging = false;
     let startY, startValue;
     
     updateKnobIndicator(name, config.value);
     
-    function startDrag(clientY, e) {
-        isDragging = true;
+    function startDrag(clientY) {
         startY = clientY;
         startValue = config.value;
         document.body.style.cursor = 'ns-resize';
-        e.preventDefault();
     }
     
     function moveDrag(clientY) {
-        if (!isDragging) return;
         const deltaY = startY - clientY;
         const range = config.max - config.min;
         const sensitivity = range / 150;
@@ -3841,29 +4019,11 @@ function initKnob(name) {
     }
     
     function endDrag() {
-        if (isDragging) {
-            isDragging = false;
-            document.body.style.cursor = '';
-            sendKnobValue(name);
-        }
+        document.body.style.cursor = '';
+        sendKnobValue(name);
     }
     
-    // Mouse events
-    knob.addEventListener('mousedown', (e) => startDrag(e.clientY, e));
-    document.addEventListener('mousemove', (e) => moveDrag(e.clientY));
-    document.addEventListener('mouseup', endDrag);
-    
-    // Touch events
-    knob.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 1) startDrag(e.touches[0].clientY, e);
-    }, { passive: false });
-    document.addEventListener('touchmove', (e) => {
-        if (isDragging && e.touches.length === 1) {
-            e.preventDefault();
-            moveDrag(e.touches[0].clientY);
-        }
-    }, { passive: false });
-    document.addEventListener('touchend', endDrag);
+    bindPointerDrag(knob, (e) => startDrag(e.clientY), (e) => moveDrag(e.clientY), endDrag);
     
     knob.addEventListener('dblclick', () => {
         const defaults = { aperture: 0, focus: 0, zoom: 0, shutter: 50, gain: 0, nd: 0 };
@@ -3945,7 +4105,6 @@ function initColorWheels() {
         const pointer = document.getElementById(`pointer-${wheelName}`);
         if (!wheel || !pointer) return;
         
-        let isDragging = false;
         let wheelThrottleTimer = null;
         
         const updatePointer = (clientX, clientY) => {
@@ -3991,40 +4150,17 @@ function initColorWheels() {
             wheelData[wheelName].b = rgb.b;
         };
         
-        function startDrag(clientX, clientY, e) {
-            isDragging = true;
-            updatePointer(clientX, clientY);
-            e.preventDefault();
-        }
-        
         function endDrag() {
-            if (isDragging) {
-                isDragging = false;
-                // Final DOM update
-                const d = wheelData[wheelName];
-                document.getElementById(`${wheelName}-r`).value = d.r.toFixed(2);
-                document.getElementById(`${wheelName}-g`).value = d.g.toFixed(2);
-                document.getElementById(`${wheelName}-b`).value = d.b.toFixed(2);
-                sendWheelValues(wheelName);
-            }
+            // Final DOM update
+            const d = wheelData[wheelName];
+            document.getElementById(`${wheelName}-r`).value = d.r.toFixed(2);
+            document.getElementById(`${wheelName}-g`).value = d.g.toFixed(2);
+            document.getElementById(`${wheelName}-b`).value = d.b.toFixed(2);
+            sendWheelValues(wheelName);
         }
         
-        // Mouse events
-        wheel.addEventListener('mousedown', (e) => startDrag(e.clientX, e.clientY, e));
-        document.addEventListener('mousemove', (e) => { if (isDragging) updatePointer(e.clientX, e.clientY); });
-        document.addEventListener('mouseup', endDrag);
-        
-        // Touch events
-        wheel.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) startDrag(e.touches[0].clientX, e.touches[0].clientY, e);
-        }, { passive: false });
-        document.addEventListener('touchmove', (e) => {
-            if (isDragging && e.touches.length === 1) {
-                e.preventDefault();
-                updatePointer(e.touches[0].clientX, e.touches[0].clientY);
-            }
-        }, { passive: false });
-        document.addEventListener('touchend', endDrag);
+        const onPointer = (e) => updatePointer(e.clientX, e.clientY);
+        bindPointerDrag(wheel, onPointer, onPointer, endDrag);
     });
 }
 
@@ -4039,24 +4175,27 @@ function sendWheelMaster(wheelName) {
     sendWheelValues(wheelName);
 }
 
+// [r, g, b, y] rounded to 2 decimals and clamped to the protocol range
+function getWheelValues(wheelName) {
+    const range = wheelRanges[wheelName];
+    const data = wheelData[wheelName];
+    return [data.r, data.g, data.b, data.y].map(v =>
+        Math.min(range.max, Math.max(range.min, parseFloat(v.toFixed(2)))));
+}
+
 function sendWheelValues(wheelName) {
     const paramKey = wheelParamMap[wheelName];
-    const data = wheelData[wheelName];
-    // Limit to 2 decimals to reduce size
-    const r = data.r.toFixed(2);
-    const g = data.g.toFixed(2);
-    const b = data.b.toFixed(2);
-    const y = data.y.toFixed(2);
-    multiSubValues[paramKey] = [parseFloat(r), parseFloat(g), parseFloat(b), parseFloat(y)];
-    const valStr = `${r},${g},${b},${y}`;
+    const values = getWheelValues(wheelName);
+    multiSubValues[paramKey] = values;
+    const valStr = values.map(v => v.toFixed(2)).join(',');
     fetch(`/?cameraId=${currentCamera}&${paramKey}=${encodeURIComponent(valStr)}`).catch(() => {});
 }
 
-// Ranges per BMD protocol
+// Ranges per BMD protocol (fixed16 tops out below 16.0)
 const wheelRanges = {
     lift:   { min: -2, max: 2, default: 0 },
     gamma:  { min: -4, max: 4, default: 0 },
-    gain:   { min: 0, max: 16, default: 1 },
+    gain:   { min: 0, max: 15.99, default: 1 },
     offset: { min: -8, max: 8, default: 0 }
 };
 
@@ -4371,6 +4510,12 @@ function setNdDisplayMode(value, btn) {
     multiSubOnChange('nd_filter_stop');
 }
 
+function updateNdModeVisual(value) {
+    document.querySelectorAll('.nd-mode-mini .nd-mode-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.value == value);
+    });
+}
+
 // === SHUTTER PRESETS BASED ON FRAME RATE ===
 function getCurrentFrameRate() {
     if (multiSubValues["video_mode"] && multiSubValues["video_mode"][0]) {
@@ -4422,7 +4567,7 @@ function initJoystick() {
     const handle = document.getElementById('joystick-handle');
     if (!joystick || !handle) return;
     
-    let isDragging = false;
+    let dragCam = currentCamera;   // camera captured at drag start
     
     const updateJoystick = (clientX, clientY) => {
         const rect = joystick.getBoundingClientRect();
@@ -4445,7 +4590,7 @@ function initJoystick() {
         document.getElementById('tilt-value').textContent = tilt;
         
         multiSubValues["pan_tilt_velocity"] = [parseFloat(pan), parseFloat(tilt)];
-        fetch(`/?cameraId=${currentCamera}&pan_tilt_velocity=${pan},${tilt}`).catch(() => {});
+        motionSenders.pan_tilt_velocity.send(dragCam, `${pan},${tilt}`);
     };
     
     const resetJoystick = () => {
@@ -4455,29 +4600,13 @@ function initJoystick() {
         document.getElementById('pan-value').textContent = '0.00';
         document.getElementById('tilt-value').textContent = '0.00';
         multiSubValues["pan_tilt_velocity"] = [0, 0];
-        fetch(`/?cameraId=${currentCamera}&pan_tilt_velocity=0,0`).catch(() => {});
+        motionSenders.pan_tilt_velocity.stop(dragCam);
     };
     
-    // Mouse events
-    joystick.addEventListener('mousedown', (e) => { isDragging = true; updateJoystick(e.clientX, e.clientY); });
-    document.addEventListener('mousemove', (e) => { if (isDragging) updateJoystick(e.clientX, e.clientY); });
-    document.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; resetJoystick(); } });
-    
-    // Touch events
-    joystick.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 1) {
-            isDragging = true;
-            updateJoystick(e.touches[0].clientX, e.touches[0].clientY);
-            e.preventDefault();
-        }
-    }, { passive: false });
-    document.addEventListener('touchmove', (e) => {
-        if (isDragging && e.touches.length === 1) {
-            e.preventDefault();
-            updateJoystick(e.touches[0].clientX, e.touches[0].clientY);
-        }
-    }, { passive: false });
-    document.addEventListener('touchend', () => { if (isDragging) { isDragging = false; resetJoystick(); } });
+    bindPointerDrag(joystick,
+        (e) => { dragCam = currentCamera; updateJoystick(e.clientX, e.clientY); },
+        (e) => updateJoystick(e.clientX, e.clientY),
+        resetJoystick);
 }
 
 // === SYNC via SSE (Server-Sent Events) ===
@@ -4670,13 +4799,16 @@ async function sendCachedStateToArduino() {
 async function syncFromArduino() {
     if (syncInProgress) return;
     syncInProgress = true;
+    const cam = currentCamera;
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), SYNC_CONFIG.timeout);
-        const response = await fetch(`/?getParams=${currentCamera}&t=${Date.now()}`, { signal: controller.signal, cache: 'no-store' });
+        const response = await fetch(`/?getParams=${cam}&t=${Date.now()}`, { signal: controller.signal, cache: 'no-store' });
         clearTimeout(timeoutId);
         if (response.ok) {
             const data = await response.json();
+            // Camera changed while waiting: the reply is not for the visible UI
+            if (cam !== currentCamera) return;
             if (data?.params) processSyncData(data);
         }
     } catch (e) {
@@ -4710,6 +4842,28 @@ function updateFieldFromSync(paramKey, value) {
     // Manejar controles especiales que no tienen data-paramkey
     if (handleSpecialControlSync(paramKey, value)) {
         return;
+    }
+
+    // Multi-valued param: merge into multiSubValues so the next partial edit
+    // sends the synced values. Like the firmware (parseFloatList), missing
+    // sub-indexes are 0: a scalar "4" for ND means [4, 0].
+    const multi = multiSubValues[paramKey];
+    if (Array.isArray(multi) && !NO_SYNC_MERGE_PARAMS.has(paramKey)) {
+        const nums = (Array.isArray(value) ? value : String(value).split(','))
+            .map(v => typeof v === 'number' ? v : parseFloat(v));
+        // The firmware rejects malformed lists, so the camera did not change
+        if (nums.length === 0 || !nums.every(Number.isFinite)) return;
+        // Skip the sub-index the user is dragging right now
+        const busy = (activeEl && activeEl.dataset && activeEl.dataset.paramkey === paramKey &&
+            activeEl.dataset.subindex !== undefined && activeEl.matches(':active'))
+            ? parseInt(activeEl.dataset.subindex) : -1;
+        const len = Math.max(multi.length, nums.length);
+        for (let i = 0; i < len; i++) {
+            if (i !== busy) multi[i] = i < nums.length ? nums[i] : 0;
+        }
+        // Repaint every sub-index from the merged state
+        value = multi.slice();
+        if (paramKey === 'nd_filter_stop') updateNdModeVisual(multi[1]);
     }
     
     document.querySelectorAll(`[data-paramkey="${paramKey}"]`).forEach(el => {
@@ -4946,7 +5100,7 @@ function collectAllParameters() {
         const groupId = parent.id.replace('group_', '');
         if (!selectedParamGroups[groupId]) return;
         const key = el.dataset.paramkey;
-        if (!key) return;
+        if (!key || NO_PRESET_PARAMS.has(key)) return;
         const type = el.dataset.paramtype;
         if (type === 'checkbox') params[key] = el.checked ? 1 : 0;
         else if (type !== 'void') params[key] = el.value;
@@ -4960,7 +5114,7 @@ function collectAllParameters() {
         if (!selectedParamGroups[groupId]) return;
         const key = el.dataset.paramkey;
         const subIndex = parseInt(el.dataset.subindex);
-        if (!key || isNaN(subIndex)) return;
+        if (!key || isNaN(subIndex) || NO_PRESET_PARAMS.has(key)) return;
         const type = el.dataset.paramtype;
         let value = type === 'sub-check' ? (el.checked ? 1 : 0) : el.value;
         if (type === 'sub-void') return;
@@ -4976,14 +5130,19 @@ function collectAllParameters() {
         params[key] = values;
     });
     
+    // ND: the DOM only holds the stop; keep the display mode too
+    if (params['nd_filter_stop'] !== undefined) {
+        const nd = multiSubValues['nd_filter_stop'] || [0, 0];
+        params['nd_filter_stop'] = [nd[0] || 0, nd[1] || 0];
+    }
+
     // Add special Color Correction controls if group is selected
     if (selectedParamGroups['color_correction']) {
-        // Color Wheels - limitar a 2 decimales
-        const fmt = (v) => parseFloat(v.toFixed(2));
-        params['lift_adjust'] = [fmt(wheelData.lift.r), fmt(wheelData.lift.g), fmt(wheelData.lift.b), fmt(wheelData.lift.y)];
-        params['gamma_adjust'] = [fmt(wheelData.gamma.r), fmt(wheelData.gamma.g), fmt(wheelData.gamma.b), fmt(wheelData.gamma.y)];
-        params['gain_adjust'] = [fmt(wheelData.gain.r), fmt(wheelData.gain.g), fmt(wheelData.gain.b), fmt(wheelData.gain.y)];
-        params['offset_adjust'] = [fmt(wheelData.offset.r), fmt(wheelData.offset.g), fmt(wheelData.offset.b), fmt(wheelData.offset.y)];
+        // Color Wheels - 2 decimals, clamped to protocol range
+        params['lift_adjust'] = getWheelValues('lift');
+        params['gamma_adjust'] = getWheelValues('gamma');
+        params['gain_adjust'] = getWheelValues('gain');
+        params['offset_adjust'] = getWheelValues('offset');
         
         // Contrast/Pivot
         params['contrast_adjust'] = multiSubValues['contrast_adjust'] || [0.5, 1];
@@ -5025,8 +5184,10 @@ function hideSaveStatus(delay = 0) {
 async function savePreset(idx) {
     if (saveInProgress) return alert('Guardado en progreso');
     saveInProgress = true;
-    const presetName = document.getElementById("presetName_" + idx).value || `Preset ${idx + 1}`;
-    localStorage.setItem(`preset_${currentCamera}_${idx}`, presetName);
+    const cam = currentCamera;
+    const nameEl = document.getElementById("presetName_" + idx);
+    const presetName = truncateUtf8(nameEl.value.trim() || `Preset ${idx + 1}`, PRESET_NAME_MAX_BYTES);
+    nameEl.value = presetName;
     showSaveStatus(`Saving "${presetName}"...`, 'info', 30);
     try {
         const params = collectAllParameters();
@@ -5038,14 +5199,18 @@ async function savePreset(idx) {
         }
         showSaveStatus('Sending...', 'info', 60);
         // Body: cameraId=X&presetId=Y&name=Z&data=...
-        const body = `cameraId=${currentCamera}&presetId=${idx}&name=${encodeURIComponent(presetName)}&data=${dataString}`;
+        const body = `cameraId=${cam}&presetId=${idx}&name=${encodeURIComponent(presetName)}&data=${dataString}`;
         const response = await fetch('/savePreset', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: body
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        showSaveStatus(`"${presetName}" saved ✓`, 'success', 100);
+        const { data, message } = await readReply(response);
+        if (!response.ok || !data || data.success !== true) throw new Error(message);
+        // Remember the name only once the Arduino confirms the save
+        localStorage.setItem(`preset_${cam}_${idx}`, presetName);
+        const count = Number.isFinite(data.paramCount) ? ` (${data.paramCount})` : '';
+        showSaveStatus(`"${presetName}" saved ✓${count}`, 'success', 100);
     } catch (error) {
         showSaveStatus(`Error: ${error.message}`, 'error');
     } finally {
@@ -5055,24 +5220,28 @@ async function savePreset(idx) {
 }
 
 async function loadPreset(idx) {
+    const cam = currentCamera;
     const presetName = document.getElementById("presetName_" + idx).value || `Preset ${idx + 1}`;
     showSaveStatus(`Loading "${presetName}"...`, 'info', 50);
     try {
         // Formato esperado: /?loadPreset=cameraId,presetIdx&returnValues=1
-        const response = await fetch(`/?loadPreset=${currentCamera},${idx}&returnValues=1`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
+        const response = await fetch(`/?loadPreset=${cam},${idx}&returnValues=1`, { cache: 'no-store' });
+        const { data, message } = await readReply(response);
+        if (!response.ok || !data || data.success !== true) throw new Error(message);
         // El servidor devuelve 'parameters' no 'params'
-        const params = data?.parameters || data?.params;
-        if (params) {
+        const params = data.parameters || data.params;
+        // Old presets may hold keys the firmware skips on load: do not show them
+        if (params) NO_PRESET_PARAMS.forEach(k => delete params[k]);
+        // Camera changed while loading: SSE already updated cameraStates[cam]
+        if (params && cam === currentCamera) {
             // Force refresh by clearing known state for these parameters
             Object.keys(params).forEach(key => {
-                delete lastKnownState[`cam${currentCamera}_${key}`];
+                delete lastKnownState[`cam${cam}_${key}`];
             });
             // Actualizar UI con los valores del preset
-            processSyncData({ cameraId: currentCamera, params: params });
+            processSyncData({ cameraId: cam, params: params });
         }
-        showSaveStatus(`"${presetName}" loaded ✓`, 'success', 100);
+        showSaveStatus(`CAM ${cam}: "${presetName}" loaded ✓`, 'success', 100);
     } catch (error) {
         console.error('[Preset] Load error:', error);
         showSaveStatus(`Error: ${error.message}`, 'error');
@@ -5087,6 +5256,13 @@ function resetSelectedGroupParams() {
     let count = 0;
     const selectedGroups = Object.entries(selectedParamGroups).filter(([_, sel]) => sel).map(([g]) => g);
     
+    // ND display mode back to Stop; the ND knob reset below sends both sub-indexes
+    if (selectedGroups.includes('video')) {
+        if (!multiSubValues['nd_filter_stop']) multiSubValues['nd_filter_stop'] = [0, 0];
+        multiSubValues['nd_filter_stop'][1] = 0;
+        updateNdModeVisual(0);
+    }
+
     document.querySelectorAll('.tabcontent').forEach(tab => {
         const groupId = tab.id.replace('group_', '');
         if (!selectedGroups.includes(groupId)) return;
@@ -5096,6 +5272,7 @@ function resetSelectedGroupParams() {
             const paramKey = el.dataset.paramkey;
             
             if (defVal === undefined) return;
+            if (NO_PRESET_RESET_PARAMS.has(paramKey)) return;
             
             const type = el.dataset.paramtype;
             
@@ -5161,19 +5338,7 @@ function resetSelectedGroupParams() {
     
     // Resetear controles especiales de Video
     if (selectedGroups.includes('video')) {
-        // Video Mode - reset a defaults (60fps, Regular, UHD, Progressive, YUV)
-        multiSubValues['video_mode'] = [60, 0, 6, 0, 0];
-        document.getElementById('video_mode_0_range').value = 60;
-        document.getElementById('video_mode_1_range').value = 0;
-        document.getElementById('video_mode_3_range').value = 0;
-        document.getElementById('video_mode_4_range').value = 0;
-        const dimSelect = document.getElementById('video_mode_2_select');
-        if (dimSelect) dimSelect.value = 6;
-        updateVideoModeToggleVisual(0, 60);
-        updateVideoModeToggleVisual(1, 0);
-        updateVideoModeToggleVisual(3, 0);
-        multiSubOnChange('video_mode');
-        updateShutterPresets();
+        // Video Mode is never reset: it would change the camera format
         
         // Manual White Balance - reset a 5600K, tint 10
         multiSubValues['manual_white_balance'] = [5600, 10];
@@ -5200,8 +5365,7 @@ function resetSelectedGroupParams() {
         updateToggleVisual('set_auto_exposure_mode', 0);
         sendParam('set_auto_exposure_mode', 0);
         
-        // ND Filter - reset a 0 (single value for consistency with presets)
-        sendParam('nd_filter_stop', 0);
+        // ND Filter: sent once by the knob loop above, mode already reset
         
         count += 10;
     }
@@ -5333,7 +5497,18 @@ document.addEventListener('DOMContentLoaded', function() {
     Object.keys(knobConfig).forEach(initKnob);
     initColorWheels();
     initJoystick();
+    initContinuousSlider('set_continuous_zoom_speed');
     initColorSliderEvents();
+
+    // Preset names: limit to what the firmware stores (bytes, not characters)
+    document.querySelectorAll('.preset-name').forEach(el => {
+        const clip = () => {
+            const t = truncateUtf8(el.value, PRESET_NAME_MAX_BYTES);
+            if (t !== el.value) el.value = t;
+        };
+        el.addEventListener('input', (e) => { if (!e.isComposing) clip(); });
+        el.addEventListener('compositionend', clip);
+    });
     updatePresetNames();
     updateShutterPresets();
     updateContrastPivot();
