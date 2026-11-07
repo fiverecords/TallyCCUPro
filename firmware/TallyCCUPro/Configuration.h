@@ -58,7 +58,9 @@
 // SD CARD CONFIGURATION
 // ============================================================
 #define SD_PIN_CS 4               // CS pin for SD card
+#define ETH_PIN_CS 10             // CS pin for W5500 (Ethernet Shield 2)
 #define SD_BUFFER_SIZE 256        // Buffer size for SD operations
+#define SD_INIT_ATTEMPTS 3        // SD begin() attempts at boot
 
 // ============================================================
 // TIMEOUTS AND RETRY

@@ -43,7 +43,9 @@ void StorageManager::loadNetworkConfig(IPAddress &localIP, IPAddress &gateway, I
     subnet[i]  = EEPROM.read(EEPROM_SUBNET_START + i);
   }
   
-  // Protect against uninitialized EEPROM (all 0xFF or all 0x00)
+  // Protect against uninitialized EEPROM (all 0xFF or all 0x00).
+  // Factory default 192.168.0.100/24; the default vMix IP
+  // (loadVMixIPFromEEPROM) is in the same /24.
   if (localIP[0] == 0 || localIP[0] == 255) {
     localIP = IPAddress(192, 168, 0, 100);
     gateway = IPAddress(192, 168, 0, 1);
@@ -79,8 +81,9 @@ void StorageManager::loadOverrides(bool &tallyOverride, bool &ccuOverride) {
   byte tallyByte = EEPROM.read(EEPROM_TALLY_OVERRIDE_ADDR);
   byte ccuByte = EEPROM.read(EEPROM_CCU_OVERRIDE_ADDR);
   
-  tallyOverride = (tallyByte == 1);
-  ccuOverride = (ccuByte == 1);
+  // 0xFF (never written) => ON, same as vmixConnect
+  tallyOverride = (tallyByte != 0);
+  ccuOverride = (ccuByte != 0);
 }
 
 void StorageManager::saveOverrides(bool tallyOverride, bool ccuOverride) {
@@ -93,9 +96,10 @@ void StorageManager::loadOverrides(bool &tallyOverride, bool &ccuOverride, bool 
   byte ccuByte = EEPROM.read(EEPROM_CCU_OVERRIDE_ADDR);
   byte vmixByte = EEPROM.read(EEPROM_VMIX_CONNECT_ADDR);
   
-  tallyOverride = (tallyByte == 1);
-  ccuOverride = (ccuByte == 1);
-  vmixConnect = (vmixByte != 0); // Assume true if never written
+  // 0xFF (never written) => ON for all three
+  tallyOverride = (tallyByte != 0);
+  ccuOverride = (ccuByte != 0);
+  vmixConnect = (vmixByte != 0);
 }
 
 void StorageManager::saveOverrides(bool tallyOverride, bool ccuOverride, bool vmixConnect) {

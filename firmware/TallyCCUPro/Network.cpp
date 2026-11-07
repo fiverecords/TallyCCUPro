@@ -188,6 +188,12 @@ void NetworkManager::getMACAddress(byte *mac) {
 bool NetworkManager::restartEthernet() {
   Ethernet.maintain();
   Ethernet.begin(_mac, _localIP, _dns, _gateway, _subnet);
+  // Bound TCP retransmissions (all sockets: vMix, HTTP, SSE, 8098) so a send
+  // to a vanished peer gives up in ~3 s, well under the 8 s watchdog.
+  // RTR doubles on each retry, RCR+1 tries: 100 ms * (1+2+4+8+16) = 3.1 s.
+  // W5500 default (200 ms, RCR 8) is ~31.8 s. Re-applied after every begin().
+  Ethernet.setRetransmissionTimeout(100);  // ms (lib converts to 100 us units)
+  Ethernet.setRetransmissionCount(4);
   delay(1000);
   return (Ethernet.linkStatus() != LinkOFF);
 }

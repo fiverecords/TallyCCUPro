@@ -49,7 +49,27 @@ unsigned long lastBroadcastProcess = 0;
 char serialBuffer[64];
 int serialBufferIndex = 0;
 
+// SD init with retries; each failed attempt can take ~2 s
+bool beginSdWithRetry() {
+  for (uint8_t attempt = 0; attempt < SD_INIT_ATTEMPTS; attempt++) {
+    if (SdUtils::begin()) return true;
+    wdt_reset();
+  }
+  return false;
+}
+
 void setup() {
+  // Deselect every SPI slave before any SPI access (SD or Ethernet):
+  // pin 10 floats until Ethernet.begin() and can corrupt SD init.
+  // HIGH before OUTPUT so a CS line never glitches low.
+  digitalWrite(SD_PIN_CS, HIGH);
+  pinMode(SD_PIN_CS, OUTPUT);
+  digitalWrite(ETH_PIN_CS, HIGH);
+  pinMode(ETH_PIN_CS, OUTPUT);
+  // Hardware SS (pin 53) must be an output to keep the Mega SPI master
+  digitalWrite(SS, HIGH);
+  pinMode(SS, OUTPUT);
+  
   // ============================================================
   // CRITICAL: SafeMode.begin() MUST be called FIRST!
   // It enables watchdog and detects boot loops.
@@ -95,7 +115,7 @@ void setupNormal() {
   
   // Initialize SD card
   Serial.println(F("[2/9] Initializing SD..."));
-  if (!SdUtils::begin()) {
+  if (!beginSdWithRetry()) {
     Serial.println(F("ERROR: SD not available"));
   }
   wdt_reset();
@@ -142,8 +162,7 @@ void setupNormal() {
   CCUBroadcast::begin();
   wdt_reset();
   
-  // Mark boot as complete - this clears the crash counter
-  SafeMode::bootComplete();
+  // Boot is marked complete from loop() after BOOT_COMPLETE_DELAY_MS
   
   // Show final status
   Serial.println();
@@ -179,7 +198,7 @@ void setupSafeMode() {
   wdt_reset();
   
   Serial.println(F("[2/5] Initializing SD..."));
-  if (!SdUtils::begin()) {
+  if (!beginSdWithRetry()) {
     Serial.println(F("ERROR: SD not available"));
   }
   wdt_reset();
@@ -238,6 +257,12 @@ void loop() {
   wdt_reset();
   
   unsigned long currentMillis = millis();
+  
+  // A hang early in loop() is a boot failure too: clear the crash
+  // counter only after a stable period. Never in Safe Mode.
+  if (currentMillis > BOOT_COMPLETE_DELAY_MS && !SafeMode::isActive()) {
+    SafeMode::bootComplete();  // no-op after the first call
+  }
   
   // RAM monitor (every 10 seconds, only warn if critical)
   static unsigned long lastRamCheck = 0;
@@ -356,9 +381,7 @@ void executeSerialCommand(const char* command) {
   
   if (strcmp(command, "reset") == 0) {
     Serial.println(F("Resetting..."));
-    delay(100);
-    wdt_enable(WDTO_15MS);
-    while(1);
+    SafeMode::restart();  // intentional: not counted as a boot failure
   }
   
   if (strcmp(command, "status") == 0) {
@@ -471,11 +494,11 @@ void loadVMixIPFromEEPROM(byte vmixip[4]) {
   vmixip[2] = StorageManager::readInt(EEPROM_VMIX_IP2);
   vmixip[3] = StorageManager::readInt(EEPROM_VMIX_IP3);
   
-  // Use defaults if not initialized
+  // Use defaults if not initialized (same /24 as the default local IP)
   if (vmixip[0] == 0 || vmixip[0] == 255) {
     vmixip[0] = 192;
     vmixip[1] = 168;
-    vmixip[2] = 10;
+    vmixip[2] = 0;
     vmixip[3] = 140;
     
     StorageManager::writeInt(EEPROM_VMIX_IP0, vmixip[0]);

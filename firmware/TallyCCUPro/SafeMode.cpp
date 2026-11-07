@@ -76,8 +76,8 @@ void SafeMode::begin() {
   }
   
   // Set flag indicating we're starting boot process
-  // This will be cleared ONLY by bootComplete() if we succeed
-  // If we crash before that, next boot will see this flag = failure
+  // Cleared by bootComplete() (from loop(), after BOOT_COMPLETE_DELAY_MS)
+  // or by an intentional restart(). Any other reset before that = failure
   EEPROM.put(EEPROM_RESET_FLAG_ADDR, (uint16_t)RESET_FLAG_MAGIC);
   
   // Enable watchdog EARLY - if shield init blocks, watchdog will catch it
