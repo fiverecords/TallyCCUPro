@@ -87,9 +87,11 @@ The Blackmagic SDI Shield is designed for Arduino Uno, which has I2C pins at A4/
 
 ```
 Bridge connections on SDI Shield:
-  - A4 --> SCL
-  - A5 --> SDA
+  - A4 --> SDA  (Mega pin 20)
+  - A5 --> SCL  (Mega pin 21)
 ```
+
+On the Uno layout A4 is SDA and A5 is SCL; on the Mega, SDA is pin 20 and SCL is pin 21. Do not cross them: with SDA and SCL swapped the shield (I2C address 0x6E) does not respond and there is no tally or CCU.
 
 These bridges route the I2C signals to the correct pins. Without them, the SDI shield will not communicate with the Arduino Mega.
 
@@ -145,7 +147,7 @@ SD Card Root/
 ### Step 1: Hardware Assembly
 
 1. Stack shields in order: Mega -> Ethernet -> SDI Shield
-2. **Add I2C bridge wires**: A4 to pin 20, A5 to pin 21
+2. **Add I2C bridge wires**: A4 to SDA (Mega pin 20), A5 to SCL (Mega pin 21)
 3. Insert formatted SD card into Ethernet Shield slot
 4. Connect 9-12V power supply to SDI Shield
 5. Connect SDI output to your camera(s)
@@ -436,7 +438,7 @@ The Blackmagic 3G-SDI Arduino Shield has the following limitations:
 - **3G-SDI Level B only**: The shield only passes video when using 3G-SDI Level B. This is the default for Blackmagic devices, but other manufacturers may default to Level A. Check your camera/device settings if video is not passing through.
 
 ### Single SSE Client
-Only one SSE connection is supported at a time. Multiple browser tabs will share the same connection, but opening the interface on multiple devices simultaneously may cause sync issues.
+Only one SSE client is supported: a second tab or device disconnects the first one, and both keep reconnecting and kicking each other. Keep the interface open in a single tab on a single device.
 
 ### Network Connections
 The Arduino Ethernet library supports a maximum of 4 simultaneous TCP connections, shared between:
@@ -455,7 +457,7 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 | Problem | Solution |
 |---------|----------|
 | Web interface not loading | Verify SD card is MBR/FAT16 or FAT32, reformat with SD Association tool |
-| SDI shield not responding | Check I2C bridge wires (A4→SCL, A5→SDA on SDI shield) |
+| SDI shield not responding | Check I2C bridge wires (A4→SDA / pin 20, A5→SCL / pin 21 on SDI shield) |
 | System not booting | Connect external 9-12V power, USB is insufficient |
 | System stuck in boot loop | Check 12V power and SDI signal; after 3 failures, Safe Mode activates automatically |
 | Safe Mode activated | Fix hardware issue (12V power, valid SDI signal), then click "Restart Normal Mode" |
