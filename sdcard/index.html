@@ -243,6 +243,12 @@ body {
   color: white;
 }
 
+.toolbar-btn.unknown {
+  border-style: dashed;
+  border-color: var(--accent-orange);
+  color: var(--accent-orange);
+}
+
 .toolbar-btn.danger { color: var(--accent-red); }
 
 .toolbar-btn.danger:hover {
@@ -1992,6 +1998,54 @@ body {
 .save-status.success { border-color: var(--accent-green); }
 .save-status.error { border-color: var(--accent-red); }
 
+/* === CONNECTION INDICATOR === */
+.link-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: default;
+}
+
+.link-status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.link-status.ok .dot { background: var(--accent-green); }
+.link-status.nosync { color: var(--accent-orange); border-color: var(--accent-orange); }
+.link-status.nosync .dot { background: var(--accent-orange); }
+.link-status.offline { color: var(--accent-red); border-color: var(--accent-red); }
+.link-status.offline .dot { background: var(--accent-red); }
+
+/* === ERROR NOTICE (non-blocking) === */
+.ccu-notice {
+  position: fixed;
+  top: 70px;
+  right: var(--spacing-lg);
+  max-width: 380px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent-red);
+  border-left-width: 4px;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  font-size: 12px;
+  z-index: 9998;
+  pointer-events: none;
+}
+
 /* === RESPONSIVE === */
 @media (max-width: 1200px) {
   .color-wheels-row {
@@ -2054,6 +2108,7 @@ let multiSubValues = {};
     <span class="logo-sub">SDI Blackmagic Camera Control</span>
   </div>
   <nav class="header-nav">
+    <span id="linkStatus" class="link-status nosync" title="Connecting to TallyCCU..."><span class="dot"></span><span class="txt">Connecting</span></span>
     <button class="nav-btn" onclick="location.href='tally.html'">📺 Tally Map</button>
     <button class="nav-btn" onclick="location.href='/sd'">📁 SD Card</button>
   </nav>
@@ -2063,9 +2118,9 @@ let multiSubValues = {};
 <div class="toolbar">
   <div class="toolbar-group">
     <span class="toolbar-label">Override:</span>
-    <button id="btnTally" class="toolbar-btn active" onclick="toggleOverrideTally()">Tally <span class="status">On</span></button>
-    <button id="btnCCU" class="toolbar-btn active" onclick="toggleOverrideCCU()">CCU <span class="status">On</span></button>
-    <button id="btnVmix" class="toolbar-btn active" onclick="toggleVmixConnect()">vMix <span class="status">On</span></button>
+    <button id="btnTally" class="toolbar-btn unknown" onclick="toggleOverrideTally()" title="State unknown: click to read it">Tally <span class="status">?</span></button>
+    <button id="btnCCU" class="toolbar-btn unknown" onclick="toggleOverrideCCU()" title="State unknown: click to read it">CCU <span class="status">?</span></button>
+    <button id="btnVmix" class="toolbar-btn unknown" onclick="toggleVmixConnect()" title="State unknown: click to read it">vMix <span class="status">?</span></button>
     <div class="toolbar-divider"></div>
     <button class="toolbar-btn danger" onclick="rebootArduino()">⟳ Reboot</button>
   </div>
@@ -3344,9 +3399,10 @@ let currentCamera = 1;
 const MAX_CAMERAS = 8;
 const MAX_PRESETS = 5;
 
-// Silence unhandled fetch rejections (Arduino may be rebooting/unreachable)
+// Silence unhandled fetch rejections (Arduino may be rebooting/unreachable).
+// Chrome: 'Failed to fetch', Firefox: 'NetworkError ...', Safari: 'Load failed'.
 window.addEventListener('unhandledrejection', (e) => {
-    if (e.reason instanceof TypeError && e.reason.message.includes('fetch')) {
+    if (e.reason instanceof TypeError && /fetch|NetworkError|Load failed/i.test(e.reason.message)) {
         e.preventDefault(); // Suppress console error
     }
 });
@@ -3399,6 +3455,148 @@ async function readReply(response) {
         ? (data.message || fallback)
         : (text.trim().slice(0, 80) || fallback);
     return { data, message };
+}
+
+// === CONNECTION STATE (UI-14 / UI-15) ===
+// reachable: the last request got an HTTP answer (null = no request yet).
+// sync: 'live' while the SSE stream delivers, else 'nosync'.
+// Times are performance.now() (monotonic): a clock change does not count.
+const linkState = { reachable: null, downSince: 0, sync: 'nosync', detail: 'Connecting to TallyCCU...' };
+
+function renderLink() {
+    const el = document.getElementById('linkStatus');
+    if (!el) return;
+    let cls, txt, title;
+    if (linkState.reachable === false) {
+        cls = 'offline'; txt = 'Offline';
+        title = 'No answer from TallyCCU: changes may not be applied';
+    } else if (linkState.sync !== 'live' && !sse.everLive) {
+        cls = 'nosync'; txt = 'Connecting';
+        title = 'Waiting for live updates from TallyCCU. ' + linkState.detail;
+    } else if (linkState.sync !== 'live') {
+        cls = 'nosync'; txt = 'No sync';
+        title = 'Live updates stopped: values may be stale. ' + linkState.detail;
+    } else {
+        cls = 'ok'; txt = 'Online';
+        title = 'Connected, live updates on';
+    }
+    el.className = 'link-status ' + cls;
+    el.querySelector('.txt').textContent = txt;
+    el.title = title;
+}
+
+function setReachable(ok) {
+    const was = linkState.reachable;
+    if (was === ok) return;
+    linkState.reachable = ok;
+    if (!ok) linkState.downSince = performance.now();
+    renderLink();
+    // Back after an outage with no stream data since. Often just a slow
+    // answer: the stream is kept but must show a keepalive soon (suspect).
+    // A reset leaves it half-open: the uptime tells, and then it is reopened.
+    if (ok && was === false && sse.live && sse.lastData < linkState.downSince) {
+        sse.suspect = true;
+        checkRebootAfterOutage();
+    }
+}
+
+// One /safemode-status read per outage, at most every REBOOT_CHECK_MIN_MS
+// (a flaky link must not add load; sse.suspect still covers the gap).
+// Up for less time than the stream has been silent (whole seconds, plus
+// clock drift and the round trip): it rebooted. A stream byte meanwhile
+// clears sse.suspect.
+const REBOOT_CHECK_MIN_MS = 10000;
+const rebootCheck = { busy: false, at: -Infinity };
+
+async function checkRebootAfterOutage() {
+    const t0 = performance.now();
+    if (rebootCheck.busy || t0 - rebootCheck.at < REBOOT_CHECK_MIN_MS) return;
+    rebootCheck.busy = true;
+    rebootCheck.at = t0;
+    const data = await getJson('/safemode-status');
+    const t1 = performance.now();
+    rebootCheck.busy = false;
+    const up = Number(data?.uptime);
+    if (sse.suspect && sse.live && data && Number.isFinite(up) &&
+        (up + 2) * 1000 + (t1 - t0) < t1 - sse.lastData) {
+        sseRestart('TallyCCU restarted');
+    }
+}
+
+function setSyncState(state, detail = '') {
+    linkState.sync = state;
+    linkState.detail = detail;
+    renderLink();
+}
+
+// Non-blocking error notice, at most one every NOTICE_MIN_MS; a message that
+// arrives inside the window is shown when it ends (the latest one wins)
+const NOTICE_MIN_MS = 2000;
+const NOTICE_SHOW_MS = 3000;
+const notice = { at: -Infinity, pending: null, timer: null, hideTimer: null };
+
+function notifyError(message) {
+    const wait = notice.at + NOTICE_MIN_MS - performance.now();
+    if (wait > 0) {
+        notice.pending = message;
+        if (!notice.timer) {
+            notice.timer = setTimeout(() => {
+                notice.timer = null;
+                const m = notice.pending;
+                notice.pending = null;
+                if (m) notifyError(m);
+            }, wait);
+        }
+        return;
+    }
+    notice.at = performance.now();
+    let el = document.getElementById('ccuNotice');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'ccuNotice';
+        el.className = 'ccu-notice';
+        el.setAttribute('role', 'alert');
+        document.body.appendChild(el);
+    }
+    el.textContent = message;
+    clearTimeout(notice.hideTimer);
+    notice.hideTimer = setTimeout(() => el.remove(), NOTICE_SHOW_MS);
+}
+
+// "CAM 2 gain_db" from "/?cameraId=2&gain_db=6"
+function describeRequest(url) {
+    const q = new URL(url, location.href).searchParams;
+    const cam = q.get('cameraId');
+    const keys = [...q.keys()].filter(k => k !== 'cameraId' && k !== 'deadman' && k !== 'returnValues');
+    const what = keys.join(',') || (cam ? 'camera select' : new URL(url, location.href).pathname);
+    return (cam ? `CAM ${cam} ` : '') + what;
+}
+
+// Every CCU / API request goes through here (UI-14). Never rejects: resolves
+// to the Response, or null when the Arduino did not answer in time. HTTP
+// errors show the server's reason in the notice unless opts.quiet.
+// opts: { timeout, keepalive, quiet, init } (init: extra fetch options)
+const CCU_TIMEOUT_MS = 4000;
+
+async function sendCcu(url, opts = {}) {
+    const ctrl = new AbortController();
+    // Not cleared: it also bounds reading the body (a no-op once read)
+    setTimeout(() => ctrl.abort(), opts.timeout || CCU_TIMEOUT_MS);
+    let r = null;
+    try {
+        r = await fetch(url, { cache: 'no-store', ...(opts.init || {}),
+            signal: ctrl.signal, keepalive: !!opts.keepalive });
+    } catch (e) {}
+    setReachable(r !== null);
+    if (!opts.quiet) {
+        if (!r) {
+            notifyError(`${describeRequest(url)}: no answer from TallyCCU`);
+        } else if (!r.ok) {
+            const { message } = await readReply(r.clone());
+            notifyError(`${describeRequest(url)}: ${message}`);
+        }
+    }
+    return r;
 }
 
 // === FUNCIONES DE CACHÉ ===
@@ -3493,7 +3691,7 @@ function setCameraId(num) {
     saveCurrentStateToCache();
     currentCamera = num;
     highlightCameraButton(num);
-    fetch(`/?cameraId=${num}`).catch(() => {});
+    sendCcu(`/?cameraId=${num}`);
     restoreUIFromCache();
     updatePresetNames();
     
@@ -3517,46 +3715,74 @@ function saveCurrentStateToCache() {
 function sendParam(key, val) {
     const v = typeof val === 'number' ? parseFloat(val.toFixed(2)) : val;
     cacheValue(key, v);
-    fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(v)}`).catch(() => {});
+    return sendCcu(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(v)}`);
 }
 
 function triggerVoid(key) {
-    fetch(`/?cameraId=${currentCamera}&${key}=1`).catch(() => {});
+    return sendCcu(`/?cameraId=${currentCamera}&${key}=1`);
 }
 
-function toggleCheckbox(key, cb) {
+// The checkbox flips back if the change was not accepted
+async function toggleCheckbox(key, cb) {
+    const cam = currentCamera;
     const v = cb.checked ? 1 : 0;
-    cacheValue(key, v);
-    sendParam(key, v);
+    const r = await sendParam(key, v);
+    if ((!r || !r.ok) && cam === currentCamera && cb.checked === !!v) {
+        cb.checked = !v;
+        cacheValue(key, v ? 0 : 1);
+    }
 }
 
 // === CONTINUOUS MOTION SENDERS ===
 // One request in flight per param, last value wins, ~14 Hz max.
 // stop() drops pending values and retries the stop until the server answers OK.
+// A non-zero speed carries deadman=1 and is re-sent every MOTION_REFRESH_MS
+// while held: the firmware stops it after PTZ_DEADMAN_MS (600) without one
+// (HTTP-01). Companion never sends deadman, so its speeds are not affected.
 const MOTION_MIN_INTERVAL_MS = 70;
 const MOTION_TIMEOUT_MS = 2000;
 const MOTION_STOP_RETRIES = 5;
 const MOTION_STOP_RETRY_MS = 100;
+const MOTION_REFRESH_MS = 250;
+
+function isZeroSpeed(value) {
+    return String(value).split(',').every(v => Number(v) === 0);
+}
 
 function makeMotionSender(key, stopValue) {
     const pending = new Map();   // cameraId -> { value, isStop, retries }
+    const moving = new Map();    // cameraId -> non-zero speed being held
+    const sentAt = new Map();    // cameraId -> start of the last speed request
     let busy = false;
+    let refreshTimer = null;
+
+    // Queue the held speed of every camera not sent for MOTION_REFRESH_MS
+    const refresh = () => {
+        if (moving.size === 0) {
+            clearInterval(refreshTimer);
+            refreshTimer = null;
+            return;
+        }
+        const now = performance.now();
+        moving.forEach((value, cam) => {
+            if (!pending.has(cam) && now - (sentAt.get(cam) || 0) >= MOTION_REFRESH_MS) {
+                pending.set(cam, { value, isStop: false, retries: 0 });
+            }
+        });
+        pump();
+    };
 
     const pump = async () => {
         if (busy || pending.size === 0) return;
         busy = true;
         const [cam, item] = pending.entries().next().value;
         pending.delete(cam);
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), MOTION_TIMEOUT_MS);
-        let ok = false;
-        try {
-            // keepalive: a stop still goes out if the page is closing
-            const r = await fetch(`/?cameraId=${cam}&${key}=${item.value}`,
-                { signal: ctrl.signal, cache: 'no-store', keepalive: item.isStop });
-            ok = r.ok;
-        } catch (e) {}
-        clearTimeout(timer);
+        const deadman = !item.isStop && !isZeroSpeed(item.value);
+        if (!item.isStop) sentAt.set(cam, performance.now());
+        // keepalive: a stop still goes out if the page is closing
+        const r = await sendCcu(`/?cameraId=${cam}&${key}=${item.value}${deadman ? '&deadman=1' : ''}`,
+            { timeout: MOTION_TIMEOUT_MS, keepalive: item.isStop });
+        const ok = !!(r && r.ok);
         let wait = MOTION_MIN_INTERVAL_MS;
         // Retry a failed stop unless a newer value for that camera is queued
         if (item.isStop && !ok && !pending.has(cam)) {
@@ -3574,11 +3800,15 @@ function makeMotionSender(key, stopValue) {
 
     return {
         send(cam, value) {
+            if (isZeroSpeed(value)) moving.delete(cam);
+            else moving.set(cam, value);
+            if (moving.size && !refreshTimer) refreshTimer = setInterval(refresh, MOTION_REFRESH_MS / 5);
             pending.delete(cam);
             pending.set(cam, { value, isStop: false, retries: 0 });
             pump();
         },
         stop(cam) {
+            moving.delete(cam);
             pending.delete(cam);
             pending.set(cam, { value: stopValue, isStop: true, retries: 0 });
             pump();
@@ -3649,7 +3879,7 @@ function multiSubOnChange(key) {
     } else {
         const arr = multiSubValues[key] || [];
         const valStr = arr.map(v => typeof v === 'number' ? parseFloat(v.toFixed(2)) : v).join(",");
-        fetch(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`).catch(() => {});
+        sendCcu(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
     }
 }
 
@@ -3706,86 +3936,103 @@ function initContinuousSlider(paramKey) {
 }
 
 // === OVERRIDES ===
+// isOn: true, false, or null when the state is unknown ('?')
 function updateToggleBtn(btnId, isOn) {
     const btn = document.getElementById(btnId);
     if (btn) {
-        btn.classList.toggle('active', isOn);
-        btn.querySelector('.status').textContent = isOn ? 'On' : 'Off';
+        btn.classList.toggle('active', isOn === true);
+        btn.classList.toggle('unknown', isOn === null);
+        btn.querySelector('.status').textContent = isOn === null ? '?' : (isOn ? 'On' : 'Off');
+        btn.title = isOn === null ? 'State unknown: click to read it' : '';
     }
 }
 
-function getOverrides() {
-    fetch('/?getOverrides=1')
-        .then(r => r.json())
-        .then(data => {
-            if (data.overrideTally !== undefined) updateToggleBtn('btnTally', data.overrideTally);
-            if (data.overrideCCU !== undefined) updateToggleBtn('btnCCU', data.overrideCCU);
-        })
-        .catch(() => {
-            updateToggleBtn('btnTally', true);
-            updateToggleBtn('btnCCU', true);
-        });
+// A click on a '?' button only reads the state (read() updates the button):
+// the operator sees it and clicks again to change it. True if known.
+const toggleReading = new Set();
+
+async function toggleStateKnown(btnId, label, read) {
+    const btn = document.getElementById(btnId);
+    if (!btn.classList.contains('unknown')) return true;
+    if (toggleReading.has(btnId)) return false;
+    toggleReading.add(btnId);
+    try { await read(); } finally { toggleReading.delete(btnId); }
+    if (btn.classList.contains('unknown')) {
+        notifyError(`${label}: state unknown (no answer from TallyCCU), nothing changed`);
+    } else {
+        notifyError(`${label} is ${btn.querySelector('.status').textContent}: click again to change it`);
+    }
+    return false;
 }
 
-// Flip the button only when the server accepts the change
-function sendOverride(key, val, btnId) {
-    fetch(`/?${key}=${val}`)
-        .then(async r => {
-            if (r.ok) return updateToggleBtn(btnId, val);
-            const { message } = await readReply(r);
-            showSaveStatus(`${key}: ${message}`, 'error');
-            hideSaveStatus(3000);
-        })
-        .catch(() => {});
+// JSON body of a quiet sendCcu GET, or null if it failed
+async function getJson(url) {
+    const r = await sendCcu(url, { quiet: true });
+    if (!r || !r.ok) return null;
+    const text = await r.text().catch(() => '');
+    const match = text.match(/\{[\s\S]*\}/);
+    try { return match ? JSON.parse(match[0]) : null; } catch (e) { return null; }
+}
+
+// Unknown on failure: never show 'On' for a state that was not read
+async function getOverrides() {
+    const data = await getJson('/?getOverrides=1');
+    updateToggleBtn('btnTally', typeof data?.overrideTally === 'boolean' ? data.overrideTally : null);
+    updateToggleBtn('btnCCU', typeof data?.overrideCCU === 'boolean' ? data.overrideCCU : null);
+}
+
+// Flip the button only when the server accepts the change; with no answer
+// the change may or may not have been applied: '?'
+async function sendOverride(key, val, btnId) {
+    const r = await sendCcu(`/?${key}=${val}`);
+    if (r && r.ok) updateToggleBtn(btnId, !!val);
+    else if (!r) updateToggleBtn(btnId, null);
+}
+
+async function toggleOverride(key, btnId, label) {
+    if (!await toggleStateKnown(btnId, label, getOverrides)) return;
+    const btn = document.getElementById(btnId);
+    sendOverride(key, btn.classList.contains('active') ? 0 : 1, btnId);
 }
 
 function toggleOverrideTally() {
-    const btn = document.getElementById('btnTally');
-    const newVal = btn.classList.contains('active') ? 0 : 1;
-    sendOverride('overrideTally', newVal, 'btnTally');
+    toggleOverride('overrideTally', 'btnTally', 'Tally override');
 }
 
 function toggleOverrideCCU() {
-    const btn = document.getElementById('btnCCU');
-    const newVal = btn.classList.contains('active') ? 0 : 1;
-    sendOverride('overrideCCU', newVal, 'btnCCU');
+    toggleOverride('overrideCCU', 'btnCCU', 'CCU override');
 }
 
-let vmixConnectEnabled = true;
+// null while the state is unknown ('?')
+let vmixConnectEnabled = null;
 
-function getVmixConnectStatus() {
-    fetch('/?getVmixConnect=1')
-        .then(r => r.text())
-        .then(text => {
-            const match = text.match(/\{.*\}/);
-            if (match) {
-                const data = JSON.parse(match[0]);
-                if (data.vmixConnectEnabled !== undefined) {
-                    vmixConnectEnabled = data.vmixConnectEnabled;
-                    updateToggleBtn('btnVmix', vmixConnectEnabled);
-                }
-            }
-        })
-        .catch(console.error);
+async function getVmixConnectStatus() {
+    const data = await getJson('/?getVmixConnect=1');
+    vmixConnectEnabled = typeof data?.vmixConnectEnabled === 'boolean' ? data.vmixConnectEnabled : null;
+    updateToggleBtn('btnVmix', vmixConnectEnabled);
 }
 
-function toggleVmixConnect() {
+async function toggleVmixConnect() {
+    if (!await toggleStateKnown('btnVmix', 'vMix connection', getVmixConnectStatus)) return;
     const newVal = !vmixConnectEnabled;
-    fetch(`/?vmixConnect=${newVal ? 1 : 0}`)
-        .then(async r => {
-            if (r.ok) {
-                vmixConnectEnabled = newVal;
-                return updateToggleBtn('btnVmix', vmixConnectEnabled);
-            }
-            const { message } = await readReply(r);
-            showSaveStatus(`vmixConnect: ${message}`, 'error');
-            hideSaveStatus(3000);
-        })
-        .catch(() => {});
+    const r = await sendCcu(`/?vmixConnect=${newVal ? 1 : 0}`);
+    if (r && r.ok) vmixConnectEnabled = newVal;
+    else if (!r) vmixConnectEnabled = null;
+    else return;
+    updateToggleBtn('btnVmix', vmixConnectEnabled);
 }
 
-function rebootArduino() {
-    if (confirm("Reboot the Arduino?")) fetch('/reboot');
+// A reset leaves the stream half-open on the W5500: reopen it once the
+// Arduino is back instead of waiting for the watchdog
+const REBOOT_SSE_DELAY_MS = 3000;
+
+async function rebootArduino() {
+    if (!confirm("Reboot the Arduino?")) return;
+    const r = await sendCcu('/reboot');
+    if (r && r.ok) {
+        setSyncState('nosync', 'TallyCCU is rebooting');
+        setTimeout(() => sseRestart('TallyCCU rebooted'), REBOOT_SSE_DELAY_MS);
+    }
 }
 
 // === GROUPS ===
@@ -3853,7 +4100,7 @@ function applyExposureFocusTools() {
     if (hiddenInput0) hiddenInput0.value = tools;
     if (hiddenInput1) hiddenInput1.value = displays;
     
-    fetch(`/?cameraId=${currentCamera}&${key}=${tools},${displays}`).catch(() => {});
+    sendCcu(`/?cameraId=${currentCamera}&${key}=${tools},${displays}`);
 }
 
 function setFocusAssist(subIndex, value, btn) {
@@ -3865,7 +4112,7 @@ function setFocusAssist(subIndex, value, btn) {
     // Actualizar hidden input
     const hiddenInput = document.getElementById(`focus_assist_${subIndex}_range`);
     if (hiddenInput) hiddenInput.value = value;
-    fetch(`/?cameraId=${currentCamera}&focus_assist=${multiSubValues["focus_assist"].join(',')}`);
+    sendCcu(`/?cameraId=${currentCamera}&focus_assist=${multiSubValues["focus_assist"].join(',')}`);
 }
 
 function updateOverlayToggleVisual(subIndex, value) {
@@ -3951,7 +4198,7 @@ function setMemoryPresetSelection(preset) {
 function setMemoryPresetAction(action) {
     multiSubValues["memory_preset"][0] = action;
     const presetValue = multiSubValues["memory_preset"][1] || 0;
-    fetch(`/?cameraId=${currentCamera}&memory_preset=${action},${presetValue}`);
+    sendCcu(`/?cameraId=${currentCamera}&memory_preset=${action},${presetValue}`);
 }
 
 // === POINTER DRAG ===
@@ -4188,7 +4435,7 @@ function sendWheelValues(wheelName) {
     const values = getWheelValues(wheelName);
     multiSubValues[paramKey] = values;
     const valStr = values.map(v => v.toFixed(2)).join(',');
-    fetch(`/?cameraId=${currentCamera}&${paramKey}=${encodeURIComponent(valStr)}`).catch(() => {});
+    sendCcu(`/?cameraId=${currentCamera}&${paramKey}=${encodeURIComponent(valStr)}`);
 }
 
 // Ranges per BMD protocol (fixed16 tops out below 16.0)
@@ -4310,16 +4557,16 @@ function updateColorControl(control, value) {
     
     if (control === 'contrast') {
         multiSubValues['contrast_adjust'][1] = v;
-        fetch(`/?cameraId=${currentCamera}&contrast_adjust=${multiSubValues['contrast_adjust'].join(',')}`);
+        sendCcu(`/?cameraId=${currentCamera}&contrast_adjust=${multiSubValues['contrast_adjust'].join(',')}`);
     } else if (control === 'pivot') {
         multiSubValues['contrast_adjust'][0] = v;
-        fetch(`/?cameraId=${currentCamera}&contrast_adjust=${multiSubValues['contrast_adjust'].join(',')}`);
+        sendCcu(`/?cameraId=${currentCamera}&contrast_adjust=${multiSubValues['contrast_adjust'].join(',')}`);
     } else if (control === 'saturation') {
         multiSubValues['color_adjust'][1] = v;
-        fetch(`/?cameraId=${currentCamera}&color_adjust=${multiSubValues['color_adjust'].join(',')}`);
+        sendCcu(`/?cameraId=${currentCamera}&color_adjust=${multiSubValues['color_adjust'].join(',')}`);
     } else if (control === 'hue') {
         multiSubValues['color_adjust'][0] = v;
-        fetch(`/?cameraId=${currentCamera}&color_adjust=${multiSubValues['color_adjust'].join(',')}`);
+        sendCcu(`/?cameraId=${currentCamera}&color_adjust=${multiSubValues['color_adjust'].join(',')}`);
     } else if (control === 'lummix') {
         sendParam('luma_mix', v);
     }
@@ -4405,7 +4652,7 @@ function sendContrastPivot() {
     contrastPivotTimeout = setTimeout(() => {
         const pivot = parseFloat(multiSubValues['contrast_adjust'][0].toFixed(2));
         const contrast = parseFloat(multiSubValues['contrast_adjust'][1].toFixed(2));
-        fetch(`/?cameraId=${currentCamera}&contrast_adjust=${pivot},${contrast}`);
+        sendCcu(`/?cameraId=${currentCamera}&contrast_adjust=${pivot},${contrast}`);
     }, 50);
 }
 
@@ -4436,7 +4683,7 @@ function sendHueSat() {
     hueSatTimeout = setTimeout(() => {
         const hue = parseFloat(multiSubValues['color_adjust'][0].toFixed(2));
         const sat = parseFloat(multiSubValues['color_adjust'][1].toFixed(2));
-        fetch(`/?cameraId=${currentCamera}&color_adjust=${hue},${sat}`);
+        sendCcu(`/?cameraId=${currentCamera}&color_adjust=${hue},${sat}`);
     }, 50);
 }
 
@@ -4446,7 +4693,7 @@ function resetHueSat() {
     document.getElementById('cc-hue-val').textContent = '0.00';
     document.getElementById('cc-saturation-val').textContent = '1.00';
     multiSubValues['color_adjust'] = [0, 1];
-    fetch(`/?cameraId=${currentCamera}&color_adjust=0,1`);
+    sendCcu(`/?cameraId=${currentCamera}&color_adjust=0,1`);
 }
 
 function updateLumMix(value) {
@@ -4610,78 +4857,276 @@ function initJoystick() {
 }
 
 // === SYNC via SSE (Server-Sent Events) ===
-const SYNC_CONFIG = { enabled: true, interval: 5000, timeout: 2000 };
-let syncTimer = null;
+// The stream is read with fetch, not EventSource, so the firmware's
+// ': keepalive' comments (sent after SSE_TIMEOUT without events) count as
+// traffic: EventSource hides comments. Nothing for sse.staleMs (two keepalive
+// periods plus a margin) means a dead stream, e.g. half-open after an Arduino
+// reset: it is closed and reopened with backoff, the indicator shows 'No sync'
+// meanwhile, and the current camera is refreshed on reconnect (UI-15).
+// EventSource is only a fallback for browsers that cannot stream a fetch.
+//
+// One stream per tab: the firmware serves MAX_SSE_CLIENTS (2) and a new one
+// evicts the oldest, so a tab closed by the server soon after opening backs
+// off up to SSE_EVICT_MAX_MS. Tabs do not share a stream (HTTP-03): Web Locks
+// need a secure context and the page is served over http, and a heartbeat
+// election over BroadcastChannel breaks under background-tab throttling.
+const SYNC_CONFIG = { timeout: 2000 };
+const SSE_KEEPALIVE_MS = 30000;      // firmware SSE_TIMEOUT
+const SSE_STALE_MARGIN_MS = 5000;
+const SSE_CONNECT_MS = 10000;        // answer + first event
+const SSE_RETRY_MIN_MS = 1000;
+const SSE_RETRY_MAX_MS = 10000;
+const SSE_EVICT_MAX_MS = 60000;
+const SSE_STABLE_MS = 60000;         // a stream this old resets the backoff
+const SSE_WATCHDOG_TICK_MS = 5000;
+const SSE_SUSPEND_MS = 10000;        // wall clock ahead of the monotonic one
+
 let syncInProgress = false;
 let lastKnownState = {};
-let eventSource = null;
-let sseConnected = false;
 
 // Per-camera state storage (SSE sends all cameras)
 let cameraStates = {};
 for (let i = 1; i <= 8; i++) cameraStates[i] = {};
 
+const sse = {
+    ctrl: null,          // AbortController of the open fetch stream
+    es: null,            // EventSource (fallback only)
+    live: false,         // an event arrived on the current stream
+    everLive: false,
+    lastData: 0,         // performance.now() of the last byte received
+    openedAt: 0,
+    keepaliveMs: SSE_KEEPALIVE_MS,
+    staleMs: 2 * SSE_KEEPALIVE_MS + SSE_STALE_MARGIN_MS,
+    // Set after an outage or a suspend: the stream may be dead, so one
+    // keepalive period (plus the margin) of silence is enough to drop it
+    suspect: false,
+    tickWall: Date.now(),
+    tickMono: performance.now(),
+    retryMs: SSE_RETRY_MIN_MS,
+    retryTimer: null,
+    watchdog: null,
+    abortReason: '',
+    stopped: true
+};
+
 function startSync() {
-    // Try SSE first
+    sse.stopped = false;
     connectSSE();
-    
-    // Fallback polling (less frequent when SSE works)
-    if (syncTimer) clearInterval(syncTimer);
-    syncTimer = setInterval(() => {
-        if (!SYNC_CONFIG.enabled || syncInProgress) return;
-        // Only poll if SSE is not connected
-        if (!sseConnected) {
-            syncFromArduino();
-        }
-    }, SYNC_CONFIG.interval);
+    if (!sse.watchdog) sse.watchdog = setInterval(sseWatchdog, SSE_WATCHDOG_TICK_MS);
 }
 
 function stopSync() {
-    if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
-    disconnectSSE();
+    sse.stopped = true;
+    clearTimeout(sse.retryTimer);
+    sse.retryTimer = null;
+    sseClose();
 }
 
-function connectSSE() {
-    if (eventSource) {
-        eventSource.close();
-    }
-    
-    console.log('[SSE] Connecting...');
-    eventSource = new EventSource('/events');
-    
-    eventSource.onopen = () => {
-        console.log('[SSE] Connected');
-        sseConnected = true;
-    };
-    
-    eventSource.onerror = (e) => {
-        console.log('[SSE] Error/Disconnected, falling back to polling');
-        sseConnected = false;
-        // Will reconnect automatically via EventSource
-    };
-    
-    eventSource.addEventListener('connected', (e) => {
-        console.log('[SSE] Server confirmed connection');
-        sseConnected = true;
-    });
-    
-    eventSource.onmessage = (e) => {
-        try {
-            const data = JSON.parse(e.data);
-            handleSSEMessage(data);
-        } catch (err) {
-            console.log('[SSE] Parse error:', err);
+function canStreamFetch() {
+    return typeof ReadableStream === 'function' && typeof TextDecoder === 'function' &&
+        typeof Response === 'function' && 'body' in Response.prototype;
+}
+
+// Minimal text/event-stream parser: onEvent(name, data) per complete event
+function makeSseParser(onEvent) {
+    let buf = '';
+    let name = '';
+    let data = [];
+    return (chunk) => {
+        buf += chunk;
+        // A trailing '\r' may be the first half of '\r\n': keep it for later
+        const end = buf.endsWith('\r') ? buf.length - 1 : buf.length;
+        const lines = buf.slice(0, end).split(/\r\n|\r|\n/);
+        buf = lines.pop() + buf.slice(end);
+        for (const line of lines) {
+            if (line === '') {
+                if (data.length) onEvent(name || 'message', data.join('\n'));
+                name = '';
+                data = [];
+                continue;
+            }
+            if (line[0] === ':') continue;   // comment (keepalive)
+            const colon = line.indexOf(':');
+            const field = colon < 0 ? line : line.slice(0, colon);
+            let value = colon < 0 ? '' : line.slice(colon + 1);
+            if (value[0] === ' ') value = value.slice(1);
+            if (field === 'event') name = value;
+            else if (field === 'data') data.push(value);
         }
     };
 }
 
-function disconnectSSE() {
-    if (eventSource) {
-        eventSource.close();
-        eventSource = null;
+async function connectSSE() {
+    clearTimeout(sse.retryTimer);
+    sse.retryTimer = null;
+    sseClose();
+    if (sse.stopped) return;
+    if (!canStreamFetch()) return connectEventSource();
+
+    console.log('[SSE] Connecting...');
+    const ctrl = new AbortController();
+    sse.ctrl = ctrl;
+    sse.lastData = performance.now();
+    sse.suspect = false;
+    sse.abortReason = '';
+    let reason = 'closed by TallyCCU';
+    let clean = false;
+    try {
+        const r = await fetch('/events', { cache: 'no-store', signal: ctrl.signal,
+            headers: { 'Accept': 'text/event-stream' } });
+        if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        const parse = makeSseParser(onSseEvent);
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) { clean = true; break; }
+            if (sse.ctrl !== ctrl) return;
+            sse.lastData = performance.now();
+            sse.suspect = false;
+            if (linkState.reachable === false) setReachable(true);   // it talks to us
+            parse(decoder.decode(value, { stream: true }));
+        }
+    } catch (e) {
+        reason = sse.abortReason || 'connection lost';
     }
-    sseConnected = false;
+    if (sse.ctrl !== ctrl) return;   // closed on purpose or replaced
+    sse.ctrl = null;
+    sseLost(reason, clean);
 }
+
+// Old browsers: EventSource reconnects by itself but hides the keepalive
+// comments, so this path has no stale-stream watchdog
+function connectEventSource() {
+    console.log('[SSE] Connecting (EventSource)...');
+    const es = new EventSource('/events');
+    sse.es = es;
+    const on = (name) => (e) => {
+        if (sse.es !== es) return;
+        sse.lastData = performance.now();
+        sse.suspect = false;
+        if (linkState.reachable === false) setReachable(true);
+        onSseEvent(name, e.data);
+    };
+    es.addEventListener('connected', on('connected'));
+    es.onmessage = on('message');
+    es.onerror = () => {
+        if (sse.es !== es) return;
+        sse.live = false;
+        setSyncState('nosync', 'reconnecting');
+        if (es.readyState === EventSource.CLOSED) {
+            sse.es = null;
+            sseLost('connection lost', false);
+        }
+    };
+}
+
+// Closes the current stream without scheduling a retry
+function sseClose() {
+    const ctrl = sse.ctrl;
+    sse.ctrl = null;
+    if (ctrl) ctrl.abort();
+    if (sse.es) { sse.es.close(); sse.es = null; }
+    sse.live = false;
+}
+
+// Reopen now (e.g. the Arduino was rebooted or unreachable)
+function sseRestart(reason) {
+    if (sse.stopped) return;
+    console.log('[SSE] Restart:', reason);
+    sseClose();
+    setSyncState('nosync', reason);
+    connectSSE();
+}
+
+function sseLost(reason, clean) {
+    const wasLive = sse.live;
+    const age = performance.now() - sse.openedAt;
+    sse.live = false;
+    let cap = SSE_RETRY_MAX_MS;
+    if (wasLive && age >= SSE_STABLE_MS) {
+        sse.retryMs = SSE_RETRY_MIN_MS;
+    } else if (wasLive && clean) {
+        cap = SSE_EVICT_MAX_MS;
+        reason = 'closed by TallyCCU soon after opening (it serves 2 pages: another one may hold the sync)';
+    }
+    const base = Math.min(sse.retryMs, cap);
+    sse.retryMs = Math.min(base * 2, cap);
+    const wait = Math.round(base * (0.75 + Math.random() * 0.5));
+    console.log(`[SSE] Lost (${reason}), retry in ${wait} ms`);
+    setSyncState('nosync', reason);
+    if (!sse.stopped) sse.retryTimer = setTimeout(connectSSE, wait);
+}
+
+// Aborts a stream that went quiet or never answered; sseLost() retries
+function sseWatchdog() {
+    // The monotonic clock may stop while the computer sleeps: a wall clock
+    // that ran ahead means a suspend (or a clock change), so suspect
+    const wall = Date.now(), mono = performance.now();
+    if ((wall - sse.tickWall) - (mono - sse.tickMono) > SSE_SUSPEND_MS) sse.suspect = true;
+    sse.tickWall = wall;
+    sse.tickMono = mono;
+    if (!sse.ctrl) return;
+    const idle = mono - sse.lastData;
+    const limit = !sse.live ? SSE_CONNECT_MS
+        : sse.suspect ? sse.keepaliveMs + SSE_STALE_MARGIN_MS : sse.staleMs;
+    if (idle <= limit) return;
+    sse.abortReason = sse.live ? `no data for ${Math.round(idle / 1000)} s` : 'no answer to /events';
+    sse.ctrl.abort();
+}
+
+function onSseEvent(name, data) {
+    if (!sse.live) {
+        sse.live = true;
+        sse.openedAt = performance.now();
+        console.log('[SSE] Connected');
+        setReachable(true);
+        setSyncState('live');
+        if (sse.everLive) refreshAfterResync();
+        sse.everLive = true;
+    }
+    if (name === 'connected') {
+        // Optional keepalive period (ms) announced by the firmware
+        try {
+            const ka = Number(JSON.parse(data).keepalive);
+            if (ka >= 1000 && ka <= 600000) {
+                sse.keepaliveMs = ka;
+                sse.staleMs = 2 * ka + SSE_STALE_MARGIN_MS;
+            }
+        } catch (e) {}
+        return;
+    }
+    if (name !== 'message') return;   // other named events: traffic only
+    // A handler error must not drop the stream
+    try {
+        handleSSEMessage(JSON.parse(data));
+    } catch (err) {
+        console.log('[SSE] Message error:', err);
+    }
+}
+
+// After a reconnect: events sent while the stream was down are not replayed.
+// The firmware asks Companion for its state (its CCUSYNC lines come back as
+// events); the rest is read again here, one request at a time.
+async function refreshAfterResync() {
+    console.log('[SSE] Reconnected: refreshing camera', currentCamera);
+    applyCameraState(currentCamera);
+    await getOverrides();
+    await getVmixConnectStatus();
+    await updatePresetNames();
+    forceSync();
+}
+
+window.addEventListener('online', () => {
+    if (sse.retryTimer) { sse.retryMs = SSE_RETRY_MIN_MS; connectSSE(); }
+});
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    // Background timers may have been throttled
+    if (sse.retryTimer) connectSSE();
+    else sseWatchdog();
+});
+window.addEventListener('pageshow', (e) => { if (e.persisted) startSync(); });
 
 function handleSSEMessage(data) {
     // Handle requestSync - Arduino asking web to send its state
@@ -4780,20 +5225,14 @@ async function sendCachedStateToArduino() {
     
     console.log(`[SSE] Sending ${lines.length} params to Arduino`);
     
-    try {
-        const response = await fetch('/syncState', {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: lines.join('\n')
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            console.log(`[SSE] syncState response:`, data);
-        }
-    } catch (e) {
-        console.log('[SSE] syncState error:', e);
-    }
+    const response = await sendCcu('/syncState', { quiet: true, timeout: 10000, init: {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: lines.join('\n')
+    } });
+    if (!response) return console.log('[SSE] syncState: no answer');
+    const { data, message } = await readReply(response);
+    console.log('[SSE] syncState response:', data || message);
 }
 
 async function syncFromArduino() {
@@ -4801,18 +5240,16 @@ async function syncFromArduino() {
     syncInProgress = true;
     const cam = currentCamera;
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), SYNC_CONFIG.timeout);
-        const response = await fetch(`/?getParams=${cam}&t=${Date.now()}`, { signal: controller.signal, cache: 'no-store' });
-        clearTimeout(timeoutId);
-        if (response.ok) {
+        const response = await sendCcu(`/?getParams=${cam}&t=${Date.now()}`,
+            { quiet: true, timeout: SYNC_CONFIG.timeout });
+        if (response && response.ok) {
             const data = await response.json();
             // Camera changed while waiting: the reply is not for the visible UI
             if (cam !== currentCamera) return;
             if (data?.params) processSyncData(data);
         }
     } catch (e) {
-        // Ignorar errores de timeout/abort silenciosamente
+        // Bad JSON: ignored, SSE is the sync source
     }
     finally { syncInProgress = false; }
 }
@@ -5062,6 +5499,7 @@ function forceSync() { lastKnownState = {}; syncFromArduino(); }
 
 // === PRESETS ===
 let saveInProgress = false;
+const PRESET_TIMEOUT_MS = 15000;   // SD access plus one I2C command per parameter
 
 function togglePresetsPanel() {
     const panel = document.getElementById('presetsPanel');
@@ -5078,13 +5516,14 @@ function updatePresetNames() {
             input.value = saved || `Preset ${i + 1}`;
         }
     }
-    fetch('/?listPresets').then(r => r.json()).then(data => {
-        if (data?.presets) {
-            data.presets.filter(p => p.cameraId === currentCamera).forEach(preset => {
+    const cam = currentCamera;
+    return getJson('/?listPresets').then(data => {
+        if (data?.presets && cam === currentCamera) {
+            data.presets.filter(p => p.cameraId === cam).forEach(preset => {
                 const input = document.getElementById("presetName_" + preset.presetId);
                 if (input && preset.name) {
                     input.value = decodeURIComponent(preset.name);
-                    localStorage.setItem(`preset_${currentCamera}_${preset.presetId}`, preset.name);
+                    localStorage.setItem(`preset_${cam}_${preset.presetId}`, preset.name);
                 }
             });
         }
@@ -5158,7 +5597,12 @@ function collectAllParameters() {
     return params;
 }
 
+// A pending hide belongs to the previous message: a new one cancels it
+let saveStatusHideTimer = null;
+
 function showSaveStatus(message, type = 'info', progress = null) {
+    clearTimeout(saveStatusHideTimer);
+    saveStatusHideTimer = null;
     let statusEl = document.getElementById('saveStatusElement');
     if (!statusEl) {
         statusEl = document.createElement('div');
@@ -5175,14 +5619,16 @@ function showSaveStatus(message, type = 'info', progress = null) {
 }
 
 function hideSaveStatus(delay = 0) {
-    setTimeout(() => {
+    clearTimeout(saveStatusHideTimer);
+    saveStatusHideTimer = setTimeout(() => {
+        saveStatusHideTimer = null;
         const el = document.getElementById('saveStatusElement');
         if (el) el.remove();
     }, delay);
 }
 
 async function savePreset(idx) {
-    if (saveInProgress) return alert('Guardado en progreso');
+    if (saveInProgress) return notifyError('Preset save in progress');
     saveInProgress = true;
     const cam = currentCamera;
     const nameEl = document.getElementById("presetName_" + idx);
@@ -5200,11 +5646,12 @@ async function savePreset(idx) {
         showSaveStatus('Sending...', 'info', 60);
         // Body: cameraId=X&presetId=Y&name=Z&data=...
         const body = `cameraId=${cam}&presetId=${idx}&name=${encodeURIComponent(presetName)}&data=${dataString}`;
-        const response = await fetch('/savePreset', {
+        const response = await sendCcu('/savePreset', { quiet: true, timeout: PRESET_TIMEOUT_MS, init: {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: body
-        });
+        } });
+        if (!response) throw new Error('no answer from TallyCCU');
         const { data, message } = await readReply(response);
         if (!response.ok || !data || data.success !== true) throw new Error(message);
         // Remember the name only once the Arduino confirms the save
@@ -5225,7 +5672,9 @@ async function loadPreset(idx) {
     showSaveStatus(`Loading "${presetName}"...`, 'info', 50);
     try {
         // Formato esperado: /?loadPreset=cameraId,presetIdx&returnValues=1
-        const response = await fetch(`/?loadPreset=${cam},${idx}&returnValues=1`, { cache: 'no-store' });
+        const response = await sendCcu(`/?loadPreset=${cam},${idx}&returnValues=1`,
+            { quiet: true, timeout: PRESET_TIMEOUT_MS });
+        if (!response) throw new Error('no answer from TallyCCU');
         const { data, message } = await readReply(response);
         if (!response.ok || !data || data.success !== true) throw new Error(message);
         // El servidor devuelve 'parameters' no 'params'
@@ -5442,7 +5891,7 @@ function resetSelectedGroupParams() {
         document.getElementById('focus_assist_1_range').value = 0;
         updateFocusAssistToggleVisual(0, 1);
         updateFocusAssistToggleVisual(1, 0);
-        fetch(`/?cameraId=${currentCamera}&focus_assist=1,0`);
+        sendCcu(`/?cameraId=${currentCamera}&focus_assist=1,0`);
         count += 12;
     }
     
