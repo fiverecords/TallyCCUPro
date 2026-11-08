@@ -176,10 +176,50 @@
       color: #17a2b8;
     }
     
+    .info-box a, .notice a {
+      color: #5bc0de;
+    }
+    
+    .notice {
+      border-radius: 8px;
+      padding: 12px 15px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+      border: 1px solid;
+    }
+    .notice[hidden] { display: none; }
+    .notice.error {
+      background: rgba(220,53,69,0.15);
+      border-color: rgba(220,53,69,0.5);
+      color: #ff8a8a;
+    }
+    .notice.info {
+      background: rgba(40,167,69,0.15);
+      border-color: rgba(40,167,69,0.5);
+      color: #8fd19e;
+    }
+    
+    .stay-info { margin-top: 15px; }
+    .stay-info[hidden] { display: none; }
+    
     .loading {
       text-align: center;
       padding: 20px;
       color: #888;
+    }
+    
+    .restarting {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      flex-direction: column;
+      text-align: center;
+    }
+    .restarting p {
+      color: #888;
+      margin-top: 10px;
     }
     
     @media (max-width: 500px) {
@@ -196,6 +236,8 @@
       <h1>Safe Mode Active</h1>
       <p class="subtitle">TallyCCU Pro has entered safe mode due to repeated boot failures</p>
     </div>
+
+    <div class="notice" id="notice" role="alert" hidden></div>
 
     <div class="card">
       <div class="card-title">📊 System Status</div>
@@ -255,26 +297,36 @@
         <li>Verify that the SDI Shield has 12V DC power connected (check the power LED on the shield)</li>
         <li>Connect a valid 1080p or 1080i SDI signal at 3G-SDI Level B from your camera or video source</li>
         <li>Check all SDI cable connections are secure</li>
-        <li>Once fixed, click "Restart Normal Mode" below to retry</li>
+        <li>Once fixed, click "Restart Normal Mode" below to retry. If Safe Mode started after boot failures, the board also restarts in normal mode by itself once the SDI shield has answered on I2C for 30 s</li>
       </ul>
     </div>
 
     <div class="card">
       <div class="card-title">🎛️ Actions</div>
       <div class="actions">
-        <button class="btn btn-primary" onclick="restartNormal()">
+        <button class="btn btn-primary" id="restartBtn" onclick="restartNormal()">
           Restart Normal Mode
         </button>
         <button class="btn btn-secondary" onclick="stayInSafeMode()">
           Stay in Safe Mode
         </button>
       </div>
+      <div class="info-box stay-info" id="stayInfo" hidden>
+        <strong>Staying in Safe Mode for now.</strong> Nothing is sent to TallyCCU: it simply keeps running as it is.
+        Safe Mode is not stored: after a reset or a power cut the board tries a normal boot again, and if the
+        fault is still there it takes about 3 failed boots to come back here. If Safe Mode started after boot
+        failures, it also restarts in normal mode by itself once the SDI shield has answered on I2C for 30 s
+        (5 minutes after an automatic attempt that failed, and no more attempts after two failures).
+        To force Safe Mode on the next boot, use the serial command <code>safemode</code>.
+      </div>
       <br>
       <div class="info-box">
         <strong>Note:</strong> In Safe Mode, the SDI Shield is completely disabled. 
         No SDI output is possible - this means no tally lights and no camera control commands 
-        will reach your cameras. Network connectivity and web interface remain functional for 
-        diagnostics and configuration changes.
+        will reach your cameras. Network connectivity and the web interface remain available for 
+        diagnostics: the vMix IP and the tally map can be changed in <a href="tally.html">Tally Config</a>
+        and files in the <a href="/sd">SD Card Manager</a>. The Arduino IP, mask and gateway are changed
+        with the serial configurator.
       </div>
     </div>
 
@@ -295,7 +347,7 @@
         </div>
         <div class="status-item">
           <div class="status-label">Network Config</div>
-          <div class="status-value success">✓ Working</div>
+          <div class="status-value warning">⚡ Serial only</div>
         </div>
         <div class="status-item">
           <div class="status-label">SDI Tally Output</div>
@@ -316,19 +368,64 @@
   </div>
 
   <script>
+    // safemode-exit carries this header (CSRF, SEC-01)
+    const CSRF_HEADERS = { 'X-TallyCCU': '1' };
+    const FORBIDDEN_MSG = 'TallyCCU refused the request (403 forbidden). Reload the page (Ctrl+F5); ' +
+      'if it keeps happening, the pages on the SD card do not match the firmware.';
+    let statusTimer = null;
+    let noticeKind = '';
+    let restarting = false;
+
+    // Text-only notice; kind lets the status poll clear only its own ones
+    function showNotice(message, type, kind, link) {
+      const n = document.getElementById('notice');
+      if (!n) return;
+      n.replaceChildren(message);
+      if (link) {
+        const a = document.createElement('a');
+        a.href = link.href;
+        a.textContent = link.text;
+        n.append(' ', a);
+      }
+      n.className = 'notice ' + type;
+      n.hidden = false;
+      noticeKind = kind || '';
+    }
+
+    function hideNotice(kind) {
+      const n = document.getElementById('notice');
+      if (n && (!kind || noticeKind === kind)) {
+        n.hidden = true;
+        noticeKind = '';
+      }
+    }
+
     // Load status on page load
     async function loadStatus() {
+      if (restarting) return;
       try {
-        const response = await fetch('/safemode-status');
+        const response = await fetch('/safemode-status', { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
+        if (restarting) return;
         
-        document.getElementById('resetCount').textContent = data.resetCount || '0';
-        document.getElementById('resetReason').textContent = data.resetReason || 'Unknown';
-        document.getElementById('uptime').textContent = formatUptime(data.uptime || 0);
-        document.getElementById('freeRam').textContent = (data.freeRam || 0) + ' bytes';
-        document.getElementById('ipAddress').textContent = data.ip || '-';
+        document.getElementById('resetCount').textContent = String(data.resetCount || '0');
+        document.getElementById('resetReason').textContent = String(data.resetReason || 'Unknown');
+        document.getElementById('uptime').textContent = formatUptime(Number(data.uptime) || 0);
+        document.getElementById('freeRam').textContent = (Number(data.freeRam) || 0) + ' bytes';
+        document.getElementById('ipAddress').textContent = String(data.ip || '-');
+
+        if (data.safeMode === false) {
+          document.getElementById('mode').textContent = 'Normal';
+          showNotice('TallyCCU is running in normal mode now.', 'info', 'status',
+                     { href: '/', text: 'Open CCU Control' });
+        } else {
+          document.getElementById('mode').textContent = 'Safe Mode';
+          hideNotice('status');
+        }
       } catch (e) {
         console.error('Failed to load status:', e);
+        if (!restarting) showNotice('No answer from TallyCCU: it may be restarting.', 'error', 'status');
       }
     }
     
@@ -338,6 +435,20 @@
       const h = Math.floor(seconds / 3600);
       const m = Math.floor((seconds % 3600) / 60);
       return h + 'h ' + m + 'm';
+    }
+
+    // Replaces the page once the exit was accepted (static text only)
+    function showRestarting() {
+      restarting = true;
+      clearInterval(statusTimer);
+      const box = document.createElement('div');
+      box.className = 'restarting';
+      const h = document.createElement('h2');
+      h.textContent = 'Restarting...';
+      const p = document.createElement('p');
+      p.textContent = 'Please wait 10-15 seconds, then refresh.';
+      box.append(h, p);
+      document.body.replaceChildren(box);
     }
     
     async function restartNormal() {
@@ -350,27 +461,41 @@
         return;
       }
       
+      const btn = document.getElementById('restartBtn');
+      btn.disabled = true;
+      let response;
       try {
-        await fetch('/safemode-exit', { method: 'POST' });
-        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;"><h2>Restarting...</h2><p style="color:#888;margin-top:10px;">Please wait 10-15 seconds, then refresh.</p></div>';
+        response = await fetch('/safemode-exit', { method: 'POST', cache: 'no-store', headers: CSRF_HEADERS });
       } catch (e) {
-        alert('Failed to restart: ' + e.message);
+        btn.disabled = false;
+        showNotice('No answer from TallyCCU: it may already be restarting. Wait 15 seconds and reload this page.', 'error', 'exit');
+        return;
+      }
+      btn.disabled = false;
+
+      if (response.ok) {
+        showRestarting();
+        return;
+      }
+      if (response.status === 403) {
+        showNotice(FORBIDDEN_MSG, 'error', 'exit');
+      } else if (response.status === 404) {
+        showNotice('TallyCCU is not in Safe Mode any more (it may have restarted in normal mode by itself).', 'error', 'exit',
+                   { href: '/', text: 'Open CCU Control' });
+      } else {
+        const text = (await response.text().catch(() => '')).trim().slice(0, 80);
+        showNotice('Restart refused (HTTP ' + response.status + ')' + (text ? ': ' + text : ''), 'error', 'exit');
       }
     }
     
+    // UIS-02: nothing to send; explain what "staying" means
     function stayInSafeMode() {
-      var msg = 'System will remain in Safe Mode.';
-      msg += '\n\nYou can:';
-      msg += '\n• Access the network configuration';
-      msg += '\n• Use vMix tally (if connected)';
-      msg += '\n• Use Companion integration';
-      msg += '\n\nSDI camera control is disabled until you restart in normal mode.';
-      alert(msg);
+      document.getElementById('stayInfo').hidden = false;
     }
     
     // Load status on page load and refresh every 5 seconds
     loadStatus();
-    setInterval(loadStatus, 5000);
+    statusTimer = setInterval(loadStatus, 5000);
   </script>
 </body>
 </html>

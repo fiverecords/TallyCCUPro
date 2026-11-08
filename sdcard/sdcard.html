@@ -139,6 +139,11 @@ body {
   background: #3a5a6a;
 }
 
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* === MAIN CONTENT === */
 .container {
   max-width: 900px;
@@ -373,6 +378,11 @@ tr.selected:hover {
   font-size: 13px;
 }
 
+.file-lock {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
 .file-size {
   color: var(--text-secondary);
   font-size: 12px;
@@ -478,6 +488,15 @@ input[type="checkbox"] {
   border-color: var(--border-focus);
 }
 
+.modal-error {
+  color: var(--accent-red);
+  font-size: 12px;
+  margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-md);
+  max-width: 420px;
+}
+
+.modal-error:empty { display: none; }
+
 .modal-buttons {
   display: flex;
   gap: var(--spacing-md);
@@ -530,6 +549,8 @@ input[type="checkbox"] {
   margin-bottom: var(--spacing-md);
   opacity: 0.5;
 }
+
+.error-state { color: var(--accent-red); }
 
 /* === RESPONSIVE === */
 @media (max-width: 600px) {
@@ -622,7 +643,8 @@ input[type="checkbox"] {
   <div class="modal" id="renameModal">
     <div class="modal-content">
       <h3>✏️ Rename File</h3>
-      <input type="text" id="renameInput" placeholder="New filename">
+      <input type="text" id="renameInput" placeholder="New filename" autocomplete="off" spellcheck="false">
+      <p class="modal-error" id="renameError" role="alert"></p>
       <div class="modal-buttons">
         <button class="btn" onclick="closeRenameModal()">Cancel</button>
         <button class="btn btn-primary" onclick="confirmRename()">Rename</button>
@@ -633,7 +655,7 @@ input[type="checkbox"] {
   <div class="modal" id="deleteModal">
     <div class="modal-content">
       <h3>🗑️ Delete Files</h3>
-      <p id="deleteMessage" style="color: var(--text-secondary); margin-bottom: var(--spacing-lg);"></p>
+      <p id="deleteMessage" style="color: var(--text-secondary); margin-bottom: var(--spacing-lg); white-space: pre-line;"></p>
       <div class="delete-progress" id="deleteProgress" style="display: none;">
         <span id="deleteProgressText">Deleting...</span>
         <div class="delete-progress-bar">
@@ -659,15 +681,127 @@ const progressBytes = document.getElementById('progressBytes');
 const progressPercent = document.getElementById('progressPercent');
 const progressStatus = document.getElementById('progressStatus');
 const statusEl = document.getElementById('status');
+const renameModal = document.getElementById('renameModal');
+const renameInput = document.getElementById('renameInput');
+const renameError = document.getElementById('renameError');
 
-let isUploading = false;
-let currentRenameFile = '';
-let selectedFiles = new Set();
-let allFiles = [];
+let isUploading = false;     // from the exists check to the end of the upload
+let isRenaming = false;
 let isDeleting = false;
+let currentRenameFile = '';
+let allFiles = [];
+let loadSeq = 0;
+const selectedFiles = new Set();
+const rows = new Map();      // selectable file name -> { row, cb }
 
-// Protected files that cannot be deleted
+// System pages: never deleted or renamed here. FAT ignores case, so
+// "Index.html" is the same file as index.html.
 const PROTECTED_FILES = ['index.html', 'tally.html', 'sdcard.html', 'safemode.html'];
+const RESERVED_FILES = ['upload.tmp'];   // firmware upload temp file
+// Firmware WEB_NAME_MAX (decoded bytes). Encoded, it always fits in the
+// request line of download, deleteFile and fileExists; only rename,
+// with two names, can overflow it.
+const MAX_NAME_LEN = 47;
+const MAX_REQUEST_LINE = 191;            // firmware request line buffer
+// /upload body budget: 8 KB/s, capped at 60 s by the firmware
+const MAX_UPLOAD_BYTES = 448 * 1024;
+
+// Requests that change the SD card carry this header (CSRF, SEC-01)
+const CSRF_HEADERS = { 'X-TallyCCU': '1' };
+const FORBIDDEN_MSG = 'TallyCCU refused the request (403 forbidden). Reload the page (Ctrl+F5); ' +
+  'if it keeps happening, the pages on the SD card do not match the firmware';
+const SYMBOLS_MSG = 'too many spaces or symbols for the firmware';
+
+// ===== HELPERS =====
+
+function el(tag, className, text) {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+// Name as SdFat stores it: leading spaces, trailing dots and spaces dropped
+function fatName(name) {
+  return name.replace(/^ +/, '').replace(/[. ]+$/, '');
+}
+
+// System pages and their .gz copies (as the firmware's isSystemFile)
+function isProtected(name) {
+  const base = fatName(name).toLowerCase().replace(/\.gz$/, '');
+  return PROTECTED_FILES.includes(base);
+}
+
+function sameName(a, b) {
+  return fatName(a).toLowerCase() === fatName(b).toLowerCase();
+}
+
+// Why a new name (upload or rename target) would be rejected or altered, or ''
+function nameError(name) {
+  if (!name) return 'enter a file name';
+  if (fatName(name) !== name) return 'the name cannot start with a space or end with a dot or a space';
+  if (/[^\x20-\x7e]/.test(name)) return 'use only plain ASCII characters (no accents or emoji)';
+  if (/[<>:"\/\\|?*]/.test(name)) return 'these characters are not allowed: < > : " / \\ | ? *';
+  if (name.length > MAX_NAME_LEN) return 'the name is too long (' + name.length + ' characters, max ' + MAX_NAME_LEN + ')';
+  if (RESERVED_FILES.includes(name.toLowerCase())) return 'this name is reserved by the firmware';
+  return '';
+}
+
+// Why a listed file cannot be addressed by the firmware (validName), or ''
+function unreachable(name) {
+  if (!name) return 'Unreadable name (longer than ' + MAX_NAME_LEN + ' characters?): manage this file on a PC';
+  if (name.includes('?')) return 'Name with non-ASCII characters: manage this file on a PC';
+  if (fatName(name) !== name || /[<>:"\/\\|*\x00-\x1f\x7f]/.test(name)) {
+    return 'Name not accepted by the firmware (leading space, trailing dot/space or reserved character): ' +
+      'manage this file on a PC';
+  }
+  return '';
+}
+
+// Firmware file manager error codes (sendFileResult)
+const FILE_ERRORS = {
+  'protected': 'system page name',
+  'exists': 'a file with that name already exists',
+  'not found': 'the file no longer exists',
+  'bad name': 'name not accepted by the firmware',
+  'sd': 'SD card error'
+};
+
+function fileErrorText(data, fallback) {
+  const code = data && data.error;
+  if (typeof code === 'string' && code) {
+    return Object.prototype.hasOwnProperty.call(FILE_ERRORS, code) ? FILE_ERRORS[code] : code;
+  }
+  return String((data && data.message) || fallback);
+}
+
+function isSelectable(name) {
+  return !isProtected(name) && !unreachable(name);
+}
+
+// fetch for requests that change something: CSRF header, clear 403 error
+async function fetchAction(url, opts) {
+  const res = await fetch(url, Object.assign({ cache: 'no-store' }, opts, { headers: CSRF_HEADERS }));
+  if (res.status === 403) throw new Error(FORBIDDEN_MSG);
+  return res;
+}
+
+// JSON body, or an Error with the start of the server's text
+async function readJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error(text.trim().slice(0, 80) || ('HTTP ' + res.status));
+  }
+}
+
+// fetch() network failures are TypeErrors; ours carry the reason
+function errorText(e) {
+  return (e instanceof TypeError) ? 'Connection error' : e.message;
+}
+
+// ===== UPLOAD =====
 
 uploadArea.addEventListener('click', () => {
   if (!isUploading) fileInput.click();
@@ -696,29 +830,56 @@ fileInput.addEventListener('change', () => {
   }
 });
 
+function refuseUpload(name, reason) {
+  fileInput.value = '';
+  showStatus('Cannot upload "' + name + '": ' + reason, 'error');
+}
+
 async function checkAndUpload(file) {
-  try {
-    const response = await fetch('/?fileExists=' + encodeURIComponent(file.name));
-    const data = await response.json();
-    
-    if (data.exists) {
-      if (!confirm('File "' + file.name + '" already exists.\n\nDo you want to overwrite it?')) {
-        fileInput.value = '';
-        return;
-      }
-    }
-    
-    uploadFile(file);
-  } catch (e) {
-    uploadFile(file);
+  const name = file.name;
+  const bad = nameError(name);
+  if (bad) {
+    refuseUpload(name, bad + '. Rename the file on your computer first');
+    return;
   }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    refuseUpload(name, 'file too large (' + formatSize(file.size) + ', max ' + formatSize(MAX_UPLOAD_BYTES) + ')');
+    return;
+  }
+
+  isUploading = true;
+  let exists = null;   // null: unknown
+  try {
+    const response = await fetch('/?fileExists=' + encodeURIComponent(name), { cache: 'no-store' });
+    if (response.ok) exists = (await response.json()).exists === true;
+  } catch (e) {
+    exists = null;
+  }
+    
+  let question = '';
+  if (isProtected(name)) {
+    question = '"' + name + '" is a TallyCCU system page. Replacing it changes the web interface ' +
+      'for every operator, and a wrong or broken file leaves the device without this page.\n\nReplace it?';
+  } else if (exists === true) {
+    question = 'File "' + name + '" already exists.\n\nDo you want to overwrite it?';
+  } else if (exists === null) {
+    question = 'Could not check whether "' + name + '" already exists on the SD card.\n\n' +
+      'Upload anyway? A file with the same name would be replaced.';
+  }
+  if (question && !confirm(question)) {
+    isUploading = false;
+    fileInput.value = '';
+    return;
+  }
+    
+  uploadFile(file);
 }
 
 function uploadFile(file) {
   isUploading = true;
   
   uploadArea.classList.add('uploading');
-  uploadIcon.innerHTML = '<span class="spinner"></span>';
+  uploadIcon.replaceChildren(el('span', 'spinner'));
   uploadText.textContent = 'Uploading file...';
   
   progressContainer.classList.add('show');
@@ -754,21 +915,28 @@ function uploadFile(file) {
   xhr.addEventListener('load', () => {
     progressBar.classList.remove('indeterminate');
     
-    if (xhr.status === 200) {
+    if (xhr.status === 403) {
+      uploadError(FORBIDDEN_MSG);
+    } else if (xhr.status === 200) {
+      let data = null;
       try {
-        const data = JSON.parse(xhr.responseText);
-        if (data.success) {
-          progressBar.style.width = '100%';
-          progressBar.classList.add('complete');
-          progressStatus.textContent = '✓ File uploaded successfully';
-          progressStatus.classList.add('success');
-          showStatus('File "' + file.name + '" uploaded successfully', 'success');
-          loadFiles();
-        } else {
-          uploadError(data.message || 'Unknown error');
-        }
+        data = JSON.parse(xhr.responseText);
       } catch (e) {
+        data = null;
+      }
+      if (!data) {
         uploadError('Invalid server response');
+      } else if (data.success) {
+        // The firmware answers with the name it stored
+        const stored = (typeof data.message === 'string' && data.message) ? data.message : file.name;
+        progressBar.style.width = '100%';
+        progressBar.classList.add('complete');
+        progressStatus.textContent = '✓ File uploaded successfully';
+        progressStatus.classList.add('success');
+        showStatus('File "' + stored + '" uploaded successfully', 'success');
+        loadFiles();
+      } else {
+        uploadError(String(data.message || 'Unknown error'));
       }
     } else {
       uploadError('HTTP error ' + xhr.status);
@@ -790,6 +958,7 @@ function uploadFile(file) {
   });
   
   xhr.open('POST', '/upload');
+  xhr.setRequestHeader('X-TallyCCU', '1');
   xhr.timeout = 120000;
   xhr.send(formData);
 }
@@ -805,7 +974,7 @@ function uploadError(message) {
 function finishUpload() {
   isUploading = false;
   uploadArea.classList.remove('uploading');
-  uploadIcon.innerHTML = '📁';
+  uploadIcon.textContent = '📁';
   uploadText.textContent = 'Drag a file here or click to select';
   fileInput.value = '';
   
@@ -814,57 +983,124 @@ function finishUpload() {
   }, 3000);
 }
 
-async function loadFiles() {
-  const fileList = document.getElementById('fileList');
-  fileList.innerHTML = '<div class="loading"><span class="spinner"></span> Loading files...</div>';
-  selectedFiles.clear();
-  updateSelectionUI();
-  
-  try {
-    const response = await fetch('/?listFiles&t=' + Date.now());
-    const data = await response.json();
-    
-    if (data.files && data.files.length > 0) {
-      allFiles = data.files.sort((a, b) => a.name.localeCompare(b.name));
-      let html = '<table><thead><tr><th class="col-checkbox"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)"></th><th>Name</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
-      
-      let totalSize = 0;
-      
-      allFiles.forEach(file => {
-        totalSize += file.size;
-        const safeName = escapeHtml(file.name);
-        const isProtected = PROTECTED_FILES.includes(file.name);
-        const checkboxDisabled = isProtected ? 'disabled' : '';
-        const rowClass = selectedFiles.has(file.name) ? 'selected' : '';
-        
-        html += '<tr class="' + rowClass + '" data-filename="' + safeName + '">' +
-          '<td class="col-checkbox"><input type="checkbox" ' + checkboxDisabled + ' onchange="toggleFileSelection(\'' + safeName + '\', this.checked)" ' + (selectedFiles.has(file.name) ? 'checked' : '') + '></td>' +
-          '<td class="file-name">' + safeName + (isProtected ? ' <span style="color:var(--text-muted);font-size:10px;">🔒</span>' : '') + '</td>' +
-          '<td class="file-size">' + formatSize(file.size) + '</td>' +
-          '<td class="actions">' +
-            '<button class="btn btn-small" onclick="downloadFile(\'' + safeName + '\')" title="Download">⬇</button>' +
-            '<button class="btn btn-small btn-rename" onclick="renameFile(\'' + safeName + '\')" title="Rename">✎</button>' +
-            '<button class="btn btn-small btn-danger" onclick="deleteFile(\'' + safeName + '\')" title="Delete" ' + (isProtected ? 'disabled' : '') + '>🗑</button>' +
-          '</td>' +
-        '</tr>';
-      });
-      
-      html += '</tbody></table>';
-      fileList.innerHTML = html;
-      
-      document.getElementById('totalInfo').textContent = 
-        data.files.length + ' files • ' + formatSize(totalSize) + ' total';
-    } else {
-      allFiles = [];
-      fileList.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No files on SD card</p></div>';
-      document.getElementById('totalInfo').textContent = '';
-    }
-  } catch (e) {
-    fileList.innerHTML = '<div class="empty-state" style="color:var(--accent-red)"><div class="empty-state-icon">⚠</div><p>Error loading files</p></div>';
-  }
+// ===== FILE LIST =====
+// Names come from the SD card: they only ever go into textContent, dataset
+// and closures, never into HTML or inline handlers (SEC-05)
+
+function setPlaceholder(container, className, icon, text) {
+  const box = el('div', className);
+  if (icon) box.appendChild(el('div', 'empty-state-icon', icon));
+  else box.appendChild(el('span', 'spinner'));
+  box.appendChild(el(icon ? 'p' : 'span', '', icon ? text : ' ' + text));
+  container.replaceChildren(box);
 }
 
-// === SELECTION FUNCTIONS ===
+function actionButton(label, title, className, onClick, disabledReason) {
+  const b = el('button', 'btn btn-small' + (className ? ' ' + className : ''), label);
+  b.type = 'button';
+  b.title = disabledReason || title;
+  b.disabled = !!disabledReason;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function buildRow(file) {
+  const name = file.name;
+  const locked = isProtected(name);
+  const blocked = unreachable(name);
+  const tr = document.createElement('tr');
+  tr.dataset.filename = name;
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.disabled = locked || !!blocked;
+  cb.title = locked ? 'Protected system file' : blocked;
+  cb.addEventListener('change', () => toggleFileSelection(name, cb.checked));
+  const cbCell = el('td', 'col-checkbox');
+  cbCell.appendChild(cb);
+
+  const nameCell = el('td', 'file-name', name || '(unreadable name)');
+  if (locked) nameCell.appendChild(el('span', 'file-lock', ' 🔒'));
+
+  const size = Number(file.size) || 0;
+  const sizeCell = el('td', 'file-size', formatSize(size));
+
+  const actions = el('td', 'actions');
+  actions.append(
+    actionButton('⬇', 'Download', '', () => downloadFile(name), blocked),
+    actionButton('✎', 'Rename', 'btn-rename', () => renameFile(name),
+                 locked ? 'Protected system file' : blocked),
+    actionButton('🗑', 'Delete', 'btn-danger', () => deleteFile(name),
+                 locked ? 'Protected system file' : blocked));
+
+  tr.append(cbCell, nameCell, sizeCell, actions);
+  if (isSelectable(name)) rows.set(name, { row: tr, cb });
+  return { tr, size };
+}
+
+async function loadFiles() {
+  const seq = ++loadSeq;   // a newer refresh wins
+  const fileList = document.getElementById('fileList');
+  const totalInfo = document.getElementById('totalInfo');
+  setPlaceholder(fileList, 'loading', '', 'Loading files...');
+  selectedFiles.clear();
+  rows.clear();
+  updateSelectionUI();
+  
+  let data;
+  try {
+    const response = await fetch('/?listFiles&t=' + Date.now(), { cache: 'no-store' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    data = await response.json();
+  } catch (e) {
+    if (seq !== loadSeq) return;
+    allFiles = [];
+    setPlaceholder(fileList, 'empty-state error-state', '⚠', 'Error loading files');
+    totalInfo.textContent = '';
+    return;
+  }
+  if (seq !== loadSeq) return;
+  // No card or not mounted: not the same as an empty card
+  if (data && data.error === 'sd') {
+    allFiles = [];
+    setPlaceholder(fileList, 'empty-state error-state', '⚠', 'SD card not available');
+    totalInfo.textContent = '';
+    return;
+  }
+    
+  const files = (data && Array.isArray(data.files)) ? data.files : [];
+  allFiles = files.filter(f => f && typeof f.name === 'string')
+                  .sort((a, b) => a.name.localeCompare(b.name));
+  if (allFiles.length === 0) {
+    setPlaceholder(fileList, 'empty-state', '📭', 'No files on SD card');
+    totalInfo.textContent = '';
+    return;
+  }
+      
+  const table = document.createElement('table');
+  const head = table.createTHead().insertRow();
+  const allCb = document.createElement('input');
+  allCb.type = 'checkbox';
+  allCb.id = 'selectAllCheckbox';
+  allCb.addEventListener('change', () => toggleSelectAll(allCb.checked));
+  const th0 = el('th', 'col-checkbox');
+  th0.appendChild(allCb);
+  head.append(th0, el('th', '', 'Name'), el('th', '', 'Size'), el('th', '', 'Actions'));
+      
+  const body = table.createTBody();
+  let totalSize = 0;
+  allFiles.forEach(file => {
+    const r = buildRow(file);
+    totalSize += r.size;
+    body.appendChild(r.tr);
+  });
+  fileList.replaceChildren(table);
+  updateSelectAllBox();
+        
+  totalInfo.textContent = allFiles.length + ' files • ' + formatSize(totalSize) + ' total';
+}
+
+// ===== SELECTION FUNCTIONS =====
 
 function toggleFileSelection(filename, checked) {
   if (checked) {
@@ -872,8 +1108,10 @@ function toggleFileSelection(filename, checked) {
   } else {
     selectedFiles.delete(filename);
   }
+  const r = rows.get(filename);
+  if (r) r.row.classList.toggle('selected', checked);
+  updateSelectAllBox();
   updateSelectionUI();
-  updateRowHighlight(filename, checked);
 }
 
 function toggleSelectAll(checked) {
@@ -885,11 +1123,7 @@ function toggleSelectAll(checked) {
 }
 
 function selectAll() {
-  allFiles.forEach(file => {
-    if (!PROTECTED_FILES.includes(file.name)) {
-      selectedFiles.add(file.name);
-    }
-  });
+  rows.forEach((r, name) => selectedFiles.add(name));
   updateAllCheckboxes();
   updateSelectionUI();
 }
@@ -901,37 +1135,21 @@ function deselectAll() {
 }
 
 function updateAllCheckboxes() {
-  const checkboxes = document.querySelectorAll('tbody input[type="checkbox"]');
-  checkboxes.forEach(cb => {
-    const row = cb.closest('tr');
-    const filename = row.dataset.filename;
-    const isSelected = selectedFiles.has(filename);
-    cb.checked = isSelected;
-    row.classList.toggle('selected', isSelected);
+  rows.forEach((r, name) => {
+    const isSelected = selectedFiles.has(name);
+    r.cb.checked = isSelected;
+    r.row.classList.toggle('selected', isSelected);
   });
-  
-  // Update "select all" checkbox
-  const selectAllCb = document.getElementById('selectAllCheckbox');
-  const selectableCount = allFiles.filter(f => !PROTECTED_FILES.includes(f.name)).length;
-  if (selectAllCb) {
-    selectAllCb.checked = selectedFiles.size === selectableCount && selectableCount > 0;
-    selectAllCb.indeterminate = selectedFiles.size > 0 && selectedFiles.size < selectableCount;
-  }
+  updateSelectAllBox();
 }
 
-function updateRowHighlight(filename, selected) {
-  const row = document.querySelector('tr[data-filename="' + filename + '"]');
-  if (row) {
-    row.classList.toggle('selected', selected);
-  }
-  
-  // Update "select all" checkbox state
+function updateSelectAllBox() {
   const selectAllCb = document.getElementById('selectAllCheckbox');
-  const selectableCount = allFiles.filter(f => !PROTECTED_FILES.includes(f.name)).length;
-  if (selectAllCb) {
-    selectAllCb.checked = selectedFiles.size === selectableCount && selectableCount > 0;
-    selectAllCb.indeterminate = selectedFiles.size > 0 && selectedFiles.size < selectableCount;
-  }
+  if (!selectAllCb) return;
+  const selectableCount = rows.size;
+  selectAllCb.disabled = selectableCount === 0;
+  selectAllCb.checked = selectedFiles.size === selectableCount && selectableCount > 0;
+  selectAllCb.indeterminate = selectedFiles.size > 0 && selectedFiles.size < selectableCount;
 }
 
 function updateSelectionUI() {
@@ -949,7 +1167,16 @@ function updateSelectionUI() {
   }
 }
 
-// === DELETE FUNCTIONS ===
+// ===== DELETE FUNCTIONS =====
+
+// Resolves when deleted; rejects with the reason
+async function requestDelete(filename) {
+  const response = await fetchAction('/?deleteFile=' + encodeURIComponent(filename));
+  const data = await readJson(response);
+  if (data.success === true) return;
+  if (data.error === 'protected') throw new Error('protected system file');
+  throw new Error(fileErrorText(data, 'not deleted (file missing or SD error)'));
+}
 
 function deleteSelected() {
   if (selectedFiles.size === 0 || isDeleting) return;
@@ -972,7 +1199,7 @@ function closeDeleteModal() {
 async function confirmDeleteSelected() {
   if (isDeleting) return;
   
-  const fileList = Array.from(selectedFiles);
+  const fileList = Array.from(selectedFiles).filter(isSelectable);
   if (fileList.length === 0) return;
   
   isDeleting = true;
@@ -981,6 +1208,7 @@ async function confirmDeleteSelected() {
   
   let deleted = 0;
   let errors = 0;
+  let firstError = '';
   
   for (let i = 0; i < fileList.length; i++) {
     const filename = fileList[i];
@@ -990,17 +1218,17 @@ async function confirmDeleteSelected() {
       Math.round(((i + 1) / fileList.length) * 100) + '%';
     
     try {
-      const response = await fetch('/?deleteFile=' + encodeURIComponent(filename));
-      const data = await response.json();
-      
-      if (data.success) {
-        deleted++;
-        selectedFiles.delete(filename);
-      } else {
-        errors++;
-      }
+      await requestDelete(filename);
+      deleted++;
+      selectedFiles.delete(filename);
     } catch (e) {
       errors++;
+      if (!firstError) firstError = filename + ': ' + errorText(e);
+      // Refused or unreachable: the rest would fail the same way
+      if (e.message === FORBIDDEN_MSG || e instanceof TypeError) {
+        errors += fileList.length - i - 1;
+        break;
+      }
     }
     
     // Small delay between deletions to not overwhelm the Arduino
@@ -1013,15 +1241,20 @@ async function confirmDeleteSelected() {
   if (errors === 0) {
     showStatus(deleted + ' file' + (deleted > 1 ? 's' : '') + ' deleted successfully', 'success');
   } else {
-    showStatus(deleted + ' deleted, ' + errors + ' failed', errors === fileList.length ? 'error' : 'success');
+    showStatus(deleted + ' deleted, ' + errors + ' failed. ' + firstError, 'error');
   }
   
   loadFiles();
 }
 
 async function deleteFile(filename) {
-  if (PROTECTED_FILES.includes(filename)) {
+  if (isProtected(filename)) {
     showStatus('Cannot delete protected system file', 'error');
+    return;
+  }
+  const blocked = unreachable(filename);
+  if (blocked) {
+    showStatus(blocked, 'error');
     return;
   }
   
@@ -1030,67 +1263,101 @@ async function deleteFile(filename) {
   }
   
   try {
-    const response = await fetch('/?deleteFile=' + encodeURIComponent(filename));
-    const data = await response.json();
-    
-    if (data.success) {
-      showStatus('File "' + filename + '" deleted', 'success');
-      loadFiles();
-    } else {
-      showStatus('Error deleting file', 'error');
-    }
+    await requestDelete(filename);
+    showStatus('File "' + filename + '" deleted', 'success');
+    loadFiles();
   } catch (e) {
-    showStatus('Connection error', 'error');
+    showStatus('Error deleting "' + filename + '": ' + errorText(e), 'error');
   }
 }
 
 function downloadFile(filename) {
+  const blocked = unreachable(filename);
+  if (blocked) {
+    showStatus(blocked, 'error');
+    return;
+  }
   window.location.href = '/?download=' + encodeURIComponent(filename);
 }
 
+// ===== RENAME =====
+
 function renameFile(filename) {
+  if (isProtected(filename)) {
+    showStatus('Cannot rename protected system file', 'error');
+    return;
+  }
+  const blocked = unreachable(filename);
+  if (blocked) {
+    showStatus(blocked, 'error');
+    return;
+  }
   currentRenameFile = filename;
-  document.getElementById('renameInput').value = filename;
-  document.getElementById('renameModal').classList.add('show');
-  document.getElementById('renameInput').focus();
-  document.getElementById('renameInput').select();
+  renameInput.value = filename;
+  renameError.textContent = '';
+  renameModal.classList.add('show');
+  renameInput.focus();
+  renameInput.select();
 }
 
 function closeRenameModal() {
-  document.getElementById('renameModal').classList.remove('show');
+  if (isRenaming) return;
+  renameModal.classList.remove('show');
   currentRenameFile = '';
 }
 
+// Why the rename target is not acceptable, or ''
+function renameTargetError(oldName, newName) {
+  const bad = nameError(newName);
+  if (bad) return bad;
+  if (isProtected(newName)) return '"' + newName + '" is a system page name';
+  if (sameName(oldName, newName)) return 'the SD card ignores upper/lower case: use a different name';
+  if (allFiles.some(f => sameName(f.name, newName))) return 'a file named "' + newName + '" already exists';
+  const url = '/?renameFile=' + encodeURIComponent(oldName) + '&to=' + encodeURIComponent(newName);
+  if (('GET ' + url + ' HTTP/1.1').length > MAX_REQUEST_LINE) return 'the names have ' + SYMBOLS_MSG;
+  return '';
+}
+
 async function confirmRename() {
-  const newName = document.getElementById('renameInput').value.trim();
+  if (isRenaming || !currentRenameFile) return;
+  const oldName = currentRenameFile;
+  const newName = renameInput.value.trim();
   
-  if (!newName) {
-    showStatus('Enter a valid name', 'error');
-    return;
-  }
-  
-  if (newName === currentRenameFile) {
+  if (newName === oldName) {
     closeRenameModal();
     return;
   }
+  const bad = renameTargetError(oldName, newName);
+  if (bad) {
+    renameError.textContent = 'Cannot rename: ' + bad;
+    return;
+  }
   
+  isRenaming = true;
   try {
-    const url = '/?renameFile=' + encodeURIComponent(currentRenameFile) + '&to=' + encodeURIComponent(newName);
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    if (data.success) {
+    const url = '/?renameFile=' + encodeURIComponent(oldName) + '&to=' + encodeURIComponent(newName);
+    const data = await readJson(await fetchAction(url));
+  
+    if (data.success === true) {
       showStatus('File renamed to "' + newName + '"', 'success');
       loadFiles();
     } else {
-      showStatus('Error renaming (name already exists?)', 'error');
+      showStatus('Error renaming "' + oldName + '": ' +
+                 fileErrorText(data, 'name already exists or SD error'), 'error');
     }
   } catch (e) {
-    showStatus('Connection error', 'error');
+    showStatus('Error renaming "' + oldName + '": ' + errorText(e), 'error');
   }
+  isRenaming = false;
   
   closeRenameModal();
 }
+
+renameInput.addEventListener('input', () => {
+  renameError.textContent = '';
+});
+
+// ===== MISC =====
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
@@ -1098,16 +1365,12 @@ function formatSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML.replace(/'/g, '&#39;');
-}
-
+let statusTimer = null;
 function showStatus(message, type) {
   statusEl.textContent = message;
   statusEl.className = 'status ' + type;
-  setTimeout(() => { statusEl.className = 'status'; }, 5000);
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { statusEl.className = 'status'; }, type === 'error' ? 8000 : 5000);
 }
 
 document.addEventListener('keydown', (e) => {
@@ -1115,7 +1378,8 @@ document.addEventListener('keydown', (e) => {
     closeRenameModal();
     closeDeleteModal();
   }
-  if (e.key === 'Enter' && document.getElementById('renameModal').classList.contains('show')) {
+  if (e.key === 'Enter' && renameModal.classList.contains('show')) {
+    e.preventDefault();   // no second confirmRename() from a focused button
     confirmRename();
   }
 });
