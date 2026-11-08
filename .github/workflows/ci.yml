@@ -1,0 +1,232 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']   # tags run it through release.yml
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      full_scenarios:
+        description: Run every emulator scenario (about 15 min, network cuts with iptables)
+        type: boolean
+        default: false
+      companion_diff:
+        description: Run the full Companion differential against a reference firmware (about 30 min)
+        type: boolean
+        default: false
+      reference:
+        description: Reference firmware for the differential (commit, tag or branch; 8d554d5 = v3.7.1)
+        type: string
+        default: 8d554d5
+
+permissions:
+  contents: read
+
+concurrency:
+  # per event: a push to the branch never cancels a pending manual run
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Static RAM (.data + .bss + .noinit) allowed with the BMD stub; the real library adds its own
+  RAM_LIMIT: 4600
+  # Emulator addresses (whole 127.0.0.0/8 is loopback on Linux)
+  T_IP: 127.0.80.1
+  T_VMIX: 127.0.80.11
+  T_PEER_PREFIX: 127.0.81.
+
+jobs:
+  firmware:
+    name: Firmware build (arduino-cli, Mega 2560)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compile with pinned core and libraries
+        uses: arduino/compile-sketches@v1
+        with:
+          cli-version: 1.3.1
+          fqbn: arduino:avr:mega:cpu=atmega2560
+          platforms: |
+            - name: arduino:avr
+              version: 1.8.6
+          libraries: |
+            - name: Ethernet
+              version: 2.0.2
+            - name: SdFat
+              version: 2.3.1
+            - source-path: ./tests/stubs/BMDSDIControl
+          sketch-paths: |
+            - firmware/TallyCCUPro
+          enable-warnings-report: true
+          verbose: true
+          sketches-report-path: sketches-reports
+      - name: Static RAM and warnings
+        run: python3 tests/ci/sketch_report.py sketches-reports --ram-limit "$RAM_LIMIT"
+      - name: Upload sketches report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: sketches-report
+          path: sketches-reports
+
+  host:
+    name: Host unit tests and avr-gcc size check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install avr-gcc
+        run: sudo apt-get update -q && sudo apt-get install -y -q gcc-avr avr-libc binutils-avr
+      - name: Fetch pinned libraries
+        run: tests/emulator/fetch_libs.sh
+      - name: AVR build (stub BMD), RAM limit
+        run: tests/ci/build_avr.sh
+      - name: Host unit tests
+        run: tests/host/run.sh
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: host-tests
+          path: |
+            tests/out/host/build/tests/run-*/output.txt
+            tests/out/host/build/tests/compile.log
+            tests/out/host/build/fw/build.log
+            tests/out/avr/warnings.txt
+
+  scenarios:
+    name: Emulator robustness scenarios
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the emulator
+        run: tests/emulator/build.sh
+      - name: Allow port 80 without root
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+      - name: Fast scenarios
+        if: ${{ !inputs.full_scenarios }}
+        run: python3 tests/scenarios/run.py --fast
+      - name: All scenarios (root for iptables)
+        if: ${{ inputs.full_scenarios }}
+        run: sudo -E env "PATH=$PATH" python3 tests/scenarios/run.py --all --strict
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: scenarios
+          path: |
+            tests/out/scenarios/*.json
+            tests/out/scenarios/*.err
+            tests/out/scenarios/runs/*/serial.log
+            tests/out/scenarios/runs/*/emu.log
+
+  pages:
+    name: Web pages (node --check, line endings), firmware version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Check inline scripts of sdcard/*.html
+        run: python3 tests/ci/check_pages.py
+      - name: Node scripts of the test tooling
+        run: for f in tests/companion/driver/*.js tests/companion/diff/*.js; do node --check "$f"; done
+      - name: Firmware version only in FIRMWARE_VERSION (DOC-12)
+        run: python3 tests/ci/check_version.py
+
+  companion:
+    name: Companion module v3.1.0 against the firmware
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SUITES: '^(actions:lens|actions:tally|actions:ptz|presets|utility|seq:(preset-roundtrip|requestsync-sse|ptz-start-stop|vmix-toggle|burst|ois-feedback)|static:(eft|contrast-exp|void-web|savepreset-name|vmix-tally))$'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Fetch the official module (pinned commit)
+        run: tests/companion/fetch_module.sh
+      - name: Generate the case plans
+        run: node tests/companion/driver/gen-cases.js && node tests/companion/diff/gen-static.js
+      - name: Allow port 80 without root
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+      - name: Harness self-test (mock)
+        run: MOCK_HOST=127.0.82.1 node tests/companion/driver/test-mock.js --quick
+      - name: Build the emulator
+        run: tests/emulator/build.sh
+      - name: Module drives the firmware (no failed case, no watchdog)
+        run: >
+          node tests/companion/diff/runner.js --which new --ip 127.0.82.2 --vmix 127.0.82.12
+          --out tests/out/companion/run-new --suite "$SUITES"
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: companion
+          path: tests/out/companion
+
+  companion-diff:
+    name: Companion differential (manual)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.companion_diff }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      REFERENCE: ${{ inputs.reference }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Fetch the official module (pinned commit)
+        run: tests/companion/fetch_module.sh
+      - name: Generate the case plans
+        run: node tests/companion/driver/gen-cases.js && node tests/companion/diff/gen-static.js
+      - name: Build the emulators (reference and this commit)
+        run: |
+          tests/emulator/build.sh --ref "$REFERENCE" --name emu-ref
+          tests/emulator/build.sh --name emu-new
+      - name: Run the full plan on both (in parallel)
+        run: |
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+          D=tests/out/companion
+          mkdir -p "$D"
+          # root: the network-cut cases use iptables (the logs are written by this shell)
+          # shellcheck disable=SC2024
+          sudo -E env "PATH=$PATH" node tests/companion/diff/runner.js --which ref --bin tests/out/emu/bin/emu-ref \
+            --sd-ref "$REFERENCE" --ip 127.0.82.2 --vmix 127.0.82.12 --out "$D/run-ref" > "$D/run-ref.log" 2>&1 &
+          ref=$!
+          # shellcheck disable=SC2024
+          sudo -E env "PATH=$PATH" node tests/companion/diff/runner.js --which new --bin tests/out/emu/bin/emu-new \
+            --ip 127.0.82.3 --vmix 127.0.82.13 --out "$D/run-new" > "$D/run-new.log" 2>&1 &
+          new=$!
+          rc_ref=0; rc_new=0
+          wait $ref || rc_ref=$?
+          wait $new || rc_new=$?
+          tail -n 3 "$D/run-ref.log" "$D/run-new.log"
+          echo "reference exit $rc_ref, new exit $rc_new"
+          echo "RC_NEW=$rc_new" >> "$GITHUB_ENV"
+      - name: Compare and report
+        run: |
+          D=tests/out/companion
+          sudo chown -R "$(id -u):$(id -g)" "$D"
+          node tests/companion/diff/compare.js "$D/run-ref" "$D/run-new" "$D/diff.json"
+          node tests/companion/diff/report.js "$D/diff.json" --md "$D/report.md" --examples 8
+          cat "$D/report.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: companion-diff
+          path: |
+            tests/out/companion/*.log
+            tests/out/companion/diff.json
+            tests/out/companion/report.md
+            tests/out/companion/run-*/results.json
+      - name: New firmware had failed cases or a watchdog reset
+        if: ${{ env.RC_NEW != '0' }}
+        run: exit 1
