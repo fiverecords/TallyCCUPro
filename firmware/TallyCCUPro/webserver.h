@@ -1,7 +1,6 @@
 /*
  * WebServer.h
  * Web server for control and configuration
- * Version 3.8
  * 
  * RAM optimized with static buffers
  * Includes SSE (Server-Sent Events) for real-time sync
@@ -31,6 +30,10 @@ extern void changeVMixIP(const char* ip);
 #define WEB_TEMP_BUFFER_SIZE 48
 #define WEB_SSE_BUFFER_SIZE 176       // one SSE event, sent all or nothing
 
+// SD file manager names (list, download, delete, rename, upload,
+// fileExists): decoded bytes, one limit for all (SD-06)
+#define WEB_NAME_MAX (WEB_TEMP_BUFFER_SIZE - 1)
+
 // HTTP time budgets (ms)
 #define WEB_HEADER_MS 2000            // request line + headers, total
 #define WEB_RESPONSE_MS 3000          // writing one response, total
@@ -45,7 +48,13 @@ extern void changeVMixIP(const char* ip);
 #define WEB_LISTENERS 2               // LISTEN sockets on port 80 while 3+ are free
 #define WEB_MAX_PER_PASS 3            // requests served per processRequests()...
 #define WEB_PASS_MS 25                // ...unless this much time has gone
-#define WEB_POLL_MS 20                // long transfers and waits: tally poll period
+#define WEB_POLL_MS 20                // long requests and waits: tally poll period
+#define WEB_DEFER_MS 10000            // page/file request waiting for a transfer
+                                      // slot (SD_XFERS busy): then a 503...
+#define WEB_DEFER_MAX_MS (SD_SEND_MAX_MS + SD_SEND_FIN_MS + 2000)
+                                      // ...or up to this (a slot is free by then)
+#define WEB_DEFER_SPARE 1             // while this many sockets are still free
+                                      // (listener re-armed: one for vMix)
 
 // SSE
 #define SSE_TIMEOUT 30000             // keepalive after 30 s without events
@@ -54,6 +63,7 @@ extern void changeVMixIP(const char* ip);
                                       // load alone is ~50 back-to-back events)
 #define SSE_STALL_MS 2000             // dropping events this long: close
 #define SSE_TX_WAIT_MS 2              // grace for a busy TX before a drop
+#define SSE_STATE_MIN_MS 100          // tally/state events at most this often
 
 // PTZ / continuous zoom safety stop, only for requests with deadman=1:
 // no refresh for PTZ_DEADMAN_MS stops the motion. While the server is busy
@@ -74,11 +84,14 @@ class WebServer {
     static void sendSSERequestSync();  // Request web to send its state
     static bool hasSSEClient();
     
-    // JSON utility - print string with " and \ escaped
+    // JSON string contents: " and \ escaped, control characters as
+    // \n, \r, \t or \u00XX (HTTP-10)
     static void printJsonSafe(Print &out, const char* str);
+    static void printJsonSafe(Print &out, const char* str, size_t len);
 
     // For loops that serve one web request for long: polls the vMix tally,
-    // the deadman and the port-80 listener, at most every WEB_POLL_MS
+    // the deadman and the port-80 listener, at most every WEB_POLL_MS.
+    // File transfers are not moved on from here (SdUtils::pumpTransfers()).
     static void transferPoll();
 
   private:
@@ -97,6 +110,12 @@ class WebServer {
     static uint8_t _sseCount;
     static unsigned long _sseLastActivity;
     static bool _sseSyncWanted;     // sseResync() asked for a REQUESTSYNC
+
+    // Tally (UI-18) and global switches (UI-10) as last sent on the stream;
+    // a stale bit sends them again (new or recovered client)
+    static uint8_t _ssePgm, _ssePvw, _sseSwitches;
+    static uint8_t _sseStale;
+    static unsigned long _sseStateAt;
 
     // Port-80 sockets: when first seen connected (FIFO order, idle sweep)
     static uint16_t _sockSeenAt[MAX_SOCK_NUM];
@@ -138,6 +157,8 @@ class WebServer {
       long contentLength;          // -1 missing or invalid
       bool gzip;                   // Accept-Encoding: gzip
       bool boundary;               // multipart end pattern is in _valueBuffer
+      bool csrf;                   // X-TallyCCU: 1 (SEC-01)
+      bool crossSite;              // Sec-Fetch-Site other than same-origin/none
     };
 
     // Static buffers
@@ -155,13 +176,11 @@ class WebServer {
     static void readHeaders(EthernetClient &client, unsigned long deadline, Request &req);
     static int readLinePolled(EthernetClient &client, NetUtils::LineReader &lr,
                               unsigned long deadline, long* remaining);
-    static bool writePolled(EthernetClient &client, const uint8_t* buf, size_t len,
-                            unsigned long deadline);
-    static bool waitTxIdle(EthernetClient &client);
 
     // Process different request types
-    static void processGETRequest(char* reqLine, EthernetClient &client, bool gzip);
+    static void processGETRequest(char* reqLine, EthernetClient &client, const Request &req);
     static void processPOSTRequest(const char* reqLine, EthernetClient &client, const Request &req);
+    static void processQuery(char* query, EthernetClient &client, const Request &req);
     
     // Handle preset save via POST
     static void handleSavePresetPOST(EthernetClient &client, long contentLength);
@@ -182,6 +201,8 @@ class WebServer {
     // HTTP responses (written through _requestBuffer)
     static void sendHeaders(Print &out, int httpCode, bool json);
     static void sendBareStatus(EthernetClient &client, int httpCode);
+    static void sendForbidden(EthernetClient &client);
+    static void sendFileResult(EthernetClient &client, int httpCode, PGM_P error);
     static void sendParamResult(EthernetClient &client, ParamResult result);
     static void handleGetOverrides(EthernetClient &client);
     static void handleGetTallyMap(EthernetClient &client);
@@ -203,23 +224,20 @@ class WebServer {
     static void sseRemove(uint8_t i);
     static void sseBroadcast(const ClientBufferPrint &event);
     static void sseResync(EthernetClient &c, SseClient &s);
+    static void sendSSEState();
     
-    // SD file management
+    // SD file management (names checked by the caller)
     static void handleListFiles(EthernetClient &client);
     static void handleDownloadFile(EthernetClient &client, const char* filename);
     static void handleDeleteFile(EthernetClient &client, const char* filename);
     static void handleRenameFile(EthernetClient &client, const char* oldName, const char* newName);
+    static void handleFileExists(EthernetClient &client, const char* filename);
     static void handleUploadFile(EthernetClient &client, const Request &req);
     
     // Safe Mode handlers
     static void handleSafeModeStatus(EthernetClient &client);
     static void handleSafeModeExit(EthernetClient &client);
     
-    // Utilities
-    static bool isNumeric(const char* str);
-    static void urlDecodeInPlace(char* str);
-    static int findChar(const char* str, char c, int start);
-    static void extractSubstring(const char* src, char* dest, int start, int end, int maxLen);
 };
 
 #endif // WEBSERVER_H

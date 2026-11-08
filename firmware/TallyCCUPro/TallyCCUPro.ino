@@ -1,9 +1,7 @@
 /*
  * TallyCCUPro.ino
  * Tally and CCU System for Blackmagic cameras with vMix
- * 
- * Version 3.8
- * 
+ *
  * Features:
  * - Tally via SDI from vMix
  * - Full CCU control via web interface
@@ -11,19 +9,22 @@
  * - Preset management with SD card storage
  * - Watchdog timer for reliability
  * - Safe Mode for boot failure recovery
- * 
+ *
  * Hardware required:
  * - Arduino Mega 2560
  * - Ethernet Shield W5100/W5500
  * - Blackmagic 3G-SDI Shield
  * - SD Card (FAT16/FAT32)
- * 
+ *
  * Repository: https://github.com/fiverecords/TallyCCUPro
- * License: GPL-3.0
+ * Copyright (c) 2026 Joaquin Villodre
+ * License: CC BY-NC-SA 4.0 (Creative Commons Attribution-NonCommercial-
+ * ShareAlike 4.0 International), see LICENSE
+ * SPDX-License-Identifier: CC-BY-NC-SA-4.0
  */
 
 #include "Configuration.h"
-#include "SafeMode.h"       // NEW: Safe mode system
+#include "SafeMode.h"
 #include "Storage.h"
 #include "Network.h"
 #include "VmixConnector.h"
@@ -35,19 +36,15 @@
 
 #include <avr/wdt.h>
 
-// Concurrency control flags
-volatile bool g_isBusyWithSD = false;
-volatile bool g_isBusyWithNetwork = false;
-
 // Loop timing
 unsigned long lastWebProcess = 0;
 unsigned long lastSerialProcess = 0;
-unsigned long lastMaintenance = 0;
 unsigned long lastBroadcastProcess = 0;
 
-// Serial command buffer
-char serialBuffer[64];
-int serialBufferIndex = 0;
+// Serial command line (BOOT-19)
+static char serialBuffer[SERIAL_CMD_MAX + 1];
+static uint8_t serialLen = 0;
+static bool serialOverflow = false;
 
 // SD init with retries; each failed attempt can take ~2 s
 bool beginSdWithRetry() {
@@ -69,23 +66,22 @@ void setup() {
   // Hardware SS (pin 53) must be an output to keep the Mega SPI master
   digitalWrite(SS, HIGH);
   pinMode(SS, OUTPUT);
-  
+
   // ============================================================
   // CRITICAL: SafeMode.begin() MUST be called FIRST!
   // It enables watchdog and detects boot loops.
   // ============================================================
-  Serial.begin(115200);
-  while (!Serial && millis() < 3000);
-  
+  Serial.begin(115200);   // the Mega's UART is ready at once: nothing to wait for
+
   Serial.println();
   Serial.println(F("========================================="));
-  Serial.println(F("   TallyCCU Pro V3.8"));
+  Serial.println(F("   TallyCCU Pro V" FIRMWARE_VERSION));
   Serial.println(F("========================================="));
-  
+
   // Initialize safe mode detection (enables watchdog internally)
   Serial.println(F("[0/9] Initializing SafeMode..."));
   SafeMode::begin();
-  
+
   // Check if we're in safe mode
   if (SafeMode::isActive()) {
     Serial.println();
@@ -93,84 +89,116 @@ void setup() {
     Serial.println(F("SDI Shield will NOT be initialized."));
     Serial.println(F("Access web interface for diagnostics."));
     Serial.println();
-    
+
     // Initialize only essential systems (skip SDI Shield)
     setupSafeMode();
     return;
   }
-  
+
   // Normal boot sequence
   setupNormal();
 }
 
+// Serial report of a network result (BOOT-10). r is a NetResult.
+static void printNetResult(uint8_t r, const __FlashStringHelper* what) {
+  if (r == NET_INVALID) return;   // the setter explained why
+  Serial.print(what);
+  switch (r) {
+    case NET_LINK_UP:      Serial.println(F(" changed successfully")); break;
+    case NET_LINK_DOWN:    Serial.println(F(" saved and applied; no Ethernet link (cable unplugged?)")); break;
+    case NET_NO_HARDWARE:  Serial.println(F(" saved; Ethernet chip not responding")); break;
+    default:               Serial.println(F(" changed (link state unknown)")); break;
+  }
+}
+
+// Boot-time network start (shared by both modes)
+static void startNetwork() {
+  NetResult nr = NetworkManager::begin();
+  if (nr == NET_NO_HARDWARE) {
+    Serial.println(F("ERROR: Ethernet chip not responding (check the shield)"));
+  } else if (nr == NET_LINK_DOWN) {
+    Serial.println(F("WARNING: no Ethernet link (cable unplugged?)"));
+  }
+  NetworkManager::printConfig();
+}
+
+static void printIP4(const byte ip[4]) {
+  for (byte i = 0; i < 4; i++) {
+    if (i) Serial.print('.');
+    Serial.print(ip[i]);
+  }
+  Serial.println();
+}
+
 void setupNormal() {
   Serial.print(F("Firmware: "));
-  Serial.println(FIRMWARE_VERSION);
+  Serial.println(F(FIRMWARE_VERSION));
   Serial.println();
 
-  // Initialize EEPROM storage
+  // Initialize EEPROM storage (layout check, settings kept)
   Serial.println(F("[1/9] Initializing EEPROM..."));
   StorageManager::begin();
   wdt_reset();
-  
+
   // Initialize SD card
   Serial.println(F("[2/9] Initializing SD..."));
   if (!beginSdWithRetry()) {
     Serial.println(F("ERROR: SD not available"));
   }
   wdt_reset();
-  
+
   // Initialize network
   Serial.println(F("[3/9] Initializing network..."));
-  if (!NetworkManager::begin()) {
-    Serial.println(F("ERROR: Network not available"));
-  }
-  NetworkManager::printConfig();
+  startNetwork();
   wdt_reset();
-  
-  // Initialize Tally Manager
-  Serial.println(F("[4/9] Initializing Tally..."));
-  TallyManager::begin();
-  wdt_reset();
-  
-  // Initialize CCU Control (THIS IS WHERE IT CAN HANG!)
-  Serial.println(F("[5/9] Initializing CCU (SDI Shield)..."));
-  Serial.println(F("      If system hangs here, check:"));
+
+  // The first I2C access to the shield is in TallyManager::begin()
+  Serial.println(F("      If system hangs at [4/9] or [5/9], check:"));
   Serial.println(F("      - 12V power to SDI Shield"));
   Serial.println(F("      - Valid SDI signal (1080p/i Level B)"));
+
+  // Initialize Tally Manager
+  Serial.println(F("[4/9] Initializing Tally (SDI Shield)..."));
+  TallyManager::begin();
+  wdt_reset();
+
+  // Initialize CCU Control (THIS IS WHERE IT CAN HANG!)
+  Serial.println(F("[5/9] Initializing CCU (SDI Shield)..."));
   CCUControl::begin();
   wdt_reset();
-  
+
   // From here on a hung I2C transfer returns after 25 ms (with a bus reset)
   // instead of blocking until the watchdog (CCU-03). Armed after the shield
   // init so that a shield hanging there still ends in Safe Mode as before.
   if (!SafeMode::armWireTimeout()) {
     Serial.println(F("WARNING: Wire has no timeout in this core"));
   }
-  
+
   // Load vMix IP from EEPROM
   Serial.println(F("[6/9] Loading vMix config..."));
   byte vmixip[4];
-  loadVMixIPFromEEPROM(vmixip);
+  StorageManager::loadVmixIP(vmixip);
+  Serial.print(F("vMix IP loaded: "));
+  printIP4(vmixip);
   wdt_reset();
-  
+
   // Initialize vMix connection (first attempt from loop())
   Serial.println(F("[7/9] Connecting to vMix..."));
   VmixConnector::begin(vmixip);
   wdt_reset();
-  
+
   // Initialize web server
   Serial.println(F("[8/9] Starting web server..."));
   WebServer::begin();
   wdt_reset();
-  
+
   // Initialize CCU Broadcast server
   Serial.println(F("[9/9] Starting CCU Broadcast..."));
   CCUBroadcast::begin();
   wdt_reset();
-  
+
   // Boot is marked complete from loop() after BOOT_COMPLETE_DELAY_MS
-  
+
   // Show final status
   Serial.println();
   Serial.println(F("========================================="));
@@ -179,10 +207,7 @@ void setupNormal() {
   Serial.print(F("Local IP: "));
   Serial.println(NetworkManager::getLocalIP());
   Serial.print(F("vMix IP: "));
-  Serial.print(vmixip[0]); Serial.print('.');
-  Serial.print(vmixip[1]); Serial.print('.');
-  Serial.print(vmixip[2]); Serial.print('.');
-  Serial.println(vmixip[3]);
+  printIP4(vmixip);
   Serial.println();
   Serial.println(F("Active ports:"));
   Serial.println(F("  - HTTP: 80"));
@@ -191,7 +216,7 @@ void setupNormal() {
   Serial.println();
   printHelp();
   Serial.println();
-  
+
   Serial.println(F("Watchdog: 8s"));
   Serial.println(F("System ready."));
   Serial.println();
@@ -199,225 +224,326 @@ void setupNormal() {
 
 void setupSafeMode() {
   // Minimal initialization - NO SDI Shield!
-  
+
   Serial.println(F("[1/5] Initializing EEPROM..."));
   StorageManager::begin();
   wdt_reset();
-  
+
   Serial.println(F("[2/5] Initializing SD..."));
   if (!beginSdWithRetry()) {
     Serial.println(F("ERROR: SD not available"));
   }
   wdt_reset();
-  
+
   Serial.println(F("[3/5] Initializing network..."));
-  if (!NetworkManager::begin()) {
-    Serial.println(F("ERROR: Network not available"));
-  }
-  NetworkManager::printConfig();
+  startNetwork();
   wdt_reset();
-  
-  // Initialize Tally Manager (for vMix connection)
-  Serial.println(F("[4/5] Initializing Tally..."));
+
+  // Tally map and vMix connection: monitoring only, the shield is not
+  // initialized, so no tally reaches the cameras
+  Serial.println(F("[4/5] Initializing Tally (monitoring only)..."));
   TallyManager::begin();
-  wdt_reset();
-  
-  // Load vMix IP and connect (tally still works!)
   byte vmixip[4];
-  loadVMixIPFromEEPROM(vmixip);
+  StorageManager::loadVmixIP(vmixip);
   VmixConnector::begin(vmixip);
   wdt_reset();
-  
-  // Start web server (will serve safe mode page)
-  Serial.println(F("[5/5] Starting web server (Safe Mode)..."));
-  WebServer::begin();
-  wdt_reset();
-  
-  // CCU Broadcast still works (for Companion)
-  CCUBroadcast::begin();
-  wdt_reset();
-  
-  // Don't call bootComplete() - we want to stay in safe mode
-  
+
+  // Banner first: the servers start last, so nothing waits on the serial
+  // output once they listen
   Serial.println();
   Serial.println(F("========================================="));
   Serial.println(F("   SAFE MODE - Limited functionality"));
   Serial.println(F("========================================="));
+  Serial.print(F("Reason: "));
+  Serial.println(SafeMode::getSafeModeReasonString());
   Serial.print(F("Local IP: "));
   Serial.println(NetworkManager::getLocalIP());
   Serial.println();
   Serial.println(F("Available:"));
   Serial.println(F("  - Web interface (diagnostics)"));
-  Serial.println(F("  - vMix tally connection"));
-  Serial.println(F("  - Companion integration"));
+  Serial.println(F("  - vMix: monitoring only (NO tally output)"));
+  Serial.println(F("  - Companion connection (camera commands rejected)"));
   Serial.println();
   Serial.println(F("Disabled:"));
+  Serial.println(F("  - SDI tally output"));
   Serial.println(F("  - SDI Camera Control"));
   Serial.println();
-  Serial.println(F("Access http://"));
+  Serial.print(F("Access http://"));
   Serial.print(NetworkManager::getLocalIP());
   Serial.println(F(" for diagnostics."));
-  Serial.println();
+  wdt_reset();
+
+  // Start web server (will serve safe mode page)
+  Serial.println(F("[5/5] Starting web server (Safe Mode)..."));
+  WebServer::begin();
+  wdt_reset();
+
+  // CCU Broadcast keeps Companion connected (camera commands are rejected)
+  CCUBroadcast::begin();
+  wdt_reset();
+
+  // Don't call bootComplete() - we want to stay in safe mode
+  Serial.println(F("System ready."));
+}
+
+// Low RAM warning from the stack low-water mark (MEM-02): once when it
+// drops below RAM_WARN_BYTES, again only if it keeps dropping
+static void checkRam(unsigned long now) {
+  static unsigned long lastCheck = 0;
+  static int warnedAt = 0x7FFF;
+  if (now - lastCheck < RAM_CHECK_INTERVAL_MS) return;
+  lastCheck = now;
+  int low = SafeMode::minFreeRam();
+  if (low < 0) low = SafeMode::freeRam();   // not measurable (emulator)
+  if (low < RAM_WARN_BYTES && low < warnedAt - 32) {
+    warnedAt = low;
+    Serial.print(F("!! CRITICAL RAM: "));
+    Serial.print(low);
+    Serial.println(F(" bytes left at the deepest stack point"));
+  }
 }
 
 void loop() {
   wdt_reset();
-  
+
   unsigned long currentMillis = millis();
-  
+
   // A hang early in loop() is a boot failure too: clear the crash
   // counter only after a stable period. Never in Safe Mode.
   if (currentMillis > BOOT_COMPLETE_DELAY_MS && !SafeMode::isActive()) {
     SafeMode::bootComplete();  // no-op after the first call
   }
-  
-  // Safe Mode: probe the SDI shield, back to normal mode once it is stable
+
+  // Uptime; in Safe Mode, probe the SDI shield and go back to normal mode
   SafeMode::poll();
-  
-  // RAM monitor (every 10 seconds, only warn if critical)
-  static unsigned long lastRamCheck = 0;
-  if (currentMillis - lastRamCheck >= 10000) {
-    lastRamCheck = currentMillis;
-    int ram = freeRam();
-    if (ram < 300) {
-      Serial.print(F("!! CRITICAL RAM: "));
-      Serial.println(ram);
-    }
-  }
-  
+
+  checkRam(currentMillis);
+
   // PRIORITY 1: vMix Tally (every cycle) - works in safe mode too
   VmixConnector::processData();
-  
+  TallyManager::refresh();
+
   // PRIORITY 2: Web Server
   if (currentMillis - lastWebProcess >= WEB_PROCESS_INTERVAL) {
     lastWebProcess = currentMillis;
-    if (!g_isBusyWithSD) {
-      WebServer::processRequests();
-    }
+    WebServer::processRequests();
   }
-  
+
   // PRIORITY 3: CCU Broadcast (works in safe mode for Companion)
-  if (currentMillis - lastBroadcastProcess >= 20) {
+  if (currentMillis - lastBroadcastProcess >= BROADCAST_PROCESS_INTERVAL) {
     lastBroadcastProcess = currentMillis;
     CCUBroadcast::process();
   }
-  
+
   // PRIORITY 4: Serial commands
   if (currentMillis - lastSerialProcess >= SERIAL_PROCESS_INTERVAL) {
     lastSerialProcess = currentMillis;
     processSerialCommands();
   }
-  
-  // PRIORITY 5: Ethernet maintenance
-  if (currentMillis - lastMaintenance >= MAINTENANCE_INTERVAL) {
-    lastMaintenance = currentMillis;
-    Ethernet.maintain();
-  }
+
+  // PRIORITY 5: Ethernet chip check (static IP: no DHCP maintain needed)
+  NetworkManager::maintain();
 }
 
+// Lines end at CR or LF. A line longer than SERIAL_CMD_MAX is dropped
+// whole, never run truncated (BOOT-19).
 void processSerialCommands() {
   while (Serial.available()) {
     char c = Serial.read();
-    
+
     if (c == '\n' || c == '\r') {
-      if (serialBufferIndex > 0) {
-        serialBuffer[serialBufferIndex] = '\0';
+      if (serialOverflow) {
+        Serial.println(F("Error: line too long (ignored)"));
+      } else if (serialLen > 0) {
+        serialBuffer[serialLen] = '\0';
         executeSerialCommand(serialBuffer);
-        serialBufferIndex = 0;
       }
-    } else if (serialBufferIndex < 63) {
-      serialBuffer[serialBufferIndex++] = c;
+      serialLen = 0;
+      serialOverflow = false;
+    } else if (serialOverflow) {
+      // discard until the end of the line
+    } else if (serialLen < SERIAL_CMD_MAX) {
+      serialBuffer[serialLen++] = c;
+    } else {
+      serialOverflow = true;
     }
   }
 }
 
-void executeSerialCommand(const char* command) {
+static bool cmdIs(const char* cmd, PGM_P name) {
+  return strcasecmp_P(cmd, name) == 0;
+}
+
+// "aa:bb:cc:dd:ee:ff" (or '-'), hex digits in either case
+static bool parseMac(const char* s, byte mac[6]) {
+  for (byte i = 0; i < 6; i++) {
+    byte v = 0;
+    for (byte d = 0; d < 2; d++) {
+      char c = *s++;
+      byte h;
+      if (c >= '0' && c <= '9') h = c - '0';
+      else if (c >= 'a' && c <= 'f') h = c - 'a' + 10;
+      else if (c >= 'A' && c <= 'F') h = c - 'A' + 10;
+      else return false;
+      v = (byte)(v << 4 | h);
+    }
+    mac[i] = v;
+    if (i < 5 && *s != ':' && *s != '-') return false;
+    if (i < 5) s++;
+  }
+  return *s == '\0';
+}
+
+static void printMac(const byte mac[6]) {
+  for (byte i = 0; i < 6; i++) {
+    if (mac[i] < 16) Serial.print('0');
+    Serial.print(mac[i], HEX);
+    if (i < 5) Serial.print(':');
+  }
+  Serial.println();
+}
+
+static void printRam() {
+  Serial.print(F("Free RAM: "));
+  Serial.print(SafeMode::freeRam());
+  Serial.print(F(" bytes now, "));
+  int low = SafeMode::minFreeRam();
+  if (low < 0) {
+    Serial.println(F("minimum n/a"));
+  } else {
+    Serial.print(low);
+    Serial.println(F(" bytes at the deepest stack point since boot"));
+  }
+}
+
+// Trimmed, case-insensitive; "command argument"
+void executeSerialCommand(char* line) {
+  while (*line == ' ' || *line == '\t') line++;
+  char* end = line + strlen(line);
+  while (end > line && (end[-1] == ' ' || end[-1] == '\t')) *--end = '\0';
+  if (*line == '\0') return;
+
+  char* arg = line;
+  while (*arg && *arg != ' ' && *arg != '\t') arg++;
+  if (*arg) {
+    *arg++ = '\0';
+    while (*arg == ' ' || *arg == '\t') arg++;
+  }
+
   Serial.print(F("Command: "));
-  Serial.println(command);
-  
-  if (strcmp(command, "help") == 0 || strcmp(command, "?") == 0) {
+  Serial.print(line);
+  if (*arg) {
+    Serial.print(' ');
+    Serial.print(arg);
+  }
+  Serial.println();
+
+  // Commands with an IP argument
+  if (cmdIs(line, PSTR("ip")) || cmdIs(line, PSTR("gateway")) ||
+      cmdIs(line, PSTR("subnet")) || cmdIs(line, PSTR("vmixip"))) {
+    if (*arg == '\0') {
+      Serial.print(F("Usage: "));
+      Serial.print(line);
+      Serial.println(F(" X.X.X.X"));
+    } else if (cmdIs(line, PSTR("ip"))) {
+      printNetResult(NetworkManager::setLocalIP(arg), F("IP"));
+    } else if (cmdIs(line, PSTR("gateway"))) {
+      printNetResult(NetworkManager::setGateway(arg), F("Gateway"));
+    } else if (cmdIs(line, PSTR("subnet"))) {
+      printNetResult(NetworkManager::setSubnet(arg), F("Subnet"));
+    } else {
+      changeVMixIP(arg);
+    }
+    return;
+  }
+
+  if (cmdIs(line, PSTR("mac"))) {
+    byte mac[6];
+    if (*arg == '\0') {
+      NetworkManager::getMACAddress(mac);
+      Serial.print(F("MAC: "));
+      printMac(mac);
+    } else if (!parseMac(arg, mac) || !StorageManager::saveMacAddress(mac)) {
+      Serial.println(F("Error: use a unicast MAC like 02:54:00:00:00:01"));
+    } else {
+      Serial.print(F("MAC saved, applies after 'reset': "));
+      printMac(mac);
+    }
+    return;
+  }
+
+  if (cmdIs(line, PSTR("factoryreset"))) {
+    if (!cmdIs(arg, PSTR("yes"))) {
+      Serial.println(F("Erases IP, gateway, subnet, vMix IP, tally map and overrides"));
+      Serial.println(F("(the MAC is kept) and restarts. Type 'factoryreset yes'."));
+      return;
+    }
+    StorageManager::factoryReset();
+    Serial.println(F("Restarting..."));
+    SafeMode::restart();
+    return;
+  }
+
+  // The rest take no argument
+  if (*arg) {
+    Serial.println(F("Unknown command. Type 'help' for available commands."));
+    return;
+  }
+
+  if (cmdIs(line, PSTR("help")) || cmdIs(line, PSTR("?"))) {
     printHelp();
     return;
   }
-  
+
   // Safe mode commands
-  if (strcmp(command, "safemode") == 0) {
-    Serial.println(F("Entering safe mode on next boot..."));
+  if (cmdIs(line, PSTR("safemode"))) {
+    if (SafeMode::isActive()) {
+      Serial.println(F("Already in Safe Mode"));
+      return;
+    }
+    Serial.println(F("Restarting NOW into Safe Mode (no SDI tally or CCU until 'normalboot')..."));
     SafeMode::enterSafeMode();
     return;
   }
-  
-  if (strcmp(command, "normalboot") == 0) {
+
+  if (cmdIs(line, PSTR("normalboot"))) {
+    if (!SafeMode::isActive()) {
+      Serial.println(F("Not in Safe Mode (use 'reset' to restart)"));
+      return;
+    }
     Serial.println(F("Forcing normal boot..."));
     SafeMode::exitSafeMode();
     return;
   }
-  
-  if (strncmp(command, "ip ", 3) == 0) {
-    const char* ip = command + 3;
-    if (NetworkManager::setLocalIP(ip)) {
-      Serial.println(F("IP changed successfully"));
-    } else {
-      Serial.println(F("Error: Invalid IP"));
-    }
-    return;
-  }
-  
-  if (strncmp(command, "gateway ", 8) == 0) {
-    const char* ip = command + 8;
-    if (NetworkManager::setGateway(ip)) {
-      Serial.println(F("Gateway changed successfully"));
-    } else {
-      Serial.println(F("Error: Invalid gateway"));
-    }
-    return;
-  }
-  
-  if (strncmp(command, "subnet ", 7) == 0) {
-    const char* ip = command + 7;
-    if (NetworkManager::setSubnet(ip)) {
-      Serial.println(F("Subnet changed successfully"));
-    } else {
-      Serial.println(F("Error: Invalid subnet"));
-    }
-    return;
-  }
-  
-  if (strncmp(command, "vmixip ", 7) == 0) {
-    const char* ip = command + 7;
-    changeVMixIP(ip);
-    return;
-  }
-  
-  if (strcmp(command, "reset") == 0) {
+
+  if (cmdIs(line, PSTR("reset"))) {
     Serial.println(F("Resetting..."));
     SafeMode::restart();  // intentional: not counted as a boot failure
+    return;
   }
-  
-  if (strcmp(command, "status") == 0) {
+
+  if (cmdIs(line, PSTR("status"))) {
     printStatus();
     return;
   }
-  
-  if (strcmp(command, "ram") == 0) {
-    Serial.print(F("Free RAM: "));
-    Serial.print(freeRam());
-    Serial.println(F(" bytes"));
+
+  if (cmdIs(line, PSTR("ram"))) {
+    printRam();
     return;
   }
-  
-  if (strcmp(command, "tally") == 0) {
+
+  if (cmdIs(line, PSTR("tally"))) {
     TallyManager::printCurrentMap();
     return;
   }
-  
-  if (strcmp(command, "state") == 0) {
+
+  if (cmdIs(line, PSTR("state"))) {
     Serial.println(F("SSE active - state lives in browser"));
     Serial.print(F("SSE client connected: "));
     Serial.println(WebServer::hasSSEClient() ? F("Yes") : F("No"));
     return;
   }
-  
+
   Serial.println(F("Unknown command. Type 'help' for available commands."));
 }
 
@@ -426,28 +552,45 @@ void printHelp() {
   Serial.println(F("  help            - Show this help"));
   Serial.println(F("  status          - Show system status"));
   Serial.println(F("  ip X.X.X.X      - Change local IP"));
-  Serial.println(F("  gateway X.X.X.X - Change gateway"));
+  Serial.println(F("  gateway X.X.X.X - Change gateway (0.0.0.0: none)"));
   Serial.println(F("  subnet X.X.X.X  - Change subnet"));
   Serial.println(F("  vmixip X.X.X.X  - Change vMix IP"));
+  Serial.println(F("  mac [XX:..:XX]  - Show or set the MAC (after reset)"));
   Serial.println(F("  tally           - Show tally map"));
-  Serial.println(F("  state           - Show stored CCU params"));
+  Serial.println(F("  state           - Show real-time sync (SSE) state"));
   Serial.println(F("  ram             - Show free RAM"));
   Serial.println(F("  reset           - Reset Arduino"));
-  Serial.println(F("  safemode        - Enter safe mode on next boot"));
-  Serial.println(F("  normalboot      - Exit safe mode and restart"));
+  Serial.println(F("  safemode        - Restart NOW into Safe Mode"));
+  Serial.println(F("  normalboot      - Leave Safe Mode (restarts)"));
+  Serial.println(F("  factoryreset    - Factory settings (asks to confirm)"));
 }
 
 void printStatus() {
   Serial.println();
   Serial.println(F("=== SYSTEM STATUS ==="));
-  
+  Serial.print(F("Firmware: "));
+  Serial.println(F(FIRMWARE_VERSION));
+
   // Safe mode status
   Serial.print(F("Safe Mode: "));
-  Serial.println(SafeMode::isActive() ? F("ACTIVE") : F("OFF"));
+  if (SafeMode::isActive()) {
+    Serial.print(F("ACTIVE ("));
+    Serial.print(SafeMode::getSafeModeReasonString());
+    Serial.println(')');
+  } else {
+    Serial.println(F("OFF"));
+  }
   Serial.print(F("Reset Count: "));
   Serial.println(SafeMode::getResetCount());
   Serial.print(F("Last Reset: "));
   Serial.println(SafeMode::getResetReasonString());
+  Serial.print(F("Watchdog resets since power-on: "));
+  Serial.println(SafeMode::getCrashCount());
+  uint32_t hang = SafeMode::getCrashAddress();
+  if (hang) {
+    Serial.print(F("Last hang at flash address: 0x"));
+    Serial.println(hang, HEX);
+  }
   Serial.print(F("Uptime: "));
   Serial.print(SafeMode::getUptime());
   Serial.println(F(" seconds"));
@@ -459,29 +602,37 @@ void printStatus() {
     Serial.println(')');
   }
   Serial.println();
-  
+
   Serial.print(F("Local IP: "));
   Serial.println(NetworkManager::getLocalIP());
   Serial.print(F("Gateway: "));
   Serial.println(NetworkManager::getGateway());
   Serial.print(F("Subnet: "));
   Serial.println(NetworkManager::getSubnet());
-  
+  byte mac[6];
+  NetworkManager::getMACAddress(mac);
+  Serial.print(F("MAC: "));
+  printMac(mac);
+  Serial.print(F("Ethernet: "));
+  switch (NetworkManager::linkState()) {
+    case NET_LINK_UP:     Serial.println(F("link up")); break;
+    case NET_LINK_DOWN:   Serial.println(F("no link")); break;
+    case NET_NO_HARDWARE: Serial.println(F("chip not responding")); break;
+    default:              Serial.println(F("link state unknown")); break;
+  }
+
   byte vmixip[4];
   VmixConnector::getVmixIP(vmixip);
   Serial.print(F("vMix IP: "));
-  Serial.print(vmixip[0]); Serial.print('.');
-  Serial.print(vmixip[1]); Serial.print('.');
-  Serial.print(vmixip[2]); Serial.print('.');
-  Serial.println(vmixip[3]);
+  printIP4(vmixip);
   Serial.print(F("vMix enabled: "));
   Serial.println(VmixConnector::getConnectEnabled() ? F("YES") : F("NO"));
   Serial.print(F("vMix connected: "));
   Serial.println(VmixConnector::isConnected() ? F("YES") : F("NO"));
-  
+
   Serial.print(F("Tally override: "));
   Serial.println(TallyManager::getOverride() ? F("ON") : F("OFF"));
-  
+
   if (!SafeMode::isActive()) {
     Serial.print(F("CCU override: "));
     Serial.println(CCUControl::getOverride() ? F("ON") : F("OFF"));
@@ -490,104 +641,26 @@ void printStatus() {
   } else {
     Serial.println(F("CCU: DISABLED (Safe Mode)"));
   }
-  
+
   Serial.print(F("CCU Broadcast clients: "));
   Serial.println(CCUBroadcast::getClientCount());
-  
+
   Serial.print(F("SSE client: "));
   Serial.println(WebServer::hasSSEClient() ? F("Yes") : F("No"));
-  
-  Serial.print(F("Free RAM: "));
-  Serial.print(freeRam());
-  Serial.println(F(" bytes"));
-  
+
+  printRam();
+
   Serial.println(F("====================="));
   Serial.println();
 }
 
-void loadVMixIPFromEEPROM(byte vmixip[4]) {
-  vmixip[0] = StorageManager::readInt(EEPROM_VMIX_IP0);
-  vmixip[1] = StorageManager::readInt(EEPROM_VMIX_IP1);
-  vmixip[2] = StorageManager::readInt(EEPROM_VMIX_IP2);
-  vmixip[3] = StorageManager::readInt(EEPROM_VMIX_IP3);
-  
-  // Use defaults if not initialized (same /24 as the default local IP)
-  if (vmixip[0] == 0 || vmixip[0] == 255) {
-    vmixip[0] = 192;
-    vmixip[1] = 168;
-    vmixip[2] = 0;
-    vmixip[3] = 140;
-    
-    StorageManager::writeInt(EEPROM_VMIX_IP0, vmixip[0]);
-    StorageManager::writeInt(EEPROM_VMIX_IP1, vmixip[1]);
-    StorageManager::writeInt(EEPROM_VMIX_IP2, vmixip[2]);
-    StorageManager::writeInt(EEPROM_VMIX_IP3, vmixip[3]);
-    
-    Serial.println(F("vMix IP initialized to defaults"));
-  }
-  
-  Serial.print(F("vMix IP loaded: "));
-  Serial.print(vmixip[0]); Serial.print('.');
-  Serial.print(vmixip[1]); Serial.print('.');
-  Serial.print(vmixip[2]); Serial.print('.');
-  Serial.println(vmixip[3]);
-}
-
+// Serial "vmixip" and web /?vmixIP= (declared in webserver.h)
 void changeVMixIP(const char* ip) {
-  int parts[4] = {0, 0, 0, 0};
-  int partIdx = 0;
-  int start = 0;
-  int len = strlen(ip);
-  
-  for (int i = 0; i <= len && partIdx < 4; i++) {
-    if (ip[i] == '.' || ip[i] == '\0') {
-      char numBuf[8];
-      int numLen = i - start;
-      if (numLen > 7) numLen = 7;
-      if (numLen > 0) {
-        strncpy(numBuf, ip + start, numLen);
-        numBuf[numLen] = '\0';
-        parts[partIdx++] = atoi(numBuf);
-      }
-      start = i + 1;
-    }
-  }
-  
-  if (partIdx != 4) {
+  byte vmixip[4];
+  if (!NetworkManager::parseIP(ip, vmixip)) {
     Serial.println(F("Error: Invalid IP format"));
     return;
   }
-  
-  for (int i = 0; i < 4; i++) {
-    if (parts[i] < 0 || parts[i] > 255) {
-      Serial.println(F("Error: IP value out of range"));
-      return;
-    }
-  }
-  
-  StorageManager::writeInt(EEPROM_VMIX_IP0, parts[0]);
-  StorageManager::writeInt(EEPROM_VMIX_IP1, parts[1]);
-  StorageManager::writeInt(EEPROM_VMIX_IP2, parts[2]);
-  StorageManager::writeInt(EEPROM_VMIX_IP3, parts[3]);
-  
-  byte vmixip[4] = {
-    (byte)parts[0], 
-    (byte)parts[1], 
-    (byte)parts[2], 
-    (byte)parts[3]
-  };
+  // Validates, writes the EEPROM and logs; explains a rejection
   VmixConnector::setVmixIP(vmixip);
-  
-  Serial.print(F("vMix IP changed to: "));
-  Serial.print(parts[0]); Serial.print('.');
-  Serial.print(parts[1]); Serial.print('.');
-  Serial.print(parts[2]); Serial.print('.');
-  Serial.println(parts[3]);
-  Serial.println(F("Saved to EEPROM"));
-}
-
-int freeRam() {
-  extern int __heap_start, *__brkval;
-  int v;
-  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }

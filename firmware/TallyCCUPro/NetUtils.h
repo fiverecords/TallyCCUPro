@@ -24,8 +24,9 @@
  *    library hands that index to the next one (a LISTEN of any server, an
  *    HTTP request, Companion...), possibly within one loop() pass.
  *    Long-lived clients (SSE, 8098) must store localPort(), remoteIP() and
- *    remotePort() at accept and compare them before each use (read, write,
- *    close); on a mismatch drop the client with 'c = EthernetClient();'
+ *    remotePort() at accept (peerOf()) and compare them before each use
+ *    (read, write, close; samePeer()); on a mismatch drop the client with
+ *    'c = EthernetClient();'
  *    (never stop() or closeNow(): they would hit the new owner). A dead
  *    socket (tryWriteAll() *dead, sendable() false) is forgotten at once,
  *    the same way or with closeNow(), which only closes TCP connections.
@@ -77,19 +78,50 @@ size_t writeWithDeadline(EthernetClient& c, const uint8_t* buf, size_t len,
 // SEND_OK). False for a closed client.
 bool txIdle(EthernetClient& c);
 
+// Bytes tryWriteAll() would queue right now: the free TX space (at most the
+// TX buffer size) when no SEND is in flight, 0 while one is or the buffer
+// is full, -1 if the connection can no longer send (or a released client).
+// Never waits. For writers that must not take data they cannot send yet.
+int16_t txRoom(EthernetClient& c);
+
+// Non-blocking half of closeGracefully(): once nothing is in flight, sends
+// FIN behind the queued data and returns 1 (the socket then closes on its
+// own; the client is not released). 0 while a SEND is still in flight
+// (call again later), -1 if the connection can no longer send.
+int8_t sendFin(EthernetClient& c);
+
+// Copies up to len received bytes without consuming them; returns the
+// count. Reads the chip RX buffer at Sn_RX_RD, so only valid while nothing
+// has been read from this connection yet (the library moves Sn_RX_RD late).
+size_t peek(EthernetClient& c, uint8_t* buf, size_t len);
+
 // Waits up to timeoutMs for everything queued to be transmitted (not ACKed:
 // no delayed-ACK stall), then sends FIN behind the data and waits (within
 // the same budget, at least 10 ms) for the close. If the data cannot be
 // transmitted in time (zero window) or the close does not complete, the
 // socket is closed at once. Replaces flush() + stop(). The client is
-// released in every case.
-void closeGracefully(EthernetClient& c, unsigned long timeoutMs);
+// released in every case. poll (optional) is called while waiting; it must
+// not use this connection, but may reuse the index once the connection has
+// closed (a listener): the socket is only touched while it still holds the
+// connection (state and peer) it had on entry.
+void closeGracefully(EthernetClient& c, unsigned long timeoutMs, void (*poll)() = NULL);
 
 // Closes the socket at once, without FIN or waiting (dead or stuck peer).
 // The peer gets an RST when it next sends something. Only TCP connection
 // states are closed; a socket already CLOSED or reused as LISTEN, INIT,
 // SYNSENT or UDP is left alone. The client is released (no stop()).
 void closeNow(EthernetClient& c);
+
+// Who a socket is connected to, for clients kept across code that polls
+// the network (the index may be handed on meanwhile, see the rules above).
+struct Peer {
+  uint32_t ip;
+  uint16_t port, lport;
+};
+// Reads c's peer and local port (all 0 for a released client)
+void peerOf(EthernetClient& c, Peer* p);
+// True while c still holds a TCP connection (SYNRECV..LAST_ACK) with p
+bool samePeer(EthernetClient& c, const Peer& p);
 
 // Sets the chip-wide TCP retransmission timeout and retry count (all
 // sockets, vMix included). A peer that stops ACKing is dropped after about
@@ -145,9 +177,12 @@ class LineReader {
 // Print with a caller-owned buffer (WDT-03): groups print()/print(F()) into
 // block writes instead of one TCP segment per character.
 //
-// Stream mode, ClientBufferPrint(client, buf, size, timeoutMs): the buffer is
-// written with NetUtils::writeWithDeadline() when it fills and on flush().
-// timeoutMs is the total budget of the object, counted from construction.
+// Stream mode, ClientBufferPrint(client, buf, size, timeoutMs[, poll]): the
+// buffer is written with NetUtils::writeWithDeadline() when it fills and on
+// flush(). timeoutMs is the total budget of the object, counted from
+// construction. With poll, a write that has to wait for room waits in
+// slices of NETUTILS_POLL_SLICE_MS and calls poll() between them (a stalled
+// reader must not stop the tally); poll must not use buf.
 // If a write runs out of time the object fails: the rest is discarded and
 // writes return 0 (close the client). The destructor flushes, but call
 // flush() yourself before closing the client.
@@ -156,10 +191,12 @@ class LineReader {
 // The message is built in buf for an all-or-nothing send, e.g. one SSE event
 // or 8098 line to several clients with NetUtils::tryWriteAll(c, data(),
 // length()). Overflow sets failed().
+#define NETUTILS_POLL_SLICE_MS 20
+
 class ClientBufferPrint : public Print {
  public:
   ClientBufferPrint(EthernetClient& c, uint8_t* buf, size_t size,
-                    unsigned long timeoutMs);
+                    unsigned long timeoutMs, void (*poll)() = NULL);
   ClientBufferPrint(uint8_t* buf, size_t size);
   ~ClientBufferPrint() { flush(); }
   ClientBufferPrint(const ClientBufferPrint&) = delete;
@@ -183,7 +220,9 @@ class ClientBufferPrint : public Print {
 
  private:
   void fail();
+  size_t send(const uint8_t* data, size_t len);
   EthernetClient* _c;
+  void (*_poll)();
   uint8_t* _buf;
   size_t _size;
   size_t _len;
