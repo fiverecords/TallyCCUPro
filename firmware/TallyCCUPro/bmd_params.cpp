@@ -7,8 +7,11 @@
  */
 
 #include "bmd_params.h"
+#include <avr/pgmspace.h>
 
-BMDParamDef bmdParams[] = {
+// In flash: rows are read with pgm_read_*() / *_P() only (near addresses:
+// the table must stay in the first 64 KB of flash, as all PROGMEM data).
+static const BMDParamRow bmdParams[] PROGMEM = {
   // === LENS (Group 0) ===
   { 0, 0, TYPE_FIXED16, "focus", false, 1 },
   { 0, 1, TYPE_VOID, "instantaneous_autofocus", false, 1 },
@@ -95,13 +98,47 @@ BMDParamDef bmdParams[] = {
   { 11, 1, TYPE_INT8, "memory_preset", true, 2 }
 };
 
-const int BMD_PARAM_COUNT = sizeof(bmdParams)/sizeof(bmdParams[0]);
+const uint8_t BMD_PARAM_COUNT = sizeof(bmdParams) / sizeof(bmdParams[0]);
+
+// Row whose key is exactly the first len chars of key, or -1
+static int8_t findRow(const char *key, size_t len) {
+  if (len == 0 || len >= BMD_KEY_SIZE) return -1;
+  for (uint8_t i = 0; i < BMD_PARAM_COUNT; i++) {
+    PGM_P k = bmdParams[i].paramKey;
+    if (strncmp_P(key, k, len) == 0 && pgm_read_byte(k + len) == '\0') {
+      return (int8_t)i;
+    }
+  }
+  return -1;
+}
+
+int8_t bmdFindParam(const char *key, BMDParamDef *out) {
+  if (!key) return -1;
+  size_t len = strnlen(key, BMD_KEY_SIZE + 2);
+  int8_t i = findRow(key, len);
+  // Compatibility alias: "<key>_0" for a single-value <key>
+  if (i < 0 && len > 2 && key[len - 2] == '_' && key[len - 1] == '0') {
+    len -= 2;
+    i = findRow(key, len);
+    if (i >= 0 && pgm_read_byte(&bmdParams[i].subCount) != 1) i = -1;
+  }
+  if (i < 0) return -1;
+  if (out) {
+    const BMDParamRow *r = &bmdParams[i];
+    out->groupId = pgm_read_byte(&r->groupId);
+    out->paramId = pgm_read_byte(&r->paramId);
+    out->paramType = (ParamType)pgm_read_byte(&r->paramType);
+    out->subCount = pgm_read_byte(&r->subCount);
+  }
+  return (int8_t)len;
+}
 
 bool bmdIsVoidParam(const char *paramKey) {
   if (!paramKey) return false;
-  for (int i = 0; i < BMD_PARAM_COUNT; i++) {
+  for (uint8_t i = 0; i < BMD_PARAM_COUNT; i++) {
     // Type test first: only the few VOID entries cost a strcmp
-    if (bmdParams[i].paramType == TYPE_VOID && strcmp(bmdParams[i].paramKey, paramKey) == 0) {
+    if (pgm_read_byte(&bmdParams[i].paramType) == TYPE_VOID &&
+        strcmp_P(paramKey, bmdParams[i].paramKey) == 0) {
       return true;
     }
   }
