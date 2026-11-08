@@ -2,13 +2,24 @@ name: Release
 
 # Push a tag such as v3.8 (with docs/release-notes/v3.8.md committed) to build and publish
 # TallyCCUPro-<tag>.zip and TallyCCU_Configurator.exe as a GitHub release. The full CI runs first.
+# Alternatively run it by hand (Actions > Release > Run workflow) on main with the tag name:
+# the release step then creates the tag on that commit.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create on this commit and publish (e.g. v3.8)'
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   ci:
@@ -19,9 +30,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: Release notes present
+      - name: Tag and release notes
         run: |
-          f="docs/release-notes/${GITHUB_REF_NAME}.md"
+          [[ "$TAG" =~ ^v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::bad tag '$TAG'"; exit 1; }
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::run the release by hand only on main"; exit 1
+          fi
+          f="docs/release-notes/${TAG}.md"
           test -s "$f" || { echo "::error::$f is missing or empty"; exit 1; }
       - name: Compressed pages
         run: |
@@ -29,7 +44,7 @@ jobs:
           python3 tools/gzip_sdcard.py --check
       - name: Build the zip
         run: |
-          name="TallyCCUPro-${GITHUB_REF_NAME}"
+          name="TallyCCUPro-${TAG}"
           root="dist/$name"
           mkdir -p "$root/firmware" "$root/sdcard" "$root/tools"
           cp -r firmware/TallyCCUPro "$root/firmware/"
@@ -92,17 +107,26 @@ jobs:
       - name: Checksums
         run: |
           cd dist
-          sha256sum "TallyCCUPro-${GITHUB_REF_NAME}.zip" TallyCCU_Configurator.exe > SHA256SUMS.txt
+          sha256sum "TallyCCUPro-${TAG}.zip" TallyCCU_Configurator.exe > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           flags=()
-          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
-          gh release create "$GITHUB_REF_NAME" --verify-tag "${flags[@]}" \
-            --title "TallyCCU Pro ${GITHUB_REF_NAME}" \
-            --notes-file "docs/release-notes/${GITHUB_REF_NAME}.md" \
-            "dist/TallyCCUPro-${GITHUB_REF_NAME}.zip" \
+          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # manual run: the tag must not exist yet; gh creates it on this commit
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+              echo "::error::tag $TAG already exists"; exit 1
+            fi
+            flags+=(--target "$GITHUB_SHA")
+          else
+            flags+=(--verify-tag)
+          fi
+          gh release create "$TAG" "${flags[@]}" \
+            --title "TallyCCU Pro ${TAG}" \
+            --notes-file "docs/release-notes/${TAG}.md" \
+            "dist/TallyCCUPro-${TAG}.zip" \
             dist/TallyCCU_Configurator.exe \
             dist/SHA256SUMS.txt
