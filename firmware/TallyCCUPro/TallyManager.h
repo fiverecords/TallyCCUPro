@@ -21,10 +21,11 @@ class TallyManager {
     // Map vMix input to Blackmagic camera ID
     static byte mapInputToCamera(byte input);
     
-    // Set mapping between vMix input and camera
+    // Set mapping between vMix input and camera. 0 keeps that half; a slot
+    // left with only one valid half is emptied
     static void setMapping(byte inputIndex, byte inputNumber, byte cameraId);
     
-    // Get mapping at index
+    // Get mapping at index (0/0 for an empty or invalid slot)
     static void getMapping(byte index, byte &inputNumber, byte &cameraId);
     
     // Empty a mapping slot (input 0, camera 0)
@@ -45,6 +46,10 @@ class TallyManager {
     
     // Print current tally map
     static void printCurrentMap();
+    
+    // True once after the map or the override changed (TAL-09): the vMix
+    // connector then applies its last state again
+    static bool takeReapply();
 
   private:
     // Map: vMix input => Blackmagic camID
@@ -53,6 +58,11 @@ class TallyManager {
     
     // Tally override
     static bool _overrideTally;
+    
+    static bool _reapply;
+    
+    // Slot with an input in 1..MAX_VMIX_INPUTS and a camera in 1..MAX_CAMERAS
+    static bool validSlot(byte index);
 };
 
 #endif // TALLY_MANAGER_H

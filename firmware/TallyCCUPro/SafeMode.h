@@ -24,6 +24,8 @@
 #define EEPROM_RESET_FLAG_ADDR      311   // Reset flag magic (2 bytes)
 #define EEPROM_RESET_REASON_ADDR    313   // Last reset reason (1 byte)
 #define EEPROM_SAFEMODE_MANUAL_ADDR 314   // Manual safe mode flag (1 byte)
+#define EEPROM_SAFEMODE_STRIKES_ADDR 315  // Failed auto-recoveries (1 byte)
+#define EEPROM_SAFEMODE_AUTO_ADDR   316   // Boot started by an auto-recovery (1 byte)
 
 // ============================================================
 // CONFIGURATION
@@ -36,6 +38,26 @@
 // first vMix tally, Companion reconnect (5 s) and browser SSE reconnect,
 // while 3 external resets in a row inside the window stay unlikely.
 #define BOOT_COMPLETE_DELAY_MS      20000UL
+
+// Auto-recovery (BOOT-01). In Safe Mode (entered after boot failures, not
+// on request) the SDI shield is probed every SAFEMODE_PROBE_MS: an empty
+// I2C write to its address with a bus timeout, so a dead or stuck bus
+// cannot hang the loop. Once it has ACKed for SAFEMODE_STABLE_MS in a row
+// the board restarts in normal mode. An ACK only shows that the shield is
+// powered: a hang caused by the SDI input (no signal yet, 4K, Level A) is
+// not detected beforehand. Anti-loop: if the boot after an auto-recovery
+// falls back into Safe Mode, that is a strike; the next recovery needs
+// SAFEMODE_STABLE_RETRY_MS, and after SAFEMODE_MAX_STRIKES it stays off
+// until a manual exit (web or serial normal boot, reset) or a normal boot
+// that completes, e.g. after a power cycle. Without Wire timeout support
+// in the core the shield is never probed.
+#define SAFEMODE_PROBE_MS           5000UL
+#define SAFEMODE_STABLE_MS          30000UL
+#define SAFEMODE_STABLE_RETRY_MS    300000UL
+#define SAFEMODE_MAX_STRIKES        2
+#define SAFEMODE_AUTO_MAGIC         0x5A
+// I2C timeout towards the shield (CCU-03, probe): 25 ms, bus reset
+#define SHIELD_WIRE_TIMEOUT_US      25000UL
 
 // ============================================================
 // RESET REASONS
@@ -63,6 +85,15 @@ public:
   // Check if in safe mode
   static bool isActive();
   
+  // Safe Mode auto-recovery, called from loop(); no-op in normal mode
+  static void poll();
+  static bool autoRecoveryArmed();
+  static uint8_t getRecoveryStrikes();
+  
+  // Wire timeout towards the shield (SHIELD_WIRE_TIMEOUT_US, bus reset).
+  // False if this core's Wire has no timeout.
+  static bool armWireTimeout();
+  
   // Get diagnostic info
   static uint8_t getResetCount();
   static ResetReason getLastResetReason();
@@ -83,6 +114,14 @@ private:
   static uint8_t _resetCount;
   static ResetReason _lastResetReason;
   static bool _bootCompleted;
+  static uint8_t _strikes;
+  static bool _stable;
+  static unsigned long _stableSince;
+  static unsigned long _lastProbe;
+  
+  static bool probeShield();
+  static void autoExit();
+  static void clearRecovery();
   
   // MCUSR helpers
   static ResetReason detectResetReason();

@@ -2,13 +2,12 @@
  * VmixConnector.cpp
  * vMix connection implementation - Ultra-fast without String
  * Version 3.8
- * 
+ *
  * Features tally debounce to avoid flickering
  */
 
 #include "VmixConnector.h"
-#include "Network.h"
-#include "SdUtils.h"
+#include "NetUtils.h"
 
 // Uncomment below to enable debug
 //#define DEBUG_VMIX
@@ -22,18 +21,60 @@ EthernetClient VmixConnector::_vmixClient;
 byte VmixConnector::_vmixip[4] = {192, 168, 10, 140};
 bool VmixConnector::_connectEnabled = true;
 
-// Reduced buffers
+// Last applied vMix state and debounce candidate
 static char lastValidTallyData[MAX_VMIX_INPUTS + 1] = {0};
-static char lineBuffer[128];
-static char tallyDataBuffer[MAX_VMIX_INPUTS + 1];
+static char pendingTallyData[MAX_VMIX_INPUTS + 1] = {0};
+
+// Line being received. Kept between calls (TAL-10): a TALLY line split
+// across TCP segments or loop passes is only used once its '\n' arrives.
+// Only the data after "TALLY OK " is stored; inputs above MAX_VMIX_INPUTS
+// are consumed and not evaluated. Other lines are skipped.
+static char rxData[MAX_VMIX_INPUTS + 1];
+enum : uint8_t { RX_PREFIX, RX_DATA, RX_SKIP };
+static uint8_t rxState = RX_PREFIX;
+static uint8_t rxPos = 0;               // prefix chars matched, then data chars
 
 // Debounce variables
-static char pendingTallyData[MAX_VMIX_INPUTS + 1] = {0};
 static unsigned long pendingTallyTime = 0;
 static bool hasPendingTally = false;
 const unsigned long TALLY_DEBOUNCE_MS = 50;
 
-static const char SUBSCRIBE_CMD[] PROGMEM = "SUBSCRIBE TALLY\r\n";
+// Connection state
+static uint16_t ownPort = 0;            // local port of our connection
+static unsigned long lastRxMs = 0;      // last byte from vMix
+static unsigned long lastTxMs = 0;      // last TALLY request queued
+static unsigned long probeStartMs = 0;  // first unanswered TALLY request
+static bool probing = false;
+static bool answered = false;           // vMix sent something on this connection
+static bool wasConnected = false;
+static bool connectNow = false;         // attempt on the next pass
+static uint8_t failCount = 0;           // consecutive failed attempts
+static unsigned long nextAttemptMs = 0;
+static bool busy = false;               // processData() or pollTally() running
+
+static const char TALLY_PREFIX[] PROGMEM = "TALLY OK ";
+#define TALLY_PREFIX_LEN 9
+// SUBSCRIBE for the changes, TALLY for the current state
+static const char SUBSCRIBE_CMD[] PROGMEM = "SUBSCRIBE TALLY\r\nTALLY\r\n";
+static const char TALLY_CMD[] PROGMEM = "TALLY\r\n";
+
+// Wait (s) after the 1st, 2nd... consecutive failed attempt (TAL-06)
+static const uint8_t RETRY_S[] PROGMEM = {2, 2, 5, 10, 20, VMIX_RECONNECT_MAX_MS / 1000};
+
+static void printVmixIP(const byte ip[4]) {
+  for (byte i = 0; i < 4; i++) {
+    if (i) Serial.print('.');
+    Serial.print(ip[i]);
+  }
+}
+
+// Queues a PROGMEM command without waiting; false if it does not fit now
+static bool sendCommand(EthernetClient& c, PGM_P cmd, size_t len) {
+  char buf[sizeof(SUBSCRIBE_CMD)];
+  if (len >= sizeof(buf)) return false;
+  memcpy_P(buf, cmd, len);
+  return NetUtils::tryWriteAll(c, (const uint8_t*)buf, len);
+}
 
 // Turn every tally off and forget the last vMix state
 static void clearTally() {
@@ -45,33 +86,16 @@ static void clearTally() {
 bool VmixConnector::begin() {
   bool dummyTally, dummyCCU;
   StorageManager::loadOverrides(dummyTally, dummyCCU, _connectEnabled);
-  
+
   Serial.print(F("vMix connection state loaded: "));
   Serial.println(_connectEnabled ? F("ON") : F("OFF"));
-  
-  if (_connectEnabled) {
-    return connect();
-  } else {
-    Serial.println(F("vMix connection disabled by user"));
-    return false;
-  }
+
+  return connect();
 }
 
 bool VmixConnector::begin(const byte vmixip[4]) {
   memcpy(_vmixip, vmixip, 4);
-  
-  bool dummyTally, dummyCCU;
-  StorageManager::loadOverrides(dummyTally, dummyCCU, _connectEnabled);
-  
-  Serial.print(F("vMix connection state loaded: "));
-  Serial.println(_connectEnabled ? F("ON") : F("OFF"));
-  
-  if (_connectEnabled) {
-    return connect();
-  } else {
-    Serial.println(F("vMix connection disabled by user"));
-    return false;
-  }
+  return begin();
 }
 
 bool VmixConnector::connect() {
@@ -79,63 +103,70 @@ bool VmixConnector::connect() {
     Serial.println(F("vMix connection disabled by user"));
     return false;
   }
-  
-  Serial.println(F("Connecting to vMix..."));
-  Serial.print(_vmixip[0]); Serial.print('.');
-  Serial.print(_vmixip[1]); Serial.print('.');
-  Serial.print(_vmixip[2]); Serial.print('.');
-  Serial.print(_vmixip[3]);
-  Serial.print(':'); Serial.println(VMIX_PORT);
-  
-  if (openSocket()) {
-    Serial.println(F("vMix connected"));
-    return true;
-  } else {
-    Serial.println(F("Could not connect to vMix"));
-    if (_connectEnabled) {
-      Serial.println(F("Auto-reconnection will be attempted"));
-    }
-    return false;
-  }
-}
-
-// Closes any previous connection, then connects with a short timeout.
-// A refused connect() returns with _sockindex still set on a socket that is
-// already free, so it is released here before another module can take it.
-bool VmixConnector::openSocket() {
-  closeSocket();
-  
-  IPAddress vmixIPAddress(_vmixip[0], _vmixip[1], _vmixip[2], _vmixip[3]);
-  _vmixClient.setConnectionTimeout(VMIX_CONNECT_TIMEOUT_MS);
-  
-  if (!_vmixClient.connect(vmixIPAddress, VMIX_PORT)) {
-    _vmixClient.stop();
-    return false;
-  }
-
-  char cmd[sizeof(SUBSCRIBE_CMD)];
-  memcpy_P(cmd, SUBSCRIBE_CMD, sizeof(cmd));
-  _vmixClient.write((const uint8_t*)cmd, sizeof(cmd) - 1);
-  
-  // Apply the initial state vMix sends after SUBSCRIBE
-  lastValidTallyData[0] = '\0';
-  hasPendingTally = false;
+  connectNow = true;
+  failCount = 0;
   return true;
 }
 
+// Connects with a short timeout, then subscribes. 1 connected, 0 refused or
+// no answer, -1 no free socket (not counted as a vMix failure). A refused
+// connect() returns with _sockindex still set on a socket that is already
+// free: it is forgotten here before another module can take the index.
+int8_t VmixConnector::openSocket() {
+  closeSocket(true);
+
+  // connect() also returns at once without a socket for these: a normal
+  // failure (log, backoff), not "no free socket"
+  if ((_vmixip[0] | _vmixip[1] | _vmixip[2] | _vmixip[3]) == 0 ||
+      (_vmixip[0] & _vmixip[1] & _vmixip[2] & _vmixip[3]) == 255) {
+    return 0;
+  }
+
+  IPAddress vmixIPAddress(_vmixip[0], _vmixip[1], _vmixip[2], _vmixip[3]);
+  _vmixClient.setConnectionTimeout(VMIX_CONNECT_TIMEOUT_MS);
+
+  unsigned long t0 = millis();
+  if (!_vmixClient.connect(vmixIPAddress, VMIX_PORT)) {
+    bool refused = _vmixClient.getSocketNumber() < MAX_SOCK_NUM;
+    dropSocket();
+    if (refused || millis() - t0 >= VMIX_CONNECT_TIMEOUT_MS) return 0;
+    return -1;
+  }
+  ownPort = _vmixClient.localPort();
+
+  if (!sendCommand(_vmixClient, SUBSCRIBE_CMD, sizeof(SUBSCRIBE_CMD) - 1)) {
+    closeSocket(false);
+    return 0;
+  }
+
+  // Fresh line parser; apply the state vMix sends now
+  unsigned long now = millis();
+  lastRxMs = now;
+  lastTxMs = now;
+  probeStartMs = now;
+  probing = true;
+  answered = false;
+  rxState = RX_PREFIX;
+  rxPos = 0;
+  lastValidTallyData[0] = '\0';
+  hasPendingTally = false;
+  return 1;
+}
+
 // True only while _vmixClient holds our own connection to vMix. A socket that
-// is closed or was reused by HTTP/Companion is forgotten WITHOUT stop(), which
-// would close a connection that belongs to someone else.
+// is closed or was reused by HTTP/Companion is forgotten WITHOUT closing it,
+// which would close a connection that belongs to someone else.
 bool VmixConnector::ownsSocket() {
   if (_vmixClient.getSocketNumber() >= MAX_SOCK_NUM) return false;
-  
+
   uint8_t s = _vmixClient.status();
   if ((s == VMIX_SNSR_ESTABLISHED || s == VMIX_SNSR_CLOSE_WAIT) &&
+      _vmixClient.localPort() == ownPort &&
       _vmixClient.remotePort() == VMIX_PORT &&
       _vmixClient.remoteIP() == _vmixip) {
     return true;
   }
-  
+
   dropSocket();
   return false;
 }
@@ -145,162 +176,275 @@ void VmixConnector::dropSocket() {
   _vmixClient = EthernetClient();
 }
 
-// Close our own connection (FIN), or just forget a socket that is not ours
-void VmixConnector::closeSocket() {
-  if (ownsSocket()) {
-    _vmixClient.stop();
+// Close our own connection, or just forget a socket that is not ours.
+// graceful: FIN, bounded wait for vMix to answer it. Otherwise closed at once
+// (dead peer: nothing to wait for).
+void VmixConnector::closeSocket(bool graceful) {
+  if (!ownsSocket()) return;
+  if (graceful) {
+    NetUtils::closeGracefully(_vmixClient, VMIX_CLOSE_TIMEOUT_MS);
+  } else {
+    NetUtils::closeNow(_vmixClient);
   }
 }
 
+// The connection is gone: tally off (TAL-05) and first new attempt at once
+void VmixConnector::connectionLost(bool graceful) {
+  closeSocket(graceful);
+  clearTally();
+  wasConnected = false;
+  connectNow = true;
+}
+
 bool VmixConnector::isConnected() {
-  return ownsSocket() && _vmixClient.connected();
+  return ownsSocket() && _vmixClient.connected() && answered &&
+         (millis() - lastRxMs < VMIX_RX_TIMEOUT_MS);
+}
+
+// Reads at most a few hundred bytes of what has already arrived; never waits
+void VmixConnector::readInput(unsigned long now) {
+  uint8_t chunk[32];
+  int budget = 256;
+
+  while (budget > 0) {
+    int n = _vmixClient.available();
+    if (n <= 0) break;
+    if (n > (int)sizeof(chunk)) n = sizeof(chunk);
+    if (n > budget) n = budget;
+    n = _vmixClient.read(chunk, n);
+    if (n <= 0) break;
+    budget -= n;
+
+    // Any byte proves the link is alive (TAL-03)
+    lastRxMs = now;
+    probing = false;
+    answered = true;
+
+    for (int i = 0; i < n; i++) {
+      char ch = (char)chunk[i];
+      if (ch == '\n') {
+        if (rxState == RX_DATA && rxPos > 0) {
+          rxData[rxPos] = '\0';
+          onTallyLine(rxData, now);
+        }
+        rxState = RX_PREFIX;
+        rxPos = 0;
+      } else if (ch == '\r') {
+        // CRLF: the line ends at '\n'
+      } else if (rxState == RX_PREFIX) {
+        if (ch == (char)pgm_read_byte(&TALLY_PREFIX[rxPos])) {
+          if (++rxPos == TALLY_PREFIX_LEN) {
+            rxState = RX_DATA;
+            rxPos = 0;
+          }
+        } else {
+          rxState = RX_SKIP;
+        }
+      } else if (rxState == RX_DATA) {
+        if (rxPos < MAX_VMIX_INPUTS) rxData[rxPos++] = ch;
+      }
+    }
+  }
+}
+
+// Application heartbeat (TAL-03): vMix only sends on changes and the W5500
+// has no keepalive, so a vMix that died without FIN looked connected forever.
+// After VMIX_HEARTBEAT_MS without traffic a TALLY request is queued; vMix
+// answers "TALLY OK ...". The dead-link timer starts at the first request,
+// so a loop that stalled for a while does not count as silence from vMix.
+void VmixConnector::heartbeat(unsigned long now) {
+  if (now - lastRxMs < VMIX_HEARTBEAT_MS || now - lastTxMs < VMIX_HEARTBEAT_MS) return;
+
+  if (!probing) {
+    probing = true;
+    probeStartMs = now;
+  }
+  // Socket full or busy: retried on the next pass, the timer keeps running
+  if (sendCommand(_vmixClient, TALLY_CMD, sizeof(TALLY_CMD) - 1)) {
+    lastTxMs = now;
+  }
+}
+
+// DEBOUNCE: always follow the latest data received
+void VmixConnector::onTallyLine(const char* data, unsigned long now) {
+  #ifdef DEBUG_VMIX
+  Serial.print(F("[vmixdata] Received: "));
+  Serial.println(data);
+  #endif
+
+  if (strcmp(data, lastValidTallyData) == 0) {
+    hasPendingTally = false; // Back to the applied state
+  } else if (!hasPendingTally || strcmp(data, pendingTallyData) != 0) {
+    strcpy(pendingTallyData, data);
+    pendingTallyTime = now;
+    hasPendingTally = true;
+  }
+}
+
+// Apply the pending state after the debounce. Tally is I2C only and never
+// touches the SD card, so it also runs while the SD lock is held.
+void VmixConnector::applyPending(unsigned long now) {
+  if (!hasPendingTally || now - pendingTallyTime < TALLY_DEBOUNCE_MS) return;
+
+  applyTallyDirectly(pendingTallyData);
+  strcpy(lastValidTallyData, pendingTallyData);
+  hasPendingTally = false;
+
+  #if DEBUG_HOT
+  Serial.print(F("[VMIX] "));
+  Serial.println(lastValidTallyData);
+  #endif
+}
+
+// Map or override changed (TAL-09): show the current vMix state again.
+// While override was off the data kept arriving into lastValidTallyData.
+void VmixConnector::reapply() {
+  if (lastValidTallyData[0] != '\0') {
+    applyTallyDirectly(lastValidTallyData);
+  } else {
+    TallyManager::clearAll();
+  }
+}
+
+void VmixConnector::tryReconnect(unsigned long now) {
+  if (!connectNow && (long)(now - nextAttemptMs) < 0) return;
+  connectNow = false;
+
+  int8_t r = openSocket();
+  now = millis();
+
+  if (r > 0) {
+    failCount = 0;
+    wasConnected = true;
+    Serial.print(F("vMix connected: "));
+    printVmixIP(_vmixip);
+    Serial.println();
+    return;
+  }
+
+  if (r < 0) {
+    // No free W5500 socket right now: not vMix's fault, retry soon
+    nextAttemptMs = now + 1000UL;
+    return;
+  }
+
+  if (failCount < 255) failCount++;
+  uint8_t idx = failCount - 1;
+  if (idx >= sizeof(RETRY_S)) idx = sizeof(RETRY_S) - 1;
+  uint8_t waitS = pgm_read_byte(&RETRY_S[idx]);
+  nextAttemptMs = now + (unsigned long)waitS * 1000UL;
+
+  Serial.print(F("vMix connect failed ("));
+  printVmixIP(_vmixip);
+  Serial.print(F("), retry in "));
+  Serial.print(waitS);
+  Serial.println(F(" s"));
+}
+
+// Read, heartbeat and loss detection, shared by processData() and
+// pollTally() so a loss also turns the tally off during a long file transfer
+// (TAL-03/TAL-05). True while the link is up; reconnecting is left to
+// processData(). mayWait: after vMix's FIN, close with a bounded FIN wait.
+bool VmixConnector::serviceLink(unsigned long now, bool mayWait) {
+  // Also drops a socket that is no longer ours before reading from it
+  if (!ownsSocket()) {
+    if (wasConnected) {
+      // Reset by vMix, or the index already belongs to someone else
+      Serial.println(F("vMix connection lost"));
+      connectionLost(false);
+    }
+    return false;
+  }
+
+  readInput(now);
+  heartbeat(now);
+
+  if (!_vmixClient.connected()) {
+    // vMix closed its side and everything has been read
+    Serial.println(F("vMix connection lost"));
+    connectionLost(mayWait);
+    return false;
+  }
+  if (probing &&
+      now - probeStartMs >= VMIX_RX_TIMEOUT_MS - VMIX_HEARTBEAT_MS &&
+      now - lastRxMs >= VMIX_RX_TIMEOUT_MS) {
+    // Half-open: vMix PC crashed, rebooted or lost the network (TAL-03)
+    Serial.println(F("vMix not answering, reconnecting"));
+    connectionLost(false);
+    return false;
+  }
+  return true;
 }
 
 void VmixConnector::processData() {
-  static bool wasConnected = false;
   static bool disabledCleared = false;
-  
+
+  if (busy) return;
+  busy = true;
+
+  unsigned long now = millis();
+
+  if (TallyManager::takeReapply()) {
+    reapply();
+  }
+
   if (!_connectEnabled) {
-    closeSocket();
+    closeSocket(true);
     wasConnected = false;
     // Turn tally off once when entering the disabled state
     if (!disabledCleared) {
       clearTally();
       disabledCleared = true;
     }
+    busy = false;
     return;
   }
   disabledCleared = false;
-  
-  unsigned long currentTime = millis();
-  
-  // Also drops a socket that is no longer ours before reading from it
-  bool connectedNow = isConnected();
-  
-  // Connected -> disconnected: do not leave the last tally frozen
-  if (wasConnected && !connectedNow) {
-    Serial.println(F("vMix connection lost"));
-    closeSocket();
-    clearTally();
+
+  bool up = serviceLink(now, true);
+
+  applyPending(now);
+
+  if (!up) {
+    tryReconnect(now);
   }
-  wasConnected = connectedNow;
-  
-  bool foundTallyMessage = false;
-  int messagesProcessed = 0;
-  const int MAX_MESSAGES_PER_CYCLE = 10;
-  
-  // Process TCP buffer messages
-  while (connectedNow && _vmixClient.available() && messagesProcessed < MAX_MESSAGES_PER_CYCLE) {
-    int len = 0;
-    char ch;
-    
-    // Read until \r or \n
-    while (_vmixClient.available() && len < 127) {
-      ch = _vmixClient.read();
-      if (ch == '\r' || ch == '\n') break;
-      lineBuffer[len++] = ch;
-    }
-    lineBuffer[len] = '\0';
-    
-    messagesProcessed++;
-    
-    if (len == 0) {
-      continue;
-    }
-    
-    #ifdef DEBUG_VMIX
-    Serial.print(F("[vmixdata] Received: "));
-    Serial.println(lineBuffer);
-    #endif
-    
-    // Check if TALLY message. A line longer than lineBuffer is cut: the first
-    // chunk keeps the prefix and inputs 1..MAX_VMIX_INPUTS, and the tail is
-    // read as a fragment without prefix and ignored.
-    if (len > 9 && strncmp_P(lineBuffer, PSTR("TALLY OK "), 9) == 0) {
-      int dataLen = len - 9;
-      if (dataLen > MAX_VMIX_INPUTS) dataLen = MAX_VMIX_INPUTS;
-      memcpy(tallyDataBuffer, lineBuffer + 9, dataLen);
-      tallyDataBuffer[dataLen] = '\0';
-      foundTallyMessage = true;
-    }
-  }
-  
-  // DEBOUNCE: always follow the latest data received
-  if (foundTallyMessage && tallyDataBuffer[0] != '\0') {
-    if (strcmp(tallyDataBuffer, lastValidTallyData) == 0) {
-      hasPendingTally = false; // Back to the applied state
-    } else if (!hasPendingTally || strcmp(tallyDataBuffer, pendingTallyData) != 0) {
-      strcpy(pendingTallyData, tallyDataBuffer);
-      pendingTallyTime = currentTime;
-      hasPendingTally = true;
-    }
-  }
-  
-  // Apply pending state after debounce (kept pending while the SD is busy)
-  if (hasPendingTally && !g_isBusyWithSD &&
-      (currentTime - pendingTallyTime >= TALLY_DEBOUNCE_MS)) {
-    applyTallyDirectly(pendingTallyData);
-    strcpy(lastValidTallyData, pendingTallyData);
-    hasPendingTally = false;
-    
-    #if DEBUG_HOT
-    Serial.print(F("[VMIX] "));
-    Serial.println(lastValidTallyData);
-    #endif
-  }
-  
-  // Reconnection state machine
-  static unsigned long lastReconnectCheck = 0;
-  static unsigned long lastReconnectAttempt = 0;
-  static int reconnectFailCount = 0;
-  
-  if (!connectedNow) {
-    if (currentTime - lastReconnectCheck > 500) {
-      lastReconnectCheck = currentTime;
-      
-      // Progressive backoff: increase delay after repeated failures
-      unsigned long reconnectDelay = VMIX_RECONNECT_DELAY;
-      if (reconnectFailCount > 5) {
-        reconnectDelay += (unsigned long)(reconnectFailCount - 5) * 5000UL;
-        if (reconnectDelay > 120000UL) reconnectDelay = 120000UL; // Cap at 2 min
-      }
-      
-      if (currentTime - lastReconnectAttempt > reconnectDelay) {
-        Serial.println(F("Attempting vMix reconnection..."));
-        
-        if (openSocket()) {
-          Serial.println(F("vMix reconnected"));
-          reconnectFailCount = 0;
-        } else {
-          Serial.println(F("Failed to reconnect to vMix"));
-          reconnectFailCount++;
-          lastReconnectAttempt = currentTime;
-        }
-      }
-    }
-  }
+
+  busy = false;
+}
+
+void VmixConnector::pollTally() {
+  if (busy || !_connectEnabled) return;
+  if (!wasConnected && !hasPendingTally) return;
+  busy = true;
+
+  // A loss closes at once (no FIN wait inside a transfer loop)
+  unsigned long now = millis();
+  serviceLink(now, false);
+  applyPending(now);
+
+  busy = false;
 }
 
 bool VmixConnector::setVmixIP(const byte vmixip[4]) {
   // Close the old connection while the old IP still identifies it as ours
-  closeSocket();
-  
+  closeSocket(true);
+  wasConnected = false;
+
   memcpy(_vmixip, vmixip, 4);
-  
+
   StorageManager::writeInt(EEPROM_VMIX_IP0, vmixip[0]);
   StorageManager::writeInt(EEPROM_VMIX_IP1, vmixip[1]);
   StorageManager::writeInt(EEPROM_VMIX_IP2, vmixip[2]);
   StorageManager::writeInt(EEPROM_VMIX_IP3, vmixip[3]);
-  
+
   Serial.println(F("vMix IP saved permanently to EEPROM"));
-  Serial.print(vmixip[0]); Serial.print('.');
-  Serial.print(vmixip[1]); Serial.print('.');
-  Serial.print(vmixip[2]); Serial.print('.');
-  Serial.println(vmixip[3]);
-  
+  printVmixIP(vmixip);
+  Serial.println();
+
   // The old vMix state no longer applies
   clearTally();
-  
+
+  // Attempted on the next processData() pass, outside the HTTP handler
   return _connectEnabled ? connect() : false;
 }
 
@@ -310,22 +454,23 @@ void VmixConnector::getVmixIP(byte vmixip[4]) {
 
 void VmixConnector::setConnectEnabled(bool enabled) {
   _connectEnabled = enabled;
-  
+
   bool currentTally, currentCCU, currentVmix;
   StorageManager::loadOverrides(currentTally, currentCCU, currentVmix);
   StorageManager::saveOverrides(currentTally, currentCCU, _connectEnabled);
-  
+
   Serial.print(F("vMix connection state changed to: "));
   Serial.println(_connectEnabled ? F("ON") : F("OFF"));
-  
+
   if (!enabled) {
-    bool wasUp = isConnected();
-    closeSocket();
+    bool wasUp = ownsSocket();
+    closeSocket(true);
+    wasConnected = false;
     if (wasUp) {
       Serial.println(F("vMix connection closed by user"));
     }
     clearTally();
-  } else if (!isConnected()) {
+  } else if (!ownsSocket()) {
     Serial.println(F("vMix connection enabled, attempting to connect..."));
     connect();
   }
@@ -335,39 +480,52 @@ bool VmixConnector::getConnectEnabled() {
   return _connectEnabled;
 }
 
+void VmixConnector::closeForNetworkChange() {
+  if (ownsSocket()) {
+    Serial.println(F("vMix connection closed (network change)"));
+    closeSocket(true);
+    clearTally();
+  }
+  wasConnected = false;
+}
+
+void VmixConnector::reconnectNow() {
+  if (_connectEnabled) {
+    connectNow = true;
+    failCount = 0;
+  }
+}
+
 void VmixConnector::applyTallyDirectly(const char* tallyData) {
   #ifdef DEBUG_VMIX
   Serial.print(F("[VMIX] Data: "));
   Serial.println(tallyData);
   #endif
-  
+
   bool states[MAX_CAMERAS + 1][2] = {{false}};
-  
+
   // Walk the map slots, not the string: any input 1..MAX_VMIX_INPUTS works and
-  // several inputs on one camera are OR-ed instead of overwriting each other
+  // several inputs on one camera are OR-ed instead of overwriting each other.
+  // An empty slot reads as 0/0 and is skipped (TAL-07).
   byte length = (byte)strnlen(tallyData, MAX_VMIX_INPUTS);
-  
+
   for (byte slot = 0; slot < MAXTALLIES; slot++) {
     byte input, cameraId;
     TallyManager::getMapping(slot, input, cameraId);
-    
+
     if (input < 1 || input > length || cameraId < 1 || cameraId > MAX_CAMERAS) continue;
-    
+
     char state = tallyData[input - 1];
     if (state == '1') states[cameraId][0] = true;       // Program
     else if (state == '2') states[cameraId][1] = true;  // Preview
   }
-  
+
   // Program wins over preview
   for (byte camera = 1; camera <= MAX_CAMERAS; camera++) {
     if (states[camera][0]) states[camera][1] = false;
   }
-  
+
   // Always apply - setTallyStates has its own internal cache
   // that only sends I2C commands for cameras that actually changed
   TallyManager::setTallyStates(states);
-}
-
-void VmixConnector::pollTally() {
-  // Implemented in phase 2 (vMix group)
 }

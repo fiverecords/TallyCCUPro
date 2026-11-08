@@ -15,6 +15,7 @@
 byte TallyManager::_inputs[MAXTALLIES] = {0};
 byte TallyManager::_cams[MAXTALLIES] = {0};
 bool TallyManager::_overrideTally = true;
+bool TallyManager::_reapply = false;
 
 // Cache of last state sent per camera
 static bool lastStates[MAX_CAMERAS + 1][2] = {0};
@@ -57,23 +58,39 @@ byte TallyManager::mapInputToCamera(byte input) {
   if (input == 0) return 0;
   
   for (int i = 0; i < MAXTALLIES; i++) {
-    if (_inputs[i] == input) {
+    if (_inputs[i] == input && validSlot(i)) {
       return _cams[i];
     }
   }
   return 0;
 }
 
+// Empty (0/0), half-set or out of range (255/255 on a blank EEPROM) slots
+// are never evaluated (TAL-07)
+bool TallyManager::validSlot(byte index) {
+  return index < MAXTALLIES &&
+         _inputs[index] >= 1 && _inputs[index] <= MAX_VMIX_INPUTS &&
+         _cams[index] >= 1 && _cams[index] <= MAX_CAMERAS;
+}
+
 void TallyManager::setMapping(byte inputIndex, byte inputNumber, byte cameraId) {
   if (inputIndex < MAXTALLIES) {
-    if (inputNumber > 0) _inputs[inputIndex] = inputNumber;
-    if (cameraId > 0) _cams[inputIndex] = cameraId;
+    // 0 (or out of range) leaves that half of the slot unchanged
+    if (inputNumber >= 1 && inputNumber <= MAX_VMIX_INPUTS) _inputs[inputIndex] = inputNumber;
+    if (cameraId >= 1 && cameraId <= MAX_CAMERAS) _cams[inputIndex] = cameraId;
+    // A half-set slot is stored empty: no hidden half that a later request
+    // turns on, and getMapping() shows exactly what is stored
+    if (!validSlot(inputIndex)) {
+      _inputs[inputIndex] = 0;
+      _cams[inputIndex] = 0;
+    }
     saveMap();
+    _reapply = true;
   }
 }
 
 void TallyManager::getMapping(byte index, byte &inputNumber, byte &cameraId) {
-  if (index < MAXTALLIES) {
+  if (validSlot(index)) {
     inputNumber = _inputs[index];
     cameraId = _cams[index];
   } else {
@@ -97,9 +114,10 @@ void TallyManager::setOverride(bool enabled) {
   Serial.print(F("Tally override: "));
   Serial.println(_overrideTally ? F("ON") : F("OFF"));
   
-  // Reset cache to force update if enabled
+  // Full resend of the current vMix state on the next loop pass
   if (enabled) {
     cacheInitialized = false;
+    _reapply = true;
   }
 }
 
@@ -110,7 +128,7 @@ bool TallyManager::getOverride() {
 void TallyManager::printCurrentMap() {
   Serial.println(F("Current tally map:"));
   for (int i = 0; i < MAXTALLIES; i++) {
-    if (_inputs[i] > 0 || _cams[i] > 0) {
+    if (validSlot(i)) {
       Serial.print(F("  Idx "));
       Serial.print(i);
       Serial.print(F(": In "));
@@ -209,5 +227,12 @@ void TallyManager::clearMapping(byte index) {
     _inputs[index] = 0;
     _cams[index] = 0;
     saveMap();
+    _reapply = true;
   }
+}
+
+bool TallyManager::takeReapply() {
+  bool r = _reapply;
+  _reapply = false;
+  return r;
 }

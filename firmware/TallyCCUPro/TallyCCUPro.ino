@@ -141,13 +141,20 @@ void setupNormal() {
   CCUControl::begin();
   wdt_reset();
   
+  // From here on a hung I2C transfer returns after 25 ms (with a bus reset)
+  // instead of blocking until the watchdog (CCU-03). Armed after the shield
+  // init so that a shield hanging there still ends in Safe Mode as before.
+  if (!SafeMode::armWireTimeout()) {
+    Serial.println(F("WARNING: Wire has no timeout in this core"));
+  }
+  
   // Load vMix IP from EEPROM
   Serial.println(F("[6/9] Loading vMix config..."));
   byte vmixip[4];
   loadVMixIPFromEEPROM(vmixip);
   wdt_reset();
   
-  // Initialize vMix connection
+  // Initialize vMix connection (first attempt from loop())
   Serial.println(F("[7/9] Connecting to vMix..."));
   VmixConnector::begin(vmixip);
   wdt_reset();
@@ -263,6 +270,9 @@ void loop() {
   if (currentMillis > BOOT_COMPLETE_DELAY_MS && !SafeMode::isActive()) {
     SafeMode::bootComplete();  // no-op after the first call
   }
+  
+  // Safe Mode: probe the SDI shield, back to normal mode once it is stable
+  SafeMode::poll();
   
   // RAM monitor (every 10 seconds, only warn if critical)
   static unsigned long lastRamCheck = 0;
@@ -441,6 +451,13 @@ void printStatus() {
   Serial.print(F("Uptime: "));
   Serial.print(SafeMode::getUptime());
   Serial.println(F(" seconds"));
+  if (SafeMode::isActive()) {
+    Serial.print(F("Auto-recovery: "));
+    Serial.print(SafeMode::autoRecoveryArmed() ? F("ON") : F("OFF"));
+    Serial.print(F(" (strikes "));
+    Serial.print(SafeMode::getRecoveryStrikes());
+    Serial.println(')');
+  }
   Serial.println();
   
   Serial.print(F("Local IP: "));
