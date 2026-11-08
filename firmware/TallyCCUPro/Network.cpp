@@ -5,6 +5,15 @@
  */
 
 #include "Network.h"
+#include "VmixConnector.h"
+#include "NetUtils.h"
+#include <utility/w5100.h>
+#include <avr/wdt.h>
+
+// FIN budget per connection when the local IP changes
+#define NET_CLOSE_TIMEOUT_MS 50
+// Wait for the PHY link after the first (resetting) init
+#define NET_LINK_WAIT_MS 1000
 
 // Static variable initialization
 IPAddress NetworkManager::_localIP;
@@ -16,7 +25,20 @@ byte NetworkManager::_mac[6];
 bool NetworkManager::begin() {
   StorageManager::generateMacAddress(_mac);
   StorageManager::loadNetworkConfig(_localIP, _gateway, _subnet);
-  return restartEthernet();
+  Ethernet.begin(_mac, _localIP, _dns, _gateway, _subnet);
+  // Retransmission timing stays at the chip defaults, as in v3.7.1. Do not
+  // call Ethernet.setRetransmissionTimeout/Count: Ethernet 2.x writes them at
+  // the W5100 addresses, which on the W5500 hit SIR/SIMR and the RTR high
+  // byte. A short retry time would also drop vMix and Companion on a brief
+  // network glitch.
+  
+  // The first init resets the chip: give the PHY time to report the link
+  unsigned long start = millis();
+  while (Ethernet.linkStatus() == LinkOFF && millis() - start < NET_LINK_WAIT_MS) {
+    wdt_reset();
+    delay(10);
+  }
+  return (Ethernet.linkStatus() != LinkOFF);
 }
 
 void NetworkManager::printConfig() {
@@ -112,11 +134,12 @@ bool NetworkManager::setLocalIP(const char* ip) {
   Serial.print(F(" -> "));
   Serial.println(newIP);
   
+  bool changed = !(newIP == _localIP);
   _localIP = newIP;
   StorageManager::saveNetworkConfig(_localIP, _gateway, _subnet);
   
   Serial.println(F("IP saved, restarting network..."));
-  return restartEthernet();
+  return restartEthernet(changed);
 }
 
 bool NetworkManager::setLocalIP(const String &ip) {
@@ -136,7 +159,7 @@ bool NetworkManager::setGateway(const char* ip) {
   StorageManager::saveNetworkConfig(_localIP, _gateway, _subnet);
   
   Serial.println(F("Gateway saved, restarting network..."));
-  return restartEthernet();
+  return restartEthernet(false);
 }
 
 bool NetworkManager::setGateway(const String &ip) {
@@ -156,7 +179,7 @@ bool NetworkManager::setSubnet(const char* ip) {
   StorageManager::saveNetworkConfig(_localIP, _gateway, _subnet);
   
   Serial.println(F("Subnet saved, restarting network..."));
-  return restartEthernet();
+  return restartEthernet(false);
 }
 
 bool NetworkManager::setSubnet(const String &ip) {
@@ -185,14 +208,34 @@ void NetworkManager::getMACAddress(byte *mac) {
   }
 }
 
-bool NetworkManager::restartEthernet() {
-  Ethernet.maintain();
+// Closes every TCP connection (vMix, SSE, Companion 8098, HTTP): FIN, a
+// short wait, then CLOSE. LISTEN and CLOSED sockets are left alone. The
+// modules that held these sockets see them closed (or reused) on their next
+// identity check and forget them.
+static void closeAllConnections() {
+  uint8_t count = (W5100.getChip() == 51) ? 4 : MAX_SOCK_NUM;
+  for (uint8_t s = 0; s < count; s++) {
+    EthernetClient c(s);
+    NetUtils::closeGracefully(c, NET_CLOSE_TIMEOUT_MS);
+  }
+}
+
+// Hot reconfiguration (BOOT-04). After the first call Ethernet.begin() does
+// not reset the chip: it only rewrites MAC, IP, gateway and mask, and every
+// socket stays as it was. A connection made from the old IP is dead after
+// an IP change, but nothing tells either side (vMix keeps sending to the
+// old address, no RST comes back), so all of them are closed first, while
+// their FIN still leaves from the old address. LISTEN sockets answer on the
+// new IP; the servers re-create any listener they miss on their own. A
+// gateway or mask change leaves the open connections working.
+bool NetworkManager::restartEthernet(bool ipChanged) {
+  if (ipChanged) {
+    VmixConnector::closeForNetworkChange();
+    closeAllConnections();
+  }
   Ethernet.begin(_mac, _localIP, _dns, _gateway, _subnet);
-  // Retransmission timing stays at the chip defaults, as in v3.7.1. Do not
-  // call Ethernet.setRetransmissionTimeout/Count: Ethernet 2.x writes them at
-  // the W5100 addresses, which on the W5500 hit SIR/SIMR and the RTR high
-  // byte. A short retry time would also drop vMix and Companion on a brief
-  // network glitch.
-  delay(1000);
+  if (ipChanged) {
+    VmixConnector::reconnectNow();
+  }
   return (Ethernet.linkStatus() != LinkOFF);
 }

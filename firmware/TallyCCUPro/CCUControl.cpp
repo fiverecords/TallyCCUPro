@@ -19,9 +19,7 @@ bool CCUControl::_overrideCameraControl = true;
 bool CCUControl::_initialized = false;
 BMD_SDICameraControl_I2C CCUControl::_sdiCameraControl(BMD_I2C_ADDRESS);
 
-// Parameter cache
-CCUControl::ParamCacheEntry CCUControl::_paramCache[CCU_PARAM_CACHE_SIZE] = {{NULL, NULL}};
-int CCUControl::_cacheIndex = 0;
+BMDParamDef CCUControl::_foundDef;
 
 bool CCUControl::begin() {
   // Load override state
@@ -31,13 +29,6 @@ bool CCUControl::begin() {
   // Initialize CCU shield
   _sdiCameraControl.begin();
   _sdiCameraControl.setOverride(_overrideCameraControl);
-  
-  // Initialize cache
-  for (int i = 0; i < CCU_PARAM_CACHE_SIZE; i++) {
-    _paramCache[i].key = NULL;
-    _paramCache[i].def = NULL;
-  }
-  _cacheIndex = 0;
   
   _initialized = true;
   return true;
@@ -82,40 +73,8 @@ bool CCUControl::getOverride() {
   return _overrideCameraControl;
 }
 
-// Cache lookup - O(1) for frequent parameters
-const BMDParamDef* CCUControl::findInCache(const char* key) {
-  for (int i = 0; i < CCU_PARAM_CACHE_SIZE; i++) {
-    if (_paramCache[i].key != NULL && strcmp(_paramCache[i].key, key) == 0) {
-      return _paramCache[i].def;
-    }
-  }
-  return NULL;
-}
-
-// Add to cache (circular)
-void CCUControl::addToCache(const char* key, const BMDParamDef* def) {
-  _paramCache[_cacheIndex].key = key;
-  _paramCache[_cacheIndex].def = def;
-  _cacheIndex = (_cacheIndex + 1) % CCU_PARAM_CACHE_SIZE;
-}
-
 const BMDParamDef* CCUControl::findParamDefByKey(const char *paramKey) {
-  // First check cache
-  const BMDParamDef* cached = findInCache(paramKey);
-  if (cached != NULL) {
-    return cached;
-  }
-  
-  // Linear search in parameter table
-  for (int i = 0; i < BMD_PARAM_COUNT; i++) {
-    if (strcmp(bmdParams[i].paramKey, paramKey) == 0) {
-      // Add to cache for future lookups
-      addToCache(bmdParams[i].paramKey, &bmdParams[i]);
-      return &bmdParams[i];
-    }
-  }
-  
-  return NULL;
+  return bmdFindParam(paramKey, &_foundDef) >= 0 ? &_foundDef : NULL;
 }
 
 // Signed 5.11 fixed point: 16.0 would wrap to -16.0
@@ -347,35 +306,43 @@ bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, in
     }
   }
   
-  // Find parameter definition (uses cache)
-  const BMDParamDef *paramDef = findParamDefByKey(paramKey);
-  
-  if (paramDef == NULL) {
+  // Local copy of the flash table row
+  BMDParamDef def;
+  int8_t keyLen = bmdFindParam(paramKey, &def);
+  if (keyLen < 0) {
     return false;
   }
-  
+
+  // The "_0" alias is for live commands only. A preset skips it as v3.7.1
+  // did: Companion stores a stale timecode_source_0, and the preset skip
+  // list (SdUtils) only knows canonical keys.
+  bool alias = paramKey[keyLen] != '\0';
+  if (alias && fromPreset) {
+    return true;
+  }
+
   // Actions (auto WB, autofocus, reset...) are never replayed from presets
-  if (paramDef->paramType == TYPE_VOID && fromPreset) {
+  if (def.paramType == TYPE_VOID && fromPreset) {
     return true;
   }
   
   // Validate before touching the camera
-  bool isList = paramDef->hasSubIndices && paramDef->subCount > 1;
+  bool isList = def.subCount > 1;
   float values[BMD_MAX_SUB_COUNT];
   values[0] = 0.0f;
   int8_t boolVal = -1;
   
   if (isList) {
-    if (parseFloatList(value, values, min((int)paramDef->subCount, BMD_MAX_SUB_COUNT)) <= 0) {
+    if (parseFloatList(value, values, min((int)def.subCount, BMD_MAX_SUB_COUNT)) <= 0) {
       return false;
     }
-  } else if (paramDef->paramType == TYPE_BOOLEAN || paramDef->paramType == TYPE_VOID) {
+  } else if (def.paramType == TYPE_BOOLEAN || def.paramType == TYPE_VOID) {
     boolVal = parseBool(value);
     if (boolVal < 0) {
       return false;
     }
     values[0] = boolVal;
-  } else if (paramDef->paramType != TYPE_STRING) {
+  } else if (def.paramType != TYPE_STRING) {
     if (parseFloatList(value, values, 1) != 1) {
       return false;
     }
@@ -394,15 +361,15 @@ bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, in
   _activeCameraId = targetCameraId;
 
   if (isList) {
-    applyMultiValue(*paramDef, values, paramDef->subCount);
+    applyMultiValue(def, values, def.subCount);
   } else {
-    applySingleValue(*paramDef, values[0]);
+    applySingleValue(def, values[0]);
   }
 
   _activeCameraId = oldCameraId;
   
   // Actions are events, not state: do not echo them (clients would cache them)
-  if (paramDef->paramType == TYPE_VOID) {
+  if (def.paramType == TYPE_VOID) {
     return true;
   }
   
@@ -412,6 +379,14 @@ bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, in
     boolBuf[0] = boolVal ? '1' : '0';
     boolBuf[1] = '\0';
     value = boolBuf;
+  }
+  
+  // An alias ("timecode_source_0") is echoed with the canonical key
+  char canonKey[BMD_KEY_SIZE];
+  if (alias) {
+    memcpy(canonKey, paramKey, keyLen);
+    canonKey[keyLen] = '\0';
+    paramKey = canonKey;
   }
   
   // Broadcast change to connected TCP clients (Companion)

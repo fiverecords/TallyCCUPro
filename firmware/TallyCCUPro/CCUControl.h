@@ -11,9 +11,6 @@
 #include "Storage.h"
 #include "bmd_params.h"
 
-// Cache size for frequently used parameters
-#define CCU_PARAM_CACHE_SIZE 8
-
 class CCUControl {
   public:
     static bool begin();
@@ -31,7 +28,8 @@ class CCUControl {
     static void applyMultiValue(const BMDParamDef &paramDef, float *values, int count);
     
     // Apply parameter by key (optimized const char* version)
-    // fromPreset: true when called while applying a stored preset
+    // fromPreset: true when called while applying a stored preset (actions
+    // and "<key>_0" aliases are then skipped and return true)
     static bool applyParameterByKey(const char *paramKey, const char *value, int cameraId = -1, bool fromPreset = false);
     
     // String wrapper for compatibility
@@ -40,7 +38,9 @@ class CCUControl {
     // True when the SDI shield was initialized and we are not in Safe Mode
     static bool isReady();
     
-    // Find parameter definition by key (with cache)
+    // Find parameter definition by key ("<key>_0" alias included, see
+    // bmdFindParam()). Returns a static RAM copy of the row, valid until the
+    // next call; NULL if unknown.
     static const BMDParamDef* findParamDefByKey(const char *paramKey);
     
     // Parse comma-separated numbers (strtod, no truncation).
@@ -60,16 +60,7 @@ class CCUControl {
     static bool _overrideCameraControl;
     static bool _initialized;
     static BMD_SDICameraControl_I2C _sdiCameraControl;
-    
-    // Parameter cache (avoids O(n) search)
-    static struct ParamCacheEntry {
-      const char* key;
-      const BMDParamDef* def;
-    } _paramCache[CCU_PARAM_CACHE_SIZE];
-    static int _cacheIndex;
-    
-    static void addToCache(const char* key, const BMDParamDef* def);
-    static const BMDParamDef* findInCache(const char* key);
+    static BMDParamDef _foundDef;  // findParamDefByKey() result
 };
 
 #endif // CCU_CONTROL_H

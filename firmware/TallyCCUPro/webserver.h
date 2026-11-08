@@ -17,21 +17,50 @@
 #include "CCUControl.h"
 #include "SdUtils.h"
 #include "VmixConnector.h"
+#include "NetUtils.h"
 #include <SdFat.h>
 
 // External declaration for vMix IP change
 extern void changeVMixIP(const char* ip);
 
 // Static buffer sizes - optimized
-#define WEB_REQUEST_BUFFER_SIZE 192
-#define WEB_QUERY_BUFFER_SIZE 192
+#define WEB_REQUEST_BUFFER_SIZE 192   // request line, then response/transfer buffer
 #define WEB_KEY_BUFFER_SIZE 32
 #define WEB_VALUE_BUFFER_SIZE 96
 #define WEB_LINE_BUFFER_SIZE 96
 #define WEB_TEMP_BUFFER_SIZE 48
+#define WEB_SSE_BUFFER_SIZE 176       // one SSE event, sent all or nothing
 
-// SSE timeout (30 seconds without activity)
-#define SSE_TIMEOUT 30000
+// HTTP time budgets (ms)
+#define WEB_HEADER_MS 2000            // request line + headers, total
+#define WEB_RESPONSE_MS 3000          // writing one response, total
+#define WEB_CLOSE_MS 500              // graceful close after a response
+#define WEB_BODY_MS 3000              // request body: base budget...
+#define WEB_BODY_BYTES_PER_MS 8       // ...plus Content-Length at 8 KB/s
+#define WEB_BODY_MAX_MS 60000UL
+#define WEB_BODY_IDLE_MS 3000         // request body: no data this long aborts
+#define WEB_PRESET_MAX_BODY 16384L    // savePreset body limit (a preset is ~3 KB)
+#define WEB_SYNC_MAX_BODY 65536L      // syncState body limit (8 cameras)
+#define WEB_IDLE_SOCKET_MS 5000       // port-80 socket without a request: closed
+#define WEB_LISTENERS 2               // LISTEN sockets on port 80 while 3+ are free
+#define WEB_MAX_PER_PASS 3            // requests served per processRequests()...
+#define WEB_PASS_MS 25                // ...unless this much time has gone
+#define WEB_POLL_MS 20                // long transfers and waits: tally poll period
+
+// SSE
+#define SSE_TIMEOUT 30000             // keepalive after 30 s without events
+#define MAX_SSE_CLIENTS 2             // a new one replaces the oldest
+#define SSE_MAX_DROPS 128             // events dropped in a row: close (a preset
+                                      // load alone is ~50 back-to-back events)
+#define SSE_STALL_MS 2000             // dropping events this long: close
+#define SSE_TX_WAIT_MS 2              // grace for a busy TX before a drop
+
+// PTZ / continuous zoom safety stop, only for requests with deadman=1:
+// no refresh for PTZ_DEADMAN_MS stops the motion. While the server is busy
+// (a long request, requests still waiting, and PTZ_DEADMAN_MS after that)
+// a refresh may be held up, so only the longer limit applies.
+#define PTZ_DEADMAN_MS 600
+#define PTZ_DEADMAN_BUSY_MS 2400
 
 class WebServer {
   public:
@@ -48,12 +77,37 @@ class WebServer {
     // JSON utility - print string with " and \ escaped
     static void printJsonSafe(Print &out, const char* str);
 
+    // For loops that serve one web request for long: polls the vMix tally,
+    // the deadman and the port-80 listener, at most every WEB_POLL_MS
+    static void transferPoll();
+
   private:
     static EthernetServer _server;
     
-    // SSE client
-    static EthernetClient _sseClient;
+    // SSE clients, oldest first. Only the socket index and the peer are
+    // kept: the index is checked against them before every use.
+    struct SseClient {
+      uint8_t sock;
+      uint8_t drops;                // events dropped in a row
+      uint16_t rport;
+      uint32_t rip;
+      unsigned long dropSince;      // first drop of the current run
+    };
+    static SseClient _sse[MAX_SSE_CLIENTS];
+    static uint8_t _sseCount;
     static unsigned long _sseLastActivity;
+    static bool _sseSyncWanted;     // sseResync() asked for a REQUESTSYNC
+
+    // Port-80 sockets: when first seen connected (FIFO order, idle sweep)
+    static uint16_t _sockSeenAt[MAX_SOCK_NUM];
+    static uint8_t _sockSeenMask;
+
+    // Deadman: armed cameras (bit cam-1), last refresh (8 ms ticks, wraps
+    // after 524 s) and the end of the last busy period
+    static uint8_t _dmPan, _dmZoom;
+    static uint16_t _dmPanAt[MAX_CAMERAS], _dmZoomAt[MAX_CAMERAS];
+    static unsigned long _dmBusyAt;
+    static uint16_t _pollAt;        // last transferPoll() (ms, 16 bit)
 
     // Result of one GET parameter; the first error of a query decides the response
     enum ParamResult : uint8_t {
@@ -72,27 +126,48 @@ class WebServer {
     struct ParamContext {
       int8_t camera;               // cameraId of this request: 0 none, -1 invalid
       bool badRequest;             // a 400 happened: tally map edits are dropped
-      byte mapInput[MAXTALLIES];   // staged tally map edits (0 = unchanged)
-      byte mapCam[MAXTALLIES];
+      bool deadman;                // deadman=1
+      uint8_t pan, zoom;           // motion applied: 0 none, 1 stop, 2 moving
+      uint8_t panCam, zoomCam;
+      byte mapInput[MAXTALLIES];   // staged tally map edits: 0 unchanged,
+      byte mapCam[MAXTALLIES];     // MAP_CLEAR an explicit 0
+    };
+
+    // Headers of the request being served
+    struct Request {
+      long contentLength;          // -1 missing or invalid
+      bool gzip;                   // Accept-Encoding: gzip
+      bool boundary;               // multipart end pattern is in _valueBuffer
     };
 
     // Static buffers
     static char _requestBuffer[WEB_REQUEST_BUFFER_SIZE];
-    static char _queryBuffer[WEB_QUERY_BUFFER_SIZE];
     static char _keyBuffer[WEB_KEY_BUFFER_SIZE];
     static char _valueBuffer[WEB_VALUE_BUFFER_SIZE];
     static char _lineBuffer[WEB_LINE_BUFFER_SIZE];
     static char _tempBuffer[WEB_TEMP_BUFFER_SIZE];
+    static char _sseBuffer[WEB_SSE_BUFFER_SIZE];
     
+    // Connection handling
+    static uint8_t scanSockets();
+    static void keepListening();
+    static void serveClient(uint8_t sock);
+    static void readHeaders(EthernetClient &client, unsigned long deadline, Request &req);
+    static int readLinePolled(EthernetClient &client, NetUtils::LineReader &lr,
+                              unsigned long deadline, long* remaining);
+    static bool writePolled(EthernetClient &client, const uint8_t* buf, size_t len,
+                            unsigned long deadline);
+    static bool waitTxIdle(EthernetClient &client);
+
     // Process different request types
-    static void processGETRequest(const char* reqLine, EthernetClient &client);
-    static void processPOSTRequest(const char* reqLine, EthernetClient &client);
+    static void processGETRequest(char* reqLine, EthernetClient &client, bool gzip);
+    static void processPOSTRequest(const char* reqLine, EthernetClient &client, const Request &req);
     
     // Handle preset save via POST
-    static void handleSavePresetPOST(EthernetClient &client);
+    static void handleSavePresetPOST(EthernetClient &client, long contentLength);
     
     // Handle sync state from web via POST
-    static void handleSyncStatePOST(EthernetClient &client);
+    static void handleSyncStatePOST(EthernetClient &client, long contentLength);
     
     // Handle GET parameters (value is URL-decoded in place)
     static ParamResult handleParam(const char* key, char* value, ParamContext &ctx);
@@ -100,27 +175,41 @@ class WebServer {
     // /?loadPreset=cam,idx[&returnValues=1]
     static void handleLoadPreset(EthernetClient &client, char* args);
 
-    // HTTP responses
-    static void sendHeaders(EthernetClient &client, int httpCode, bool json);
+    // Deadman timers
+    static void armDeadman(bool zoom, uint8_t cam, bool arm);
+    static void checkDeadman(bool busy);
+
+    // HTTP responses (written through _requestBuffer)
+    static void sendHeaders(Print &out, int httpCode, bool json);
+    static void sendBareStatus(EthernetClient &client, int httpCode);
     static void sendParamResult(EthernetClient &client, ParamResult result);
     static void handleGetOverrides(EthernetClient &client);
+    static void handleGetTallyMap(EthernetClient &client);
+    static void handleGetVmixConnect(EthernetClient &client);
     static void listPresetsAsJSON(EthernetClient &client);
     static void send404(EthernetClient &client);
+    static void serveSdFile(EthernetClient &client, PGM_P filename, bool gzip);
     static void sendJSONPresetValues(EthernetClient &client, int cameraId, int presetId);
     static void sendJSONResponse(EthernetClient &client, int httpCode, bool success, const __FlashStringHelper* message, int paramCount = -1);
     static void sendJSONResponse(EthernetClient &client, int httpCode, bool success, const char* message, int paramCount = -1);
-    static void sendJSONTail(EthernetClient &client, int paramCount);
+    static void sendJSONHead(Print &out, int httpCode, bool success);
+    static void sendJSONTail(Print &out, int paramCount);
+    static void sendJSONBool(EthernetClient &client, PGM_P key, bool value);
     
     // SSE handling
-    static void handleSSEConnection(EthernetClient &client);
-    static void processSSEClient();
+    static bool handleSSEConnection(EthernetClient &client);
+    static void processSSEClients();
+    static bool sseValid(uint8_t i);
+    static void sseRemove(uint8_t i);
+    static void sseBroadcast(const ClientBufferPrint &event);
+    static void sseResync(EthernetClient &c, SseClient &s);
     
     // SD file management
     static void handleListFiles(EthernetClient &client);
     static void handleDownloadFile(EthernetClient &client, const char* filename);
     static void handleDeleteFile(EthernetClient &client, const char* filename);
     static void handleRenameFile(EthernetClient &client, const char* oldName, const char* newName);
-    static void handleUploadFile(EthernetClient &client);
+    static void handleUploadFile(EthernetClient &client, const Request &req);
     
     // Safe Mode handlers
     static void handleSafeModeStatus(EthernetClient &client);
@@ -130,7 +219,6 @@ class WebServer {
     static bool isNumeric(const char* str);
     static void urlDecodeInPlace(char* str);
     static int findChar(const char* str, char c, int start);
-    static bool startsWithConst(const char* str, const char* prefix);
     static void extractSubstring(const char* src, char* dest, int start, int end, int maxLen);
 };
 

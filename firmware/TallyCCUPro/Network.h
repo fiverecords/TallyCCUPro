@@ -47,7 +47,8 @@ class NetworkManager {
     static IPAddress _dns;
     static byte _mac[6];
     
-    static bool restartEthernet();
+    // Reconfigure the running chip; ipChanged closes every connection
+    static bool restartEthernet(bool ipChanged);
 };
 
 #endif // NETWORK_H

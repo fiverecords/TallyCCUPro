@@ -2,15 +2,17 @@
  * CCUBroadcast.h
  * TCP server for CCU change broadcasting
  * Version 3.8
- * 
+ *
  * Protocol (outgoing messages):
  * - CCU <cameraId> <paramKey> <value>        - Parameter change
  * - PRESET <cameraId> <presetId> <name>      - Preset loaded
  * - PRESETSAVED <cameraId> <presetId> <name> - Preset saved
- * 
- * Commands (incoming):
+ * - REQUESTSYNC                              - Asks for cached state
+ *
+ * Commands (incoming, one per line ending in '\n'; '\r' is ignored):
  * - SUBSCRIBE     - Subscribe to changes
  * - UNSUBSCRIBE   - Cancel subscription
+ * - CCUSYNC <cameraId> <paramKey> <value> - Cached state, forwarded to SSE
  * - STATUS        - Get status
  * - PING          - Keepalive
  */
@@ -23,39 +25,42 @@
 
 #define CCU_BROADCAST_PORT 8098
 #define CCU_MAX_CLIENTS 2
-#define CCU_CLIENT_TIMEOUT 300000  // 5 minutes
-#define CCU_MSG_BUFFER_SIZE 128
+#define CCU_CLIENT_TIMEOUT 90000UL   // nothing received (Companion PINGs every 30 s)
+#define CCU_HELLO_TIMEOUT 10000UL    // no first line after connecting
+#define CCU_REPLACE_SILENCE 35000UL  // same-IP client this silent: stale Companion connection
+#define CCU_STALL_TIMEOUT 5000UL     // TX not drained this long after a drop: close
+#define CCU_TX_DRAINED 1024          // free TX bytes that end a stall (half the buffer)
+#define CCU_TX_WAIT_MS 5             // grace for a busy TX before a line is dropped
+#define CCU_CLOSE_MS 20              // budget of a graceful close
+#define CCU_SYNC_INTERVAL 10000UL    // REQUESTSYNC / web sync request at most this often
+#define CCU_CMDS_PER_PASS 8          // lines processed per process() call
+#define CCU_LINE_BUFFER_SIZE 128     // per client; longer lines are rejected
+#define CCU_MSG_BUFFER_SIZE 136      // outgoing line incl. CRLF
 
 class CCUBroadcast {
 public:
     static bool begin();
     static void process();
-    
-    // Push notifications
+
+    // Push notifications. Never block: a line that does not fit in a
+    // client's TX buffer is dropped for that client and counted.
     static void sendParamChange(int cameraId, const char* paramKey, const char* value);
     static void sendPresetLoaded(int cameraId, int presetId, const char* presetName);
     static void sendPresetSaved(int cameraId, int presetId, const char* presetName);
-    
-    // Request sync from TCP clients (for SSE initial state)
+
+    // Asks TCP clients for their cached state (REQUESTSYNC, for a new SSE
+    // client). At most once per CCU_SYNC_INTERVAL: a request inside the
+    // interval is deferred, not lost. Call it on every SSE connection.
     static void requestSync();
-    
+
+    // True if a REQUESTSYNC went out after t or less than CCU_SYNC_INTERVAL
+    // before it: for SSE drops that began at t, its dump resends the values
+    // or caused the drops, and asking again could loop.
+    static bool syncSentNear(uint32_t t);
+
     // Status
     static uint8_t getClientCount();
     static bool hasClients();
-
-private:
-    static EthernetServer _server;
-    static EthernetClient _clients[CCU_MAX_CLIENTS];
-    static bool _subscribed[CCU_MAX_CLIENTS];
-    static unsigned long _lastActivity[CCU_MAX_CLIENTS];
-    static char _msgBuffer[CCU_MSG_BUFFER_SIZE];
-    
-    static void processClientCommand(int clientIndex, const char* command);
-    static void sendToClient(int clientIndex, const char* message);
-    static void broadcast(const char* message);
-    static void cleanupClient(int clientIndex);
-    static int findFreeSlot();
-    static int findClientByIP(IPAddress ip);
 };
 
 #endif

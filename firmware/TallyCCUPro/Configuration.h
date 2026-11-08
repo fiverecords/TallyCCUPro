@@ -66,7 +66,9 @@
 // TIMEOUTS AND RETRY
 // ============================================================
 #define HTTP_REQUEST_TIMEOUT 5000   // HTTP request timeout (ms)
-#define VMIX_RECONNECT_DELAY 20000  // vMix reconnection delay (ms)
+#define VMIX_HEARTBEAT_MS 5000      // idle time before a TALLY request to vMix
+#define VMIX_RX_TIMEOUT_MS 15000    // nothing from vMix this long = dead link
+#define VMIX_RECONNECT_MAX_MS 30000 // longest wait between vMix connect attempts
 
 // ============================================================
 // PRESET LIMITS
