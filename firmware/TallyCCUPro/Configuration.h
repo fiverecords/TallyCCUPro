@@ -1,7 +1,7 @@
 /*
  * Configuration.h
  * Central configuration file for TallyCCU Pro
- * Version 3.7.1
+ * Version 3.8
  */
 
 #ifndef CONFIGURATION_H
@@ -18,7 +18,7 @@
 // ============================================================
 // FIRMWARE VERSION
 // ============================================================
-#define FIRMWARE_VERSION "3.7.1"
+#define FIRMWARE_VERSION "3.8"
 
 // ============================================================
 // NETWORK CONFIGURATION
@@ -29,8 +29,10 @@
 // ============================================================
 // TALLY CONFIGURATION
 // ============================================================
-#define MAXTALLIES 10             // Max mapped tally inputs
+#define MAXTALLIES 10             // Number of tally mapping slots (input->camera pairs)
 #define MAX_CAMERAS 8             // Max supported cameras
+#define MAX_VMIX_INPUTS 63        // Highest vMix input number evaluated for tally
+                                  // (bounded by the 64-byte tally line buffers)
 
 // ============================================================
 // EEPROM ADDRESSES
@@ -56,7 +58,9 @@
 // SD CARD CONFIGURATION
 // ============================================================
 #define SD_PIN_CS 4               // CS pin for SD card
+#define ETH_PIN_CS 10             // CS pin for W5500 (Ethernet Shield 2)
 #define SD_BUFFER_SIZE 256        // Buffer size for SD operations
+#define SD_INIT_ATTEMPTS 3        // SD begin() attempts at boot
 
 // ============================================================
 // TIMEOUTS AND RETRY
@@ -82,6 +86,17 @@
 #define WEB_PROCESS_INTERVAL 10      // ms between web processing
 #define SERIAL_PROCESS_INTERVAL 50   // ms between serial processing
 #define MAINTENANCE_INTERVAL 100     // ms between Ethernet maintenance
+
+// ============================================================
+// DEBUG LOGGING
+// ============================================================
+// Verbose serial logging on hot paths (every CCU parameter, every TCP
+// command, every tally change). Disabled by default: once the 64-byte
+// Serial TX buffer fills, Serial.print() blocks the main loop
+// (~87 us per byte at 115200 baud) and delays tally. Set to 1 to debug.
+#ifndef DEBUG_HOT
+#define DEBUG_HOT 0
+#endif
 
 // ============================================================
 // CONCURRENCY CONTROL VARIABLES

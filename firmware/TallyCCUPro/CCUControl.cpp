@@ -1,18 +1,22 @@
 /*
  * CCUControl.cpp
  * Camera Control Unit (CCU) implementation
- * Version 3.7.1
+ * Version 3.8
  */
 
 #include "CCUControl.h"
 #include "CCUBroadcast.h"
-#include "WebServer.h"
+#include "webserver.h"
+#include "SafeMode.h"
 #include <BMDSDIControl.h>
 #include <avr/wdt.h>
+#include <avr/pgmspace.h>
+#include <math.h>
 
 // Static variable initialization
 int CCUControl::_activeCameraId = 1;
 bool CCUControl::_overrideCameraControl = true;
+bool CCUControl::_initialized = false;
 BMD_SDICameraControl_I2C CCUControl::_sdiCameraControl(BMD_I2C_ADDRESS);
 
 // Parameter cache
@@ -35,15 +39,22 @@ bool CCUControl::begin() {
   }
   _cacheIndex = 0;
   
+  _initialized = true;
   return true;
+}
+
+bool CCUControl::isReady() {
+  return _initialized && !SafeMode::isActive();
 }
 
 void CCUControl::setActiveCamera(int cameraId) {
   if (cameraId >= 1 && cameraId <= MAX_CAMERAS) {
     if (_activeCameraId != cameraId) {
       _activeCameraId = cameraId;
+#if DEBUG_HOT
       Serial.print(F("Active camera: "));
       Serial.println(_activeCameraId);
+#endif
     }
   }
 }
@@ -54,7 +65,10 @@ int CCUControl::getActiveCamera() {
 
 void CCUControl::setOverride(bool enabled) {
   _overrideCameraControl = enabled;
-  _sdiCameraControl.setOverride(_overrideCameraControl);
+  // Shield not initialized (Safe Mode): only persist the setting
+  if (isReady()) {
+    _sdiCameraControl.setOverride(_overrideCameraControl);
+  }
   
   bool currentTally, currentCCU;
   StorageManager::loadOverrides(currentTally, currentCCU);
@@ -104,20 +118,25 @@ const BMDParamDef* CCUControl::findParamDefByKey(const char *paramKey) {
   return NULL;
 }
 
+// Signed 5.11 fixed point: 16.0 would wrap to -16.0
+static inline float clampFixed16(float v) {
+  return constrain(v, -16.0f, 15.9995f);
+}
+
 void CCUControl::applySingleValue(const BMDParamDef &def, float valf) {
-  if (!_overrideCameraControl) {
+  if (!isReady() || !_overrideCameraControl) {
     return;
   }
 
   switch (def.paramType) {
     case TYPE_VOID:
-      if ((int)valf == 1) {
+      if (valf != 0.0f) {
         _sdiCameraControl.writeCommandVoid(_activeCameraId, def.groupId, def.paramId);
       }
       break;
       
     case TYPE_BOOLEAN: {
-      bool b = (valf == 1.0f);
+      bool b = (valf != 0.0f);
       _sdiCameraControl.writeCommandBool(_activeCameraId, def.groupId, def.paramId, 0, b);
       break;
     }
@@ -153,7 +172,7 @@ void CCUControl::applySingleValue(const BMDParamDef &def, float valf) {
     }
     
     case TYPE_FIXED16: {
-      _sdiCameraControl.writeCommandFixed16(_activeCameraId, def.groupId, def.paramId, 0, valf);
+      _sdiCameraControl.writeCommandFixed16(_activeCameraId, def.groupId, def.paramId, 0, clampFixed16(valf));
       break;
     }
     
@@ -168,7 +187,7 @@ void CCUControl::applySingleValue(const BMDParamDef &def, float valf) {
 }
 
 void CCUControl::applyMultiValue(const BMDParamDef &def, float *vals, int count) {
-  if (!_overrideCameraControl) {
+  if (!isReady() || !_overrideCameraControl) {
     return;
   }
 
@@ -224,7 +243,7 @@ void CCUControl::applyMultiValue(const BMDParamDef &def, float *vals, int count)
     case TYPE_FIXED16: {
       float arr[BMD_MAX_SUB_COUNT];
       for (int i = 0; i < subCount; i++) {
-        arr[i] = vals[i];
+        arr[i] = clampFixed16(vals[i]);
       }
       _sdiCameraControl.writeCommandFixed16(_activeCameraId, def.groupId, def.paramId, 0, arr);
       break;
@@ -235,71 +254,95 @@ void CCUControl::applyMultiValue(const BMDParamDef &def, float *vals, int count)
   }
 }
 
-// Optimized version with const char*
-void CCUControl::parseFloatList(const char *str, float *out, int maxCount) {
+// strtod on the original string: keeps exponents (e.g. 2.7e-17)
+int CCUControl::parseFloatList(const char *str, float *out, int maxCount) {
   if (!str || !out || maxCount <= 0) {
-    return;
+    return -1;
   }
   
+  // Positional: inside a list an empty field is 0 (v3.7.1 also sent 0, e.g.
+  // Companion's default "," for exposure_and_focus_tools). Non-numeric
+  // fields, NaN/Inf, trailing garbage or extra fields reject the whole list.
+  bool isList = (strchr(str, ',') != NULL);
   int idx = 0;
   const char* ptr = str;
-  char numBuf[16];
   
-  while (*ptr != '\0' && idx < maxCount) {
-    // Skip leading spaces
+  for (;;) {
     while (*ptr == ' ') ptr++;
-    
-    // Find end of number (comma or end of string)
-    const char* start = ptr;
-    while (*ptr != '\0' && *ptr != ',') ptr++;
-    
-    // Copy number to temp buffer
-    int len = ptr - start;
-    if (len > 15) len = 15;
-    if (len > 0) {
-      strncpy(numBuf, start, len);
-      numBuf[len] = '\0';
-      
-      // Trim trailing spaces
-      while (len > 0 && numBuf[len-1] == ' ') {
-        numBuf[--len] = '\0';
-      }
-      
-      // Convert to float
-      out[idx++] = atof(numBuf);
+    double v = 0.0;
+    const char* end = ptr;
+    if (*ptr == ',' || *ptr == '\0') {
+      if (!isList) return -1;                    // a single value can't be empty
+    } else {
+      char* e;
+      v = strtod(ptr, &e);
+      if (e == ptr || !isfinite(v)) return -1;   // non-numeric, NaN/Inf
+      end = e;
+      while (*end == ' ') end++;
+      if (*end != ',' && *end != '\0') return -1; // trailing garbage
     }
-    
-    // Skip comma
-    if (*ptr == ',') ptr++;
+    if (idx >= maxCount) return -1;              // too many values
+    out[idx++] = (float)v;
+    if (*end == '\0') break;
+    ptr = end + 1;
   }
   
   // Fill remaining with zeros
   for (int i = idx; i < maxCount; i++) {
     out[i] = 0.0f;
   }
+  return idx;
 }
 
 // String wrapper for compatibility
-void CCUControl::parseFloatList(const String &str, float *out, int maxCount) {
-  parseFloatList(str.c_str(), out, maxCount);
+int CCUControl::parseFloatList(const String &str, float *out, int maxCount) {
+  return parseFloatList(str.c_str(), out, maxCount);
+}
+
+// Case-insensitive PROGMEM word match, trailing spaces allowed
+static bool matchWord(const char *s, PGM_P word) {
+  size_t n = strlen_P(word);
+  if (strncasecmp_P(s, word, n) != 0) return false;
+  s += n;
+  while (*s == ' ') s++;
+  return *s == '\0';
+}
+
+int8_t CCUControl::parseBool(const char *str) {
+  if (!str) return -1;
+  while (*str == ' ') str++;
+  if (matchWord(str, PSTR("true")) || matchWord(str, PSTR("on")) || matchWord(str, PSTR("yes"))) return 1;
+  if (matchWord(str, PSTR("false")) || matchWord(str, PSTR("off")) || matchWord(str, PSTR("no"))) return 0;
+  float v;
+  if (parseFloatList(str, &v, 1) != 1) return -1;
+  return (v != 0.0f) ? 1 : 0;
 }
 
 // Main optimized version (const char*)
-bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, int cameraId) {
+// Returns false (and broadcasts nothing) if not ready, key unknown or value malformed
+bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, int cameraId, bool fromPreset) {
   wdt_reset();
   
+  // No I2C writes without an initialized shield or in Safe Mode
+  if (!isReady() || !paramKey || !value) {
+    return false;
+  }
+  
   int targetCameraId = (cameraId > 0) ? cameraId : _activeCameraId;
+  if (targetCameraId > MAX_CAMERAS) {
+    return false;
+  }
   
   // Quick check: ignore non-CCU parameters
   char first = paramKey[0];
   if (first == 'i' || first == 'p' || first == 's' || first == 'n') {
-    if (strcmp(paramKey, "initPreset") == 0 ||
-        strcmp(paramKey, "presetParam") == 0 ||
-        strcmp(paramKey, "savePresetComplete") == 0 ||
-        strcmp(paramKey, "initPresetFragmented") == 0 ||
-        strcmp(paramKey, "presetFragment") == 0 ||
-        strcmp(paramKey, "savePresetFragmentedComplete") == 0 ||
-        strcmp(paramKey, "name") == 0) {
+    if (strcmp_P(paramKey, PSTR("initPreset")) == 0 ||
+        strcmp_P(paramKey, PSTR("presetParam")) == 0 ||
+        strcmp_P(paramKey, PSTR("savePresetComplete")) == 0 ||
+        strcmp_P(paramKey, PSTR("initPresetFragmented")) == 0 ||
+        strcmp_P(paramKey, PSTR("presetFragment")) == 0 ||
+        strcmp_P(paramKey, PSTR("savePresetFragmentedComplete")) == 0 ||
+        strcmp_P(paramKey, PSTR("name")) == 0) {
       return true;
     }
   }
@@ -310,27 +353,66 @@ bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, in
   if (paramDef == NULL) {
     return false;
   }
+  
+  // Actions (auto WB, autofocus, reset...) are never replayed from presets
+  if (paramDef->paramType == TYPE_VOID && fromPreset) {
+    return true;
+  }
+  
+  // Validate before touching the camera
+  bool isList = paramDef->hasSubIndices && paramDef->subCount > 1;
+  float values[BMD_MAX_SUB_COUNT];
+  values[0] = 0.0f;
+  int8_t boolVal = -1;
+  
+  if (isList) {
+    if (parseFloatList(value, values, min((int)paramDef->subCount, BMD_MAX_SUB_COUNT)) <= 0) {
+      return false;
+    }
+  } else if (paramDef->paramType == TYPE_BOOLEAN || paramDef->paramType == TYPE_VOID) {
+    boolVal = parseBool(value);
+    if (boolVal < 0) {
+      return false;
+    }
+    values[0] = boolVal;
+  } else if (paramDef->paramType != TYPE_STRING) {
+    if (parseFloatList(value, values, 1) != 1) {
+      return false;
+    }
+  }
 
+#if DEBUG_HOT
   Serial.print(F("[CCU] Cam"));
   Serial.print(targetCameraId);
   Serial.print(F(" "));
   Serial.print(paramKey);
   Serial.print(F("="));
   Serial.println(value);
+#endif
 
   int oldCameraId = _activeCameraId;
   _activeCameraId = targetCameraId;
 
-  if (paramDef->hasSubIndices && paramDef->subCount > 1) {
-    float values[BMD_MAX_SUB_COUNT];
-    parseFloatList(value, values, min((int)paramDef->subCount, BMD_MAX_SUB_COUNT));
+  if (isList) {
     applyMultiValue(*paramDef, values, paramDef->subCount);
   } else {
-    float singleValue = atof(value);
-    applySingleValue(*paramDef, singleValue);
+    applySingleValue(*paramDef, values[0]);
   }
 
   _activeCameraId = oldCameraId;
+  
+  // Actions are events, not state: do not echo them (clients would cache them)
+  if (paramDef->paramType == TYPE_VOID) {
+    return true;
+  }
+  
+  // Booleans are echoed normalized ("true" -> "1")
+  char boolBuf[2];
+  if (boolVal >= 0) {
+    boolBuf[0] = boolVal ? '1' : '0';
+    boolBuf[1] = '\0';
+    value = boolBuf;
+  }
   
   // Broadcast change to connected TCP clients (Companion)
   CCUBroadcast::sendParamChange(targetCameraId, paramKey, value);
@@ -342,6 +424,6 @@ bool CCUControl::applyParameterByKey(const char *paramKey, const char *value, in
 }
 
 // String wrapper for compatibility
-bool CCUControl::applyParameterByKey(const char *paramKey, const String &value, int cameraId) {
-  return applyParameterByKey(paramKey, value.c_str(), cameraId);
+bool CCUControl::applyParameterByKey(const char *paramKey, const String &value, int cameraId, bool fromPreset) {
+  return applyParameterByKey(paramKey, value.c_str(), cameraId, fromPreset);
 }

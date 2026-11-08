@@ -1,7 +1,7 @@
 /*
  * bmd_params.h
  * Blackmagic camera parameter definitions
- * Version 3.7.1
+ * Version 3.8
  * 
  * Based on Blackmagic Camera Control Protocol
  */
@@ -42,5 +42,8 @@ struct BMDParamDef {
 // Defined in bmd_params.cpp
 extern BMDParamDef bmdParams[];
 extern const int BMD_PARAM_COUNT;
+
+// True if key is a TYPE_VOID (action) parameter: an event, not state
+bool bmdIsVoidParam(const char *paramKey);
 
 #endif // BMD_PARAMS_H

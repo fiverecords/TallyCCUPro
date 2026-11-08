@@ -1,11 +1,13 @@
 /*
  * CCUBroadcast.cpp
  * TCP server for CCU change broadcasting
- * Version 3.7.1
+ * Version 3.8
  */
 
 #include "CCUBroadcast.h"
-#include "WebServer.h"
+#include "webserver.h"
+#include "bmd_params.h"
+#include "CCUControl.h"
 #include <avr/wdt.h>
 
 // Static variable initialization
@@ -144,10 +146,12 @@ int CCUBroadcast::findClientByIP(IPAddress ip) {
 }
 
 void CCUBroadcast::processClientCommand(int clientIndex, const char* command) {
+#if DEBUG_HOT
     Serial.print(F("[CCUBcast] ["));
     Serial.print(clientIndex);
     Serial.print(F("] "));
     Serial.println(command);
+#endif
     
     // SUBSCRIBE - Subscribe to changes
     if (strncmp(command, "SUBSCRIBE", 9) == 0) {
@@ -194,8 +198,18 @@ void CCUBroadcast::processClientCommand(int clientIndex, const char* command) {
                 
                 const char* value = p + 1;
                 
-                // Forward to SSE client
-                WebServer::sendSSEEvent(cameraId, key, value);
+                // Forward to SSE client (actions are not state)
+                const BMDParamDef* def = CCUControl::findParamDefByKey(key);
+                if (def && def->paramType == TYPE_VOID) return;
+                if (def && def->paramType == TYPE_BOOLEAN) {
+                    // Same 1/0 form as applyParameterByKey broadcasts
+                    int8_t b = CCUControl::parseBool(value);
+                    if (b < 0) return;
+                    char bv[2] = { (char)('0' + b), '\0' };
+                    WebServer::sendSSEEvent(cameraId, key, bv);
+                } else {
+                    WebServer::sendSSEEvent(cameraId, key, value);
+                }
             }
         }
         return;
@@ -248,6 +262,8 @@ void CCUBroadcast::requestSync() {
 
 void CCUBroadcast::sendParamChange(int cameraId, const char* paramKey, const char* value) {
     if (!hasClients()) return;
+    // Actions are events, not state: clients must not cache them
+    if (bmdIsVoidParam(paramKey)) return;
     
     snprintf(_msgBuffer, CCU_MSG_BUFFER_SIZE, 
              "CCU %d %s %s", 

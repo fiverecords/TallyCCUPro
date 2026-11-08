@@ -1,7 +1,7 @@
 /*
  * TallyManager.cpp
  * Tally management implementation
- * Version 3.7.1
+ * Version 3.8
  * 
  * O(n) mapping with n=10 is fast enough and saves 256 bytes of RAM
  * Safe Mode support: SDI Shield not initialized when in safe mode
@@ -138,12 +138,14 @@ void TallyManager::setTallyState(byte camera, char state) {
     sdiTallyControl.setCameraTally(camera, program, preview);
   }
   
+  #if DEBUG_HOT
   Serial.print(F("[T] Cam "));
   Serial.print(camera);
   Serial.print(F(": "));
   if (program) Serial.println(F("P"));
   else if (preview) Serial.println(F("V"));
   else Serial.println(F("-"));
+  #endif
 }
 
 // Optimized: Only sends actual changes
@@ -159,7 +161,9 @@ void TallyManager::setTallyStates(bool states[MAX_CAMERAS + 1][2]) {
   
   // First time: send all
   if (!cacheInitialized) {
+    #if DEBUG_HOT
     Serial.println(F("[T] Init"));
+    #endif
     
     for (int camera = 1; camera <= MAX_CAMERAS; camera++) {
       bool program = states[camera][0];
@@ -186,9 +190,16 @@ void TallyManager::setTallyStates(bool states[MAX_CAMERAS + 1][2]) {
       lastStates[camera][0] = program;
       lastStates[camera][1] = preview;
       
+      #if DEBUG_HOT
       Serial.print(F("[T] "));
       Serial.print(camera);
       Serial.println(program ? F(":P") : (preview ? F(":V") : F(":")));
+      #endif
     }
   }
+}
+
+void TallyManager::clearAll() {
+  bool states[MAX_CAMERAS + 1][2] = {{false}};
+  setTallyStates(states);
 }

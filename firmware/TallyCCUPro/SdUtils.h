@@ -1,7 +1,7 @@
 /*
  * SdUtils.h
  * SD card utilities and preset management
- * Version 3.7.1
+ * Version 3.8
  */
 
 #ifndef SD_UTILS_H
@@ -64,6 +64,7 @@ class SdUtils {
     static int _currentFragmentedPresetCamera;
     static int _currentFragmentedPresetId;
     static int _receivedFragmentsCount;
+    static void abortPresetFragmented();
     
     // Buffers for optimized operations
     static uint8_t _sdBuffer[SD_BUFFER_SIZE];

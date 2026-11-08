@@ -1,7 +1,7 @@
 /*
  * VmixConnector.h
  * vMix connection management for Tally
- * Version 3.7.1
+ * Version 3.8
  */
 
 #ifndef VMIX_CONNECTOR_H
@@ -10,6 +10,10 @@
 #include "Configuration.h"
 #include "Storage.h"
 #include "TallyManager.h"
+
+// connect()/stop() timeout towards vMix. The library default (1000 ms) froze
+// the whole loop on every failed attempt; on a LAN the SYN-ACK takes < 10 ms.
+#define VMIX_CONNECT_TIMEOUT_MS 250
 
 class VmixConnector {
   public:
@@ -38,6 +42,12 @@ class VmixConnector {
     static EthernetClient _vmixClient;
     static byte _vmixip[4];
     static bool _connectEnabled;
+    
+    // Socket handling: only ever stop() a socket that is still ours
+    static bool openSocket();
+    static bool ownsSocket();
+    static void closeSocket();
+    static void dropSocket();
     
     // Apply tally states directly (no String)
     static void applyTallyDirectly(const char* tallyData);

@@ -7,7 +7,7 @@
  * - Invalid SDI input signal (4K, Level A, etc.)
  * - I2C communication failures
  * 
- * TallyCCU Pro V3.7.1
+ * TallyCCU Pro V3.8
  */
 
 #ifndef SAFEMODE_H
@@ -30,7 +30,12 @@
 // ============================================================
 #define MAX_RESETS_BEFORE_SAFE_MODE 3     // Enter safe mode after N crashes
 #define RESET_FLAG_MAGIC            0xDEAD // Magic number to detect watchdog reset
-#define BOOT_COMPLETE_DELAY_MS      5000  // Time to consider boot successful
+// Uptime (checked in loop()) after which a boot counts as successful. Any
+// reset before it (hang, WDT, power cut, DTR reset from the configurator)
+// counts as a boot failure; SafeMode::restart() does not. 20 s covers the
+// first vMix tally, Companion reconnect (5 s) and browser SSE reconnect,
+// while 3 external resets in a row inside the window stay unlikely.
+#define BOOT_COMPLETE_DELAY_MS      20000UL
 
 // ============================================================
 // RESET REASONS
@@ -51,7 +56,8 @@ public:
   // Initialize safe mode detection (call FIRST in setup!)
   static void begin();
   
-  // Mark boot as complete (call after successful initialization)
+  // Mark boot as complete (called from loop() after BOOT_COMPLETE_DELAY_MS;
+  // repeated calls are ignored)
   static void bootComplete();
   
   // Check if in safe mode
@@ -66,6 +72,7 @@ public:
   static void exitSafeMode();       // Clear counters and restart
   static void enterSafeMode();      // Force safe mode on next boot
   static void forceNormalBoot();    // Force normal boot (for testing)
+  static void restart();            // Intentional restart: not counted as a boot failure
   
   // Diagnostic strings
   static const char* getResetReasonString();

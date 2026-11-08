@@ -1,7 +1,7 @@
 /*
  * Network.h
  * Network management and Ethernet configuration
- * Version 3.7.1
+ * Version 3.8
  */
 
 #ifndef NETWORK_H

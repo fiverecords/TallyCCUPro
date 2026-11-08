@@ -290,6 +290,10 @@ input[type='text']:focus, input[type='number']:focus {
   text-align: center;
 }
 
+.cam-row input[type='number'].invalid {
+  border-color: var(--accent-red);
+}
+
 .cam-block .btn {
   width: 100%;
   margin-top: var(--spacing-sm);
@@ -414,7 +418,13 @@ input[type='text']:focus, input[type='number']:focus {
   </div>
 
   <script>
-    const NUM_CAMERAS = 10;
+    const NUM_CAMERAS = 10;        // mapping slots (firmware MAXTALLIES)
+    const MAX_VMIX_INPUTS = 63;    // highest vMix input the firmware evaluates
+    const MAX_CAMERAS = 8;
+    // Mapping the firmware holds per slot ({ inp, cam }) when it can light a
+    // tally, else null. The firmware cannot clear a slot yet (0 is rejected).
+    const savedSlots = new Array(NUM_CAMERAS).fill(null);
+    let mapLoaded = false;
 
     function showStatus(message, type = 'info') {
       const existing = document.getElementById('statusElement');
@@ -426,7 +436,7 @@ input[type='text']:focus, input[type='number']:focus {
       el.textContent = message;
       document.body.appendChild(el);
       
-      setTimeout(() => el.remove(), 2000);
+      setTimeout(() => el.remove(), type === 'error' ? 5000 : 2000);
     }
 
     function saveVmixIp() {
@@ -436,15 +446,14 @@ input[type='text']:focus, input[type='number']:focus {
         return;
       }
       
-      fetch(`/?vmixIP=${encodeURIComponent(ip)}`)
-        .then(res => res.text())
+      sendChecked(`/?vmixIP=${encodeURIComponent(ip)}`)
         .then(() => {
           showStatus("vMix IP saved: " + ip, 'success');
           checkVmixStatus();
         })
         .catch(err => {
           console.error(err);
-          showStatus("Error saving IP", 'error');
+          showStatus("Error saving IP: " + err.message, 'error');
         });
     }
 
@@ -491,6 +500,11 @@ input[type='text']:focus, input[type='number']:focus {
         });
     }
 
+    // Default slot values; slots beyond MAX_CAMERAS start empty
+    function defaultSlot(i) {
+      return i < MAX_CAMERAS ? i + 1 : '';
+    }
+
     function initCams() {
       const cont = document.getElementById('camMap');
       cont.innerHTML = '';
@@ -502,11 +516,11 @@ input[type='text']:focus, input[type='number']:focus {
           <h3>Camera <span class="cam-number">${i + 1}</span></h3>
           <div class="cam-row">
             <label>vMix Input:</label>
-            <input type="number" id="tallyCam${i}Input" value="${i + 1}" min="1" max="99"/>
+            <input type="number" id="tallyCam${i}Input" value="${defaultSlot(i)}" min="1" max="${MAX_VMIX_INPUTS}" step="1" placeholder="-" oninput="validateMap(${i})"/>
           </div>
           <div class="cam-row">
             <label>BMD Cam ID:</label>
-            <input type="number" id="cam${i}ID" value="${i + 1}" min="1" max="8"/>
+            <input type="number" id="cam${i}ID" value="${defaultSlot(i)}" min="1" max="${MAX_CAMERAS}" step="1" placeholder="-" oninput="validateMap(${i})"/>
           </div>
           <button class="btn btn-success" onclick="saveMap(${i})">✓ Save</button>
         `;
@@ -514,58 +528,132 @@ input[type='text']:focus, input[type='number']:focus {
       }
     }
 
-    function saveMap(idx) {
-      const inpVal = document.getElementById(`tallyCam${idx}Input`).value;
-      const camVal = document.getElementById(`cam${idx}ID`).value;
-      const url = `/?tallyCam${idx}Input=${inpVal}&cam${idx}ID=${camVal}`;
+    // Integer in [min, max] or null
+    function parseInRange(value, min, max) {
+      const s = String(value).trim();
+      if (!/^\d+$/.test(s)) return null;
+      const n = parseInt(s, 10);
+      return (n >= min && n <= max) ? n : null;
+    }
       
-      fetch(url)
-        .then(r => r.text())
-        .then(() => showStatus(`Camera ${idx + 1}: Configuration saved`, 'success'))
-        .catch(e => {
-          console.error(e);
-          showStatus(`Error saving camera ${idx + 1}`, 'error');
-        });
+    // Checks slot idx and marks bad fields. Returns { url, inp, cam }, { empty } or { error }.
+    // An empty slot (both fields blank) is not sent: the firmware keeps it as is,
+    // so emptying a slot that holds a live mapping is an error.
+    function validateMap(idx) {
+      const inpEl = document.getElementById(`tallyCam${idx}Input`);
+      const camEl = document.getElementById(`cam${idx}ID`);
+      const inpRaw = inpEl.value.trim();
+      const camRaw = camEl.value.trim();
+      if (inpRaw === '' && camRaw === '' && !inpEl.validity.badInput && !camEl.validity.badInput) {
+        const saved = savedSlots[idx];
+        inpEl.classList.toggle('invalid', !!saved);
+        camEl.classList.toggle('invalid', !!saved);
+        if (saved) {
+          return { error: `Camera ${idx + 1}: a saved mapping cannot be cleared yet (firmware keeps input ${saved.inp} -> cam ${saved.cam})` };
+        }
+        return { empty: true };
+      }
+      const inp = parseInRange(inpRaw, 1, MAX_VMIX_INPUTS);
+      const cam = parseInRange(camRaw, 1, MAX_CAMERAS);
+      inpEl.classList.toggle('invalid', inp === null);
+      camEl.classList.toggle('invalid', cam === null);
+      if (inp === null) return { error: `Camera ${idx + 1}: vMix input must be 1-${MAX_VMIX_INPUTS}` };
+      if (cam === null) return { error: `Camera ${idx + 1}: BMD Cam ID must be 1-${MAX_CAMERAS}` };
+      return { url: `/?tallyCam${idx}Input=${inp}&cam${idx}ID=${cam}`, inp, cam };
+    }
+
+    // Rejects with the server's reason (e.g. 400 "ERROR ...") on HTTP errors
+    async function sendChecked(url) {
+      const res = await fetch(url, { cache: 'no-store' });
+      const text = (await res.text().catch(() => '')).trim();
+      if (!res.ok) throw new Error(text.slice(0, 80) || `HTTP ${res.status}`);
+    }
+
+    async function saveMap(idx) {
+      const v = validateMap(idx);
+      if (v.error) {
+        showStatus(v.error, 'error');
+        return;
+      }
+      if (v.empty) {
+        showStatus(`Camera ${idx + 1}: enter vMix input and Cam ID`, 'error');
+        return;
+      }
+      try {
+        await sendChecked(v.url);
+        savedSlots[idx] = { inp: v.inp, cam: v.cam };
+        showStatus(`Camera ${idx + 1}: Configuration saved`, 'success');
+      } catch (e) {
+        console.error(e);
+        showStatus(`Error saving camera ${idx + 1}: ${e.message}`, 'error');
+      }
     }
 
     async function saveAllMappings() {
+      // Validate every slot first: nothing is sent if one is invalid
+      const jobs = [];
+      const skipped = [];
+      for (let i = 0; i < NUM_CAMERAS; i++) {
+        const v = validateMap(i);
+        if (v.error) {
+          showStatus(`${v.error}. Nothing saved`, 'error');
+          return;
+        }
+        if (v.url) jobs.push({ slot: i, url: v.url, inp: v.inp, cam: v.cam });
+        else skipped.push(i + 1);
+      }
+      if (jobs.length === 0) {
+        showStatus('No mappings to save', 'error');
+        return;
+      }
+      
       showStatus('Saving all mappings...', 'info');
       
       let success = 0;
       let errors = 0;
+      let firstError = '';
       
-      for (let i = 0; i < NUM_CAMERAS; i++) {
-        const inpVal = document.getElementById(`tallyCam${i}Input`).value;
-        const camVal = document.getElementById(`cam${i}ID`).value;
-        const url = `/?tallyCam${i}Input=${inpVal}&cam${i}ID=${camVal}`;
-        
+      for (const job of jobs) {
         try {
-          await fetch(url);
+          await sendChecked(job.url);
+          savedSlots[job.slot] = { inp: job.inp, cam: job.cam };
           success++;
         } catch (e) {
           errors++;
-          console.error(`Error saving camera ${i + 1}:`, e);
+          if (!firstError) firstError = `Camera ${job.slot + 1}: ${e.message}`;
+          console.error(`Error saving camera ${job.slot + 1}:`, e);
         }
         
         await new Promise(r => setTimeout(r, 100));
       }
       
+      // Map not loaded: what the firmware holds in the empty slots is unknown
+      const note = (!mapLoaded && skipped.length) ? `. Empty slots ${skipped.join(', ')} not changed` : '';
       if (errors === 0) {
-        showStatus(`All mappings saved (${success}/${NUM_CAMERAS})`, 'success');
+        showStatus(`All mappings saved (${success}/${jobs.length})${note}`, 'success');
       } else {
-        showStatus(`Saved ${success}/${NUM_CAMERAS}, errors: ${errors}`, 'error');
+        showStatus(`Saved ${success}/${jobs.length}, errors: ${errors}. ${firstError}`, 'error');
       }
     }
 
     function resetToDefaults() {
       if (!confirm('Reset all values to defaults?')) return;
       
+      const kept = [];
       for (let i = 0; i < NUM_CAMERAS; i++) {
-        document.getElementById(`tallyCam${i}Input`).value = i + 1;
-        document.getElementById(`cam${i}ID`).value = i + 1;
+        // A slot that cannot be cleared keeps its saved mapping instead of going empty
+        const saved = defaultSlot(i) === '' ? savedSlots[i] : null;
+        if (saved) kept.push(i + 1);
+        document.getElementById(`tallyCam${i}Input`).value = saved ? saved.inp : defaultSlot(i);
+        document.getElementById(`cam${i}ID`).value = saved ? saved.cam : defaultSlot(i);
+        validateMap(i);
       }
       
-      showStatus('Values reset (remember to save)', 'info');
+      if (kept.length) {
+        showStatus(`Values reset (remember to save). Camera ${kept.join(', ')}: saved mapping kept, it cannot be cleared yet`, 'error');
+      } else {
+        showStatus('Values reset (remember to save)', 'info');
+      }
     }
 
     window.onload = function() {
@@ -583,12 +671,21 @@ input[type='text']:focus, input[type='number']:focus {
           data.mappings.forEach((map, i) => {
             const inputEl = document.getElementById(`tallyCam${i}Input`);
             const camIdEl = document.getElementById(`cam${i}ID`);
-            if (inputEl && map.input > 0 && map.input <= 99) inputEl.value = map.input;
-            if (camIdEl && map.camId > 0 && map.camId <= 8) camIdEl.value = map.camId;
+            if (!inputEl || !camIdEl) return;
+            // 0/255 = never set. Cam IDs above MAX_CAMERAS never light a tally.
+            // Inputs above MAX_VMIX_INPUTS are shown so validation flags them.
+            const inp = (map.input > 0 && map.input < 255) ? map.input : '';
+            const cam = (map.camId > 0 && map.camId <= MAX_CAMERAS) ? map.camId : '';
+            inputEl.value = (inp !== '' && cam !== '') ? inp : '';
+            camIdEl.value = (inp !== '' && cam !== '') ? cam : '';
+            savedSlots[i] = (cam !== '' && inp !== '' && inp <= MAX_VMIX_INPUTS) ? { inp, cam } : null;
+            validateMap(i);
           });
+          mapLoaded = true;
         }
       } catch (e) {
         console.log('Could not load saved mappings, using defaults');
+        showStatus('Could not load saved mappings: showing defaults', 'error');
       }
     }
   </script>

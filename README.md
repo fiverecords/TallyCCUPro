@@ -87,9 +87,11 @@ The Blackmagic SDI Shield is designed for Arduino Uno, which has I2C pins at A4/
 
 ```
 Bridge connections on SDI Shield:
-  - A4 --> SCL
-  - A5 --> SDA
+  - A4 --> SDA  (Mega pin 20)
+  - A5 --> SCL  (Mega pin 21)
 ```
+
+On the Uno layout A4 is SDA and A5 is SCL; on the Mega, SDA is pin 20 and SCL is pin 21. Do not cross them: with SDA and SCL swapped the shield (I2C address 0x6E) does not respond and there is no tally or CCU.
 
 These bridges route the I2C signals to the correct pins. Without them, the SDI shield will not communicate with the Arduino Mega.
 
@@ -145,7 +147,7 @@ SD Card Root/
 ### Step 1: Hardware Assembly
 
 1. Stack shields in order: Mega -> Ethernet -> SDI Shield
-2. **Add I2C bridge wires**: A4 to pin 20, A5 to pin 21
+2. **Add I2C bridge wires**: A4 to SDA (Mega pin 20), A5 to SCL (Mega pin 21)
 3. Insert formatted SD card into Ethernet Shield slot
 4. Connect 9-12V power supply to SDI Shield
 5. Connect SDI output to your camera(s)
@@ -161,7 +163,7 @@ SD Card Root/
 2. Copy to Arduino libraries folder
 
 **Upload Firmware**:
-1. Open `Arduino/TallyCCUPro.ino` in Arduino IDE
+1. Open `firmware/TallyCCUPro/TallyCCUPro.ino` in Arduino IDE
 2. Select Board: `Arduino Mega or Mega 2560`
 3. Select Port: Your Arduino's COM port
 4. Click Upload
@@ -388,24 +390,26 @@ SafeMode::begin()
 
 ```
 TallyCCUPro/
-├── Arduino/              Arduino source code
-│   ├── TallyCCUPro.ino   Main sketch
-│   ├── CCUControl.*      Camera control
-│   ├── CCUBroadcast.*    TCP broadcast server
-│   ├── TallyManager.*    Tally light control
-│   ├── VmixConnector.*   vMix integration
-│   ├── WebServer.*       HTTP & SSE server
-│   ├── Storage.*         EEPROM management
-│   ├── SdUtils.*         SD card operations
-│   ├── SafeMode.*        Boot failure recovery (v3.7+)
-│   ├── bmd_params.*      Blackmagic protocol definitions
-│   └── Configuration.h   Pin & address definitions
+├── firmware/
+│   └── TallyCCUPro/      Arduino sketch (folder name must match the .ino)
+│       ├── TallyCCUPro.ino   Main sketch
+│       ├── CCUControl.*      Camera control
+│       ├── CCUBroadcast.*    TCP broadcast server
+│       ├── TallyManager.*    Tally light control
+│       ├── VmixConnector.*   vMix integration
+│       ├── webserver.*       HTTP & SSE server
+│       ├── Storage.*         EEPROM management
+│       ├── SdUtils.*         SD card operations
+│       ├── SafeMode.*        Boot failure recovery (v3.7+)
+│       ├── bmd_params.*      Blackmagic protocol definitions
+│       └── Configuration.h   Pin & address definitions
 ├── sdcard/               Web interface files  
 │   ├── index.html        Main CCU interface
 │   ├── tally.html        Tally configuration
 │   ├── sdcard.html       File manager
 │   └── safemode.html     Safe Mode diagnostics (v3.7+)
 ├── tools/                Serial configurator
+├── docs/                 Code audit reports
 └── README.md
 ```
 
@@ -434,7 +438,7 @@ The Blackmagic 3G-SDI Arduino Shield has the following limitations:
 - **3G-SDI Level B only**: The shield only passes video when using 3G-SDI Level B. This is the default for Blackmagic devices, but other manufacturers may default to Level A. Check your camera/device settings if video is not passing through.
 
 ### Single SSE Client
-Only one SSE connection is supported at a time. Multiple browser tabs will share the same connection, but opening the interface on multiple devices simultaneously may cause sync issues.
+Only one SSE client is supported: a second tab or device disconnects the first one, and both keep reconnecting and kicking each other. Keep the interface open in a single tab on a single device.
 
 ### Network Connections
 The Arduino Ethernet library supports a maximum of 4 simultaneous TCP connections, shared between:
@@ -453,7 +457,7 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 | Problem | Solution |
 |---------|----------|
 | Web interface not loading | Verify SD card is MBR/FAT16 or FAT32, reformat with SD Association tool |
-| SDI shield not responding | Check I2C bridge wires (A4→SCL, A5→SDA on SDI shield) |
+| SDI shield not responding | Check I2C bridge wires (A4→SDA / pin 20, A5→SCL / pin 21 on SDI shield) |
 | System not booting | Connect external 9-12V power, USB is insufficient |
 | System stuck in boot loop | Check 12V power and SDI signal; after 3 failures, Safe Mode activates automatically |
 | Safe Mode activated | Fix hardware issue (12V power, valid SDI signal), then click "Restart Normal Mode" |
@@ -468,7 +472,53 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 
 ## Changelog
 
-### v3.7.1 (Latest)
+### v3.8 (Latest)
+Phase 1 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/AUDITORIA-v3.7.1.md)). Compatible with the current Bitfocus Companion module (v3.1.0), checked with differential tests of v3.7.1 vs v3.8 driving the unmodified module.
+
+**Tally / vMix**
+- **Fixed**: Only vMix inputs 1-10 drove tally; any mapped input up to 63 now works
+- **Fixed**: Several inputs mapped to the same camera overwrote each other; states are combined and program wins over preview (one input can also drive several cameras)
+- **Fixed**: Tally now turns off when the vMix connection is lost, disabled or its IP changes (the 3.7.1 entry below claimed this, but it was not in the code)
+- **Fixed**: After a refused vMix connection the firmware kept a stale socket that the web server or Companion could reuse
+- **Fixed**: Debounce could leave a stale tally state after a quick B->A change
+- **Improved**: vMix connect attempts time out after 250 ms instead of ~1 s, so the loop is not frozen while vMix is down
+
+**Camera control**
+- **Fixed**: Exponent values from Companion (e.g. `2.7e-17`) reached the camera as huge numbers; malformed values are now rejected
+- **Fixed**: Loading a preset re-ran actions (auto white balance, autofocus, color correction reset); actions are no longer broadcast as parameter state
+- **Fixed**: Boolean `true` was applied as false
+- **Fixed**: Fixed-point values of 16.0 (e.g. gain adjust max) wrapped to -16.0
+- **Changed**: Loading a preset no longer applies pan/tilt or zoom speed (the head could keep moving) or color bars. PTZ memory recall is still applied, but a stored "memory store" is ignored (it overwrote the memory). Video mode is still applied, except the never-set default `60,0,6,0,0` (UHD 60p) that older web presets and the Companion module store
+- **Changed**: The web interface no longer stores video mode, actions, motion commands or color bars in presets
+
+**Web server and Safe Mode**
+- **Fixed**: Malformed tally map keys could write past a stack buffer
+- **New**: Proper HTTP status codes: `400` for invalid parameters, `503` for camera commands in Safe Mode, `404`/`500` for presets. Saving or loading a preset no longer reports success when it fails
+- **New**: `getOverrides` reports `ccuAvailable`
+- **Fixed**: In Safe Mode, camera commands no longer write to the uninitialized SDI shield
+
+**Boot and network**
+- **Fixed**: Boot-loop detection now requires 20 s of stable operation, so hangs right after boot also lead to Safe Mode
+- **Fixed**: Web `/reboot` and the serial `reset` command no longer count as boot failures
+- **Fixed**: With a blank EEPROM, tally and CCU overrides started OFF; they now default to ON, and the default vMix IP is in the same subnet as the default Arduino IP
+- **Fixed**: SPI chip selects are deselected before SD init, and SD init is retried up to 3 times
+- **Improved**: Per-parameter, per-command and per-tally serial logs are off by default (`DEBUG_HOT` in `Configuration.h`); a full serial TX buffer was blocking the loop
+
+**Web interface**
+- **Fixed**: PTZ joystick and continuous zoom: one request in flight, latest value wins, and the stop command is retried, so the head no longer keeps moving after release
+- **Fixed**: The joystick uses Pointer Events and always stops on release, cancel, window blur or tab switch
+- **Fixed**: Synced or preset values for multi-value parameters (white balance, input levels, LUT, ND) were reverted by the next local change
+- **Fixed**: A preset loaded while switching cameras was shown on the wrong camera
+- **Fixed**: Preset save and load show the real result and error message; names are limited to 31 bytes
+- **Fixed**: Gain adjust maximum is 15.99
+- **Fixed**: Tally page accepts vMix inputs 1-63 and shows server errors
+
+**Project**
+- **Changed**: Sketch moved to `firmware/TallyCCUPro/` (Arduino requires the folder to match the `.ino` name)
+- **Fixed**: `#include "WebServer.h"` did not match `webserver.h`, breaking builds on case-sensitive file systems (Linux, CI)
+- **Fixed**: README I2C bridge wiring: A4 -> SDA (Mega pin 20), A5 -> SCL (Mega pin 21)
+
+### v3.7.1
 - **Fixed**: vMix reconnection loop flooding network (now uses progressive backoff)
 - **Fixed**: Tally lights stuck ON after vMix disconnect
 - **Fixed**: CCU Broadcast TCP buffer truncation (64→128 bytes)

@@ -2,7 +2,7 @@
  * SafeMode.cpp
  * Safe mode detection and recovery system
  * 
- * TallyCCU Pro V3.7.1
+ * TallyCCU Pro V3.8
  * 
  * NOTE: Arduino bootloader clears MCUSR before sketch runs,
  * so we cannot rely on it to detect watchdog resets.
@@ -76,8 +76,8 @@ void SafeMode::begin() {
   }
   
   // Set flag indicating we're starting boot process
-  // This will be cleared ONLY by bootComplete() if we succeed
-  // If we crash before that, next boot will see this flag = failure
+  // Cleared by bootComplete() (from loop(), after BOOT_COMPLETE_DELAY_MS)
+  // or by an intentional restart(). Any other reset before that = failure
   EEPROM.put(EEPROM_RESET_FLAG_ADDR, (uint16_t)RESET_FLAG_MAGIC);
   
   // Enable watchdog EARLY - if shield init blocks, watchdog will catch it
@@ -135,6 +135,18 @@ void SafeMode::enterSafeMode() {
   
   // Set manual safe mode flag
   EEPROM.write(EEPROM_SAFEMODE_MANUAL_ADDR, 0xAA);
+  
+  delay(100);
+  
+  // Trigger watchdog reset
+  wdt_enable(WDTO_15MS);
+  while(1);
+}
+
+void SafeMode::restart() {
+  // Intentional restart (web /reboot, serial "reset"): clear the crash
+  // detection flag first so the next boot is not counted as a failure.
+  EEPROM.put(EEPROM_RESET_FLAG_ADDR, (uint16_t)0);
   
   delay(100);
   

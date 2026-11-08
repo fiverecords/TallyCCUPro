@@ -1,7 +1,7 @@
 /*
  * Network.cpp
  * Network management implementation
- * Version 3.7.1
+ * Version 3.8
  */
 
 #include "Network.h"
@@ -188,6 +188,11 @@ void NetworkManager::getMACAddress(byte *mac) {
 bool NetworkManager::restartEthernet() {
   Ethernet.maintain();
   Ethernet.begin(_mac, _localIP, _dns, _gateway, _subnet);
+  // Retransmission timing stays at the chip defaults, as in v3.7.1. Do not
+  // call Ethernet.setRetransmissionTimeout/Count: Ethernet 2.x writes them at
+  // the W5100 addresses, which on the W5500 hit SIR/SIMR and the RTR high
+  // byte. A short retry time would also drop vMix and Companion on a brief
+  // network glitch.
   delay(1000);
   return (Ethernet.linkStatus() != LinkOFF);
 }

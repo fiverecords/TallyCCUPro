@@ -1,7 +1,7 @@
 /*
  * CCUControl.h
  * Camera Control Unit (CCU) management
- * Version 3.7.1
+ * Version 3.8
  */
 
 #ifndef CCU_CONTROL_H
@@ -31,23 +31,34 @@ class CCUControl {
     static void applyMultiValue(const BMDParamDef &paramDef, float *values, int count);
     
     // Apply parameter by key (optimized const char* version)
-    static bool applyParameterByKey(const char *paramKey, const char *value, int cameraId = -1);
+    // fromPreset: true when called while applying a stored preset
+    static bool applyParameterByKey(const char *paramKey, const char *value, int cameraId = -1, bool fromPreset = false);
     
     // String wrapper for compatibility
-    static bool applyParameterByKey(const char *paramKey, const String &value, int cameraId = -1);
+    static bool applyParameterByKey(const char *paramKey, const String &value, int cameraId = -1, bool fromPreset = false);
+    
+    // True when the SDI shield was initialized and we are not in Safe Mode
+    static bool isReady();
     
     // Find parameter definition by key (with cache)
     static const BMDParamDef* findParamDefByKey(const char *paramKey);
     
-    // Parse float list (optimized const char* version)
-    static void parseFloatList(const char *str, float *out, int maxCount);
+    // Parse comma-separated numbers (strtod, no truncation).
+    // Returns values read (rest of out[] zero-filled) or -1 if malformed:
+    // empty token, trailing garbage, NaN/Inf or more than maxCount values.
+    static int parseFloatList(const char *str, float *out, int maxCount);
     
     // String wrapper for compatibility
-    static void parseFloatList(const String &str, float *out, int maxCount);
+    static int parseFloatList(const String &str, float *out, int maxCount);
+    
+    // 1/true/on/yes -> 1, 0/false/off/no -> 0 (case-insensitive),
+    // other numbers -> (v != 0). Returns -1 if not a boolean.
+    static int8_t parseBool(const char *str);
 
   private:
     static int _activeCameraId;
     static bool _overrideCameraControl;
+    static bool _initialized;
     static BMD_SDICameraControl_I2C _sdiCameraControl;
     
     // Parameter cache (avoids O(n) search)

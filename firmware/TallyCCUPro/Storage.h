@@ -1,7 +1,7 @@
 /*
  * Storage.h
  * EEPROM storage management and configuration persistence
- * Version 3.7.1
+ * Version 3.8
  */
 
 #ifndef STORAGE_H
