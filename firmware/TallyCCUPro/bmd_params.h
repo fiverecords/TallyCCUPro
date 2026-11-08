@@ -1,7 +1,6 @@
 /*
  * bmd_params.h
  * Blackmagic camera parameter definitions
- * Version 3.8
  *
  * Based on Blackmagic Camera Control Protocol
  */
@@ -47,8 +46,13 @@ struct BMDParamDef {
     uint8_t   subCount;        // > 1: comma-separated list
 };
 
-// Maximum subCount in current table (for optimizing temporary arrays)
-#define BMD_MAX_SUB_COUNT 8
+// Largest subCount in the table (checked at compile time in bmd_params.cpp).
+// Lists are written as arrays of exactly subCount elements (CCU-08).
+#define BMD_MAX_SUB_COUNT 5
+
+// Longest TYPE_STRING value sent to a camera (system_language is a
+// two-letter ISO 639-1 code)
+#define BMD_STRING_MAX 16
 
 extern const uint8_t BMD_PARAM_COUNT;
 
