@@ -140,6 +140,8 @@ SD Card Root/
 └── safemode.html   (Safe Mode diagnostics - v3.7+)
 ```
 
+**Optional, recommended (v3.8+): compressed pages.** Run `python3 tools/gzip_sdcard.py` and copy the generated `.gz` files next to the `.html` files (for example `index.html.gz`). The firmware serves the compressed copy to browsers that accept gzip: `index.html` goes from ~220 KB to ~41 KB, so the page loads about 5x faster and keeps the Arduino busy for much less time. Regenerate the `.gz` files every time you update the `.html` files (`python3 tools/gzip_sdcard.py --check` tells you if any is stale). When you upload, rename or delete a page through the SD Card Manager, its old `.gz` is removed automatically (the plain page is served until you copy a new `.gz`).
+
 ---
 
 ## Installation
@@ -263,6 +265,8 @@ The system enters Safe Mode automatically after **3 consecutive boot failures**.
 
 Alternatively, use the serial command `normalboot` to exit Safe Mode.
 
+**Automatic recovery (v3.8+)**: in Safe Mode the firmware checks the SDI shield on I2C every 5 s. When the shield has answered for 30 s in a row (for example, the 12 V supply came back), the board restarts in normal mode by itself. If that normal boot fails again, the next automatic attempt waits 5 minutes, and after 2 failed attempts automatic recovery stays off until a manual exit or a power cycle. Note that the check only shows that the shield is powered: problems caused by the SDI input (no signal yet, 4K, Level A) are not detected beforehand.
+
 ### Manual Safe Mode Entry
 
 For testing or troubleshooting, you can force Safe Mode on the next boot:
@@ -329,6 +333,15 @@ SUBSCRIBED OK                                Subscription confirmed
 CCUSYNC <cameraId> <paramKey> <value>       Send cached parameter to Arduino
                                             (forwarded to SSE clients)
 ```
+
+### Connection Rules (v3.8+)
+
+- On connect the server sends `CCUSERVER OK TallyCCU-Pro`. Up to 2 clients; a third gets `ERROR Server full`.
+- Lines end with `\n` (`\r\n` accepted) and may be split across TCP segments. Maximum 127 characters per line; longer lines are dropped whole and answered with `ERROR Line too long`. Unknown commands get `ERROR Unknown command`.
+- A client that sends nothing within 10 s of connecting, or nothing for 90 s afterwards, is disconnected. Send `PING` periodically (Companion does it every 30 s).
+- A new connection from the same IP replaces an older one from that IP only if the older one has been silent for 35 s (a stale reconnect).
+- Commands are processed up to 8 per loop pass, none dropped: large `CCUSYNC` dumps are spread over several passes. `REQUESTSYNC` is sent at most every 10 s.
+- Events are never allowed to block the Arduino: if a client stops reading, events for it are dropped, and a client that stays blocked for 5 s is disconnected.
 
 ---
 
@@ -398,6 +411,7 @@ TallyCCUPro/
 │       ├── TallyManager.*    Tally light control
 │       ├── VmixConnector.*   vMix integration
 │       ├── webserver.*       HTTP & SSE server
+│       ├── NetUtils.*        Non-blocking network I/O helpers (v3.8+)
 │       ├── Storage.*         EEPROM management
 │       ├── SdUtils.*         SD card operations
 │       ├── SafeMode.*        Boot failure recovery (v3.7+)
@@ -408,7 +422,7 @@ TallyCCUPro/
 │   ├── tally.html        Tally configuration
 │   ├── sdcard.html       File manager
 │   └── safemode.html     Safe Mode diagnostics (v3.7+)
-├── tools/                Serial configurator
+├── tools/                Serial configurator, gzip_sdcard.py
 ├── docs/                 Code audit reports
 └── README.md
 ```
@@ -418,10 +432,10 @@ TallyCCUPro/
 ## Memory Usage
 
 TallyCCU Pro is optimized for Arduino Mega's limited 8KB RAM:
-- Static buffers (no String objects in critical paths)
+- Static buffers (no String objects, no heap)
 - SSE-based sync (state stored in browser, not Arduino)
-- Efficient TCP handling with connection pooling
-- Typical free RAM: ~2,000+ bytes (improved in v3.7.1)
+- Parameter table and fixed strings kept in flash (PROGMEM) since v3.8
+- Static RAM in v3.8: ~3.6 KB of 8 KB (v3.7.1: ~6.1 KB), leaving about 4.5 KB for the stack; measured worst-case stack depth is about 1 KB
 
 ---
 
@@ -437,15 +451,18 @@ The Blackmagic 3G-SDI Arduino Shield has the following limitations:
 - **Maximum resolution**: 1080p60 (no 4K/UHD support)
 - **3G-SDI Level B only**: The shield only passes video when using 3G-SDI Level B. This is the default for Blackmagic devices, but other manufacturers may default to Level A. Check your camera/device settings if video is not passing through.
 
-### Single SSE Client
-Only one SSE client is supported: a second tab or device disconnects the first one, and both keep reconnecting and kicking each other. Keep the interface open in a single tab on a single device.
+### Two SSE Clients
+Up to 2 browsers (tabs or devices) receive real-time sync at the same time (v3.8+). A third one replaces the oldest, which reconnects on its own. A newly opened tab may take up to 10 s to receive the current state from Companion.
 
 ### Network Connections
-The Arduino Ethernet library supports a maximum of 4 simultaneous TCP connections, shared between:
-- HTTP requests (web interface)
-- SSE connection (real-time sync)
-- TCP clients (Companion, custom integrations)
-- vMix connection (tally)
+The W5500 (Ethernet Shield 2) has 8 sockets, shared between:
+- the HTTP listener (port 80) and the TCP listener (port 8098)
+- the vMix connection (tally)
+- up to 2 SSE clients (browsers)
+- up to 2 TCP clients on port 8098 (Companion, custom integrations)
+- HTTP requests being served
+
+Connections to port 80 that do not send a request within 5 s are closed, so idle or half-open connections cannot use up the sockets. While a slow client is downloading a page (for example a tablet on poor Wi-Fi), other HTTP requests wait until that transfer finishes or is cut (at most 10 s, about 5 s with the `.gz` pages); tally, vMix and the PTZ safety stop keep running during the transfer.
 
 ### Camera Protocol
 The Blackmagic SDI protocol is **write-only** - parameters can be sent to cameras but not read back. The system cannot query current camera settings; it only knows values that were set through TallyCCU Pro.
@@ -473,7 +490,29 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 ## Changelog
 
 ### v3.8 (Latest)
-Phase 1 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/AUDITORIA-v3.7.1.md)). Compatible with the current Bitfocus Companion module (v3.1.0), checked with differential tests of v3.7.1 vs v3.8 driving the unmodified module.
+Phases 1 and 2 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/AUDITORIA-v3.7.1.md)). Compatible with the current Bitfocus Companion module (v3.1.0), checked with differential tests of v3.7.1 vs v3.8 driving the unmodified module.
+
+**Live stability (phase 2)**
+- **Fixed**: A browser, Companion or download client that vanished (Wi-Fi drop, laptop asleep) could freeze the Arduino or trigger a watchdog reboot on air. All network writes are now non-blocking or time-bounded, and responses are sent in blocks instead of one TCP segment per character
+- **Fixed**: Tally froze while a page was served or a file uploaded; tally keeps updating during transfers (under 100 ms in tests)
+- **New**: vMix heartbeat: a vMix that disappears without closing the connection is detected in ~15 s (tally off, reconnect). Reconnects retry after 2, 2, 5 and 10 s (max 30 s) instead of 20 s+
+- **Fixed**: TALLY lines split across TCP packets are applied whole; the current vMix state is re-applied when the tally override or the map changes
+- **New**: Tally map slots can be cleared (Clear button in tally.html)
+- **Fixed**: Port 8098: proper line handling (long or split lines), large Companion sync dumps processed without blocking, idle connections reclaimed (see Connection Rules)
+- **Fixed**: Companion's `timecode_source` action now reaches the camera (its `timecode_source_0` key is accepted)
+- **Fixed**: Two browsers no longer kick each other off the real-time sync (2 SSE clients)
+- **New**: Optional PTZ/zoom safety stop: the web interface refreshes the speed while the joystick is held, and the firmware stops the motion if refreshes stop for 600 ms (only for the web interface; Companion behaves as before)
+- **New**: gzip-compressed pages (`tools/gzip_sdcard.py`), served automatically when present
+- **Fixed**: Saving a preset or uploading a file is atomic: an interrupted save keeps the previous file
+- **Fixed**: SD card removed or failing: errors are reported (`SD not available`) and the card is remounted automatically
+- **New**: Automatic exit from Safe Mode when the shield answers again (see Safe Mode)
+- **Fixed**: A stuck I2C bus no longer hangs the Arduino until the watchdog (25 ms I2C timeout)
+- **Fixed**: Changing the Arduino IP reconnects vMix with the new address
+- **Improved**: Web interface shows rejected commands and a connection/sync indicator, and reconnects the real-time sync if it goes silent
+- **Improved**: Serial configurator no longer resets the Arduino when it connects (where the OS allows it); rebuild the `.exe` to get this
+- **Improved**: Static RAM down from ~5.8 KB to ~3.6 KB (parameter table moved to flash)
+
+**Phase 1**
 
 **Tally / vMix**
 - **Fixed**: Only vMix inputs 1-10 drove tally; any mapped input up to 63 now works
