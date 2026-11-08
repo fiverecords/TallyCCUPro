@@ -1,7 +1,6 @@
 /*
  * VmixConnector.h
  * vMix connection management for Tally
- * Version 3.8
  */
 
 #ifndef VMIX_CONNECTOR_H
@@ -22,10 +21,11 @@
 // Budget for an intentional close (FIN, wait for vMix to answer it)
 #define VMIX_CLOSE_TIMEOUT_MS 100
 
+struct TallyFrame;
+
 class VmixConnector {
   public:
     // Load the connection state; the first attempt runs from processData()
-    static bool begin();
     static bool begin(const byte vmixip[4]);
 
     // Ask for a connection attempt on the next processData() pass
@@ -39,7 +39,9 @@ class VmixConnector {
     // loops (file transfers); a no-op while processData() runs.
     static void pollTally();
 
-    // Change IP and save to EEPROM (connects on the next processData())
+    // Validate, save to EEPROM and use the new IP (connects on the next
+    // processData()). False, and nothing changed, if it is not a usable
+    // host address (BOOT-11). The only place that writes the vMix IP.
     static bool setVmixIP(const byte vmixip[4]);
 
     // Get current vMix IP
@@ -74,12 +76,12 @@ class VmixConnector {
     static bool serviceLink(unsigned long now, bool mayWait);
     static void readInput(unsigned long now);
     static void heartbeat(unsigned long now);
-    static void onTallyLine(const char* data, unsigned long now);
+    static void onTallyLine(const TallyFrame& data, unsigned long now);
     static void applyPending(unsigned long now);
     static void reapply();
 
     // Apply tally states directly (no String)
-    static void applyTallyDirectly(const char* tallyData);
+    static void applyTallyDirectly(const TallyFrame& tallyData);
 };
 
 #endif // VMIX_CONNECTOR_H

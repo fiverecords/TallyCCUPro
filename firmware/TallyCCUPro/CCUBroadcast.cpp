@@ -1,7 +1,6 @@
 /*
  * CCUBroadcast.cpp
  * TCP server for CCU change broadcasting
- * Version 3.8
  */
 
 #include "CCUBroadcast.h"
@@ -21,11 +20,11 @@ namespace {
 struct Slot {
     uint32_t ip;
     uint16_t port;
-    uint32_t lastRx;      // last line received (accept time until the first)
+    uint32_t lastRx;      // last line received once subscribed (accept time before)
     uint32_t stallSince;  // first dropped line, 0 = TX healthy
     uint16_t drops;       // lines dropped since the stall began
     bool subscribed;
-    bool talked;          // has sent at least one line
+    bool wasSubscribed;   // has sent SUBSCRIBE at least once
 };
 
 EthernetServer server(CCU_BROADCAST_PORT);
@@ -133,7 +132,9 @@ bool writeTo(uint8_t i, const char* data, size_t len) {
 }
 
 // Formats msg + CRLF. Returns its length, 0 if it does not fit: a line is
-// never sent truncated.
+// never sent truncated. Control characters (from preset names, say) become
+// spaces: Companion splits on CR/LF and would take the rest as a message of
+// its own (TCP-07).
 size_t formatMsg(PGM_P fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -142,6 +143,10 @@ size_t formatMsg(PGM_P fmt, ...) {
     if (n < 0 || n >= CCU_MSG_BUFFER_SIZE - 2) {
         Serial.println(F("[CCUBcast] Line too long, not sent"));
         return 0;
+    }
+    for (int k = 0; k < n; k++) {
+        uint8_t c = (uint8_t)msg[k];
+        if (c < 0x20 || c == 0x7F) msg[k] = ' ';
     }
     msg[n] = '\r';
     msg[n + 1] = '\n';
@@ -192,45 +197,64 @@ void requestWebSync() {
     Serial.println(F("[CCUBcast] Sent REQUESTSYNC to SSE client"));
 }
 
-void handleCcuSync(const char* data) {
-    // CCUSYNC <cameraId> <paramKey> <value>
-    int cameraId = atoi(data);
-    if (cameraId < 1 || cameraId > MAX_CAMERAS) return;
-    const char* p = data;
-    while (*p && *p != ' ') p++;
-    if (*p == ' ') p++;
-    const char* keyStart = p;
+// CCUSYNC <cameraId> <paramKey> <value>: a client's cached state for the
+// web page (SSE), which shows it, saves it into presets and syncs it back.
+// Only a camera 1..MAX_CAMERAS, a known non-action key and a value valid
+// for it pass (SEC-03): no fake keys or values, no control characters.
+// The value goes out in the form of the CCU echo (canonicalValue()).
+// Not inlined: its buffers stay off process()'s frame.
+// data is the received line: the key is cut in place.
+__attribute__((noinline))
+void handleCcuSync(char* data) {
+    char* p = data;
+    int cameraId = 0;
+    while (*p >= '0' && *p <= '9' && cameraId <= MAX_CAMERAS) {
+        cameraId = cameraId * 10 + (*p++ - '0');
+    }
+    if (cameraId < 1 || cameraId > MAX_CAMERAS || *p != ' ') return;
+    const char* key = ++p;
     while (*p && *p != ' ') p++;
     if (*p != ' ') return;
 
-    char key[BMD_KEY_SIZE];
-    size_t keyLen = p - keyStart;
-    if (keyLen == 0 || keyLen >= sizeof(key)) return;
-    memcpy(key, keyStart, keyLen);
-    key[keyLen] = '\0';
+    size_t keyLen = p - key;
+    if (keyLen == 0 || keyLen > BMD_KEY_SIZE + 1) return;   // longest: "<key>_0"
+    *p = '\0';
     const char* value = p + 1;
 
-    // An alias ("timecode_source_0") goes out unchanged, as in v3.7.1: it
-    // is Companion's own entry, often stale, and must not overwrite the
-    // canonical key (kept current by our CCU echo).
     BMDParamDef def;
-    int8_t canon = bmdFindParam(key, &def);
-    if (canon >= 0 && key[canon] == '\0') {
-        // Actions are not state
-        if (def.paramType == TYPE_VOID) return;
-        if (def.paramType == TYPE_BOOLEAN) {
-            // Same 1/0 form as applyParameterByKey broadcasts
-            int8_t b = CCUControl::parseBool(value);
-            if (b < 0) return;
-            char bv[2] = { (char)('0' + b), '\0' };
-            WebServer::sendSSEEvent(cameraId, key, bv);
-            return;
-        }
+    if (bmdFindParam(key, &def) < 0 || def.paramType == TYPE_VOID) return;   // unknown, action
+    char text[CCU_VALUE_TEXT_SIZE];
+    const char* v = CCUControl::canonicalValue(def, value, text);
+    if (!v) {
+#if DEBUG_HOT
+        Serial.print(F("[CCUBcast] CCUSYNC rejected: "));
+        Serial.println(key);
+#endif
+        return;
     }
-    WebServer::sendSSEEvent(cameraId, key, value);
+
+    // An alias ("timecode_source_0") keeps its key, as in v3.7.1: it is
+    // Companion's own entry, often stale, and must not overwrite the
+    // canonical key (kept current by our CCU echo).
+    WebServer::sendSSEEvent(cameraId, key, v);
 }
 
-void processClientCommand(uint8_t i, const char* command) {
+// sendParamChange() of a value that comes from a client (web syncState):
+// same rules as a camera command, sent in the form of the CCU echo. Actions
+// are events, not state: clients must not cache them. Not inlined: the
+// validated path (applyParameterByKey) does not carry the text buffer.
+__attribute__((noinline))
+void sendClientParam(int cameraId, const char* paramKey, const char* value) {
+    BMDParamDef def;
+    if (cameraId < 1 || cameraId > MAX_CAMERAS) return;
+    if (bmdFindParam(paramKey, &def) < 0 || def.paramType == TYPE_VOID) return;
+    char text[CCU_VALUE_TEXT_SIZE];
+    value = CCUControl::canonicalValue(def, value, text);
+    if (!value) return;
+    broadcastMsg(formatMsg(PSTR("CCU %d %s %s"), cameraId, paramKey, value));
+}
+
+void processClientCommand(uint8_t i, char* command) {
 #if DEBUG_HOT
     Serial.print(F("[CCUBcast] ["));
     Serial.print(i);
@@ -241,6 +265,7 @@ void processClientCommand(uint8_t i, const char* command) {
     // SUBSCRIBE - Subscribe to changes
     if (strncmp_P(command, PSTR("SUBSCRIBE"), 9) == 0) {
         slots[i].subscribed = true;
+        slots[i].wasSubscribed = true;
         reply_P(i, PSTR("SUBSCRIBED OK"));
         // Ask the web client (if any) to sync the new TCP client
         requestWebSync();
@@ -279,28 +304,26 @@ void processClientCommand(uint8_t i, const char* command) {
     reply_P(i, PSTR("ERROR Unknown command"));
 }
 
-// Connection state and timeouts. Returns false if the slot was freed.
-bool checkClient(uint8_t i) {
-    uint8_t st = ownStatus(i);
-    if (st == SnSR::CLOSED) {
-        logClient(i, F("disconnected"));
-        forget(i);
-        return false;
-    }
+// Connection state and timeouts, after the client's lines were read.
+// st: socket status (not CLOSED) before reading.
+void checkClient(uint8_t i, uint8_t st) {
     Slot& s = slots[i];
     if (st == SnSR::CLOSE_WAIT && clients[i].available() == 0) {
         dropClient(i, true, F("closed by peer"));
-        return false;
+        return;
     }
-    // Only received lines count as activity
+    // Companion subscribes as soon as it connects: a client that has not
+    // (hello timeout) only holds a slot. A line still unread (read budget
+    // spent) gets one more period.
     uint32_t silent = since(s.lastRx);
-    if (!s.talked && silent >= CCU_HELLO_TIMEOUT) {
-        dropClient(i, true, F("sent nothing"));
-        return false;
+    if (!s.wasSubscribed && silent >= CCU_HELLO_TIMEOUT &&
+        (clients[i].available() == 0 || silent >= 2 * CCU_HELLO_TIMEOUT)) {
+        dropClient(i, true, F("not subscribed"));
+        return;
     }
     if (silent >= CCU_CLIENT_TIMEOUT) {
         dropClient(i, true, F("timeout"));
-        return false;
+        return;
     }
     // A stall ends when the TX buffer has drained, not on a line that
     // happens to fit: a peer that only trickles is still closed.
@@ -310,10 +333,8 @@ bool checkClient(uint8_t i) {
             txRecovered(i);
         } else if (since(s.stallSince) >= CCU_STALL_TIMEOUT) {
             dropClient(i, false, F("TX stalled"));
-            return false;
         }
     }
-    return true;
 }
 
 // Processes complete lines of client i, at most 'budget'. Unread data stays
@@ -323,14 +344,14 @@ uint8_t readClient(uint8_t i, uint8_t budget) {
         int n = readers[i].poll(clients[i], POLL_BYTES);
         if (n < 0) break;   // no complete line yet
         budget--;
-        slots[i].lastRx = millis();
-        slots[i].talked = true;
         if (readers[i].truncated()) {
             reply_P(i, PSTR("ERROR Line too long"));
         } else if (n > 0) {
             processClientCommand(i, lineBuf[i]);
         }
         if (!clients[i]) break;   // dropped while replying
+        // Activity: any line once subscribed (SUBSCRIBE included)
+        if (slots[i].wasSubscribed) slots[i].lastRx = millis();
         wdt_reset();
     }
     return budget;
@@ -343,12 +364,50 @@ int8_t freeSlot() {
     return -1;
 }
 
+// Ownership first (TCP-06: a socket that went CLOSED may already serve
+// someone else), then at most budget lines, then state and timeouts.
+// Returns the budget left.
+uint8_t serviceClient(uint8_t i, uint8_t budget) {
+    uint8_t st = ownStatus(i);
+    if (st == SnSR::CLOSED) {
+        logClient(i, F("disconnected"));
+        forget(i);
+        return budget;
+    }
+    budget = readClient(i, budget);
+    if (clients[i]) checkClient(i, st);
+    return budget;
+}
+
+#ifdef CCU_ALLOWED_HOSTS
+const uint8_t allowedHosts[] PROGMEM = { CCU_ALLOWED_HOSTS };
+static_assert(sizeof(allowedHosts) % 4 == 0, "CCU_ALLOWED_HOSTS: 4 bytes per host");
+
+bool hostAllowed(const IPAddress& ip) {
+    for (size_t h = 0; h < sizeof(allowedHosts); h += 4) {
+        uint8_t k = 0;
+        while (k < 4 && pgm_read_byte(&allowedHosts[h + k]) == ip[k]) k++;
+        if (k == 4) return true;
+    }
+    return false;
+}
+#endif
+
 // One new connection per pass, given a slot (and the banner) before it
 // sends anything.
 void acceptClient() {
     EthernetClient c = server.accept();
     if (!c) return;
     uint32_t ip = c.remoteIP();
+
+#ifdef CCU_ALLOWED_HOSTS
+    if (!hostAllowed(c.remoteIP())) {
+        Serial.print(F("[CCUBcast] Host not allowed: "));
+        Serial.println(c.remoteIP());
+        NetUtils::closeNow(c);
+        return;
+    }
+#endif
 
     Serial.print(F("[CCUBcast] New connection from "));
     Serial.println(c.remoteIP());
@@ -412,15 +471,14 @@ bool CCUBroadcast::begin() {
 }
 
 void CCUBroadcast::process() {
-    // Existing clients: state, timeouts, then at most CCU_CMDS_PER_PASS
-    // lines in total (round robin), with wdt_reset() between them
+    // Existing clients: at most CCU_CMDS_PER_PASS lines in total (round
+    // robin, wdt_reset() between them), then state and timeouts
     uint8_t budget = CCU_CMDS_PER_PASS;
     uint8_t first = rrFirst;
     rrFirst = (uint8_t)((rrFirst + 1) % CCU_MAX_CLIENTS);
     for (uint8_t k = 0; k < CCU_MAX_CLIENTS; k++) {
         uint8_t i = (uint8_t)((first + k) % CCU_MAX_CLIENTS);
-        if (!clients[i] || !checkClient(i)) continue;
-        budget = readClient(i, budget);
+        if (clients[i]) budget = serviceClient(i, budget);
     }
 
     acceptClient();
@@ -440,10 +498,13 @@ bool CCUBroadcast::syncSentNear(uint32_t t) {
     return tcpSyncDone && (int32_t)(t - lastTcpSync) < (int32_t)CCU_SYNC_INTERVAL;
 }
 
-void CCUBroadcast::sendParamChange(int cameraId, const char* paramKey, const char* value) {
-    if (!hasClients()) return;
-    // Actions are events, not state: clients must not cache them
-    if (bmdIsVoidParam(paramKey)) return;
+void CCUBroadcast::sendParamChange(int cameraId, const char* paramKey, const char* value,
+                                   bool validated) {
+    if (!hasClients() || !paramKey || !value) return;
+    if (!validated) {
+        sendClientParam(cameraId, paramKey, value);
+        return;
+    }
 
     broadcastMsg(formatMsg(PSTR("CCU %d %s %s"), cameraId, paramKey, value));
 }

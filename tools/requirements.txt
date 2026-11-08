@@ -1,0 +1,2 @@
+# Serial configurator (tools/TallyCCU_Configurator.py)
+pyserial==3.5

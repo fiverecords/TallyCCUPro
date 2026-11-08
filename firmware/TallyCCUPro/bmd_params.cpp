@@ -1,7 +1,6 @@
 /*
  * bmd_params.cpp
  * Blackmagic camera parameter table
- * Version 3.8
  * 
  * Generated from Blackmagic Camera Control Protocol documentation
  */
@@ -11,7 +10,8 @@
 
 // In flash: rows are read with pgm_read_*() / *_P() only (near addresses:
 // the table must stay in the first 64 KB of flash, as all PROGMEM data).
-static const BMDParamRow bmdParams[] PROGMEM = {
+// constexpr only for the compile-time checks below.
+static constexpr BMDParamRow bmdParams[] PROGMEM = {
   // === LENS (Group 0) ===
   { 0, 0, TYPE_FIXED16, "focus", false, 1 },
   { 0, 1, TYPE_VOID, "instantaneous_autofocus", false, 1 },
@@ -77,7 +77,8 @@ static const BMDParamRow bmdParams[] PROGMEM = {
   { 7, 0, TYPE_INT32, "real_time_clock", true, 2 },
   { 7, 1, TYPE_STRING, "system_language", false, 1 },
   { 7, 2, TYPE_INT32, "timezone", false, 1 },
-  { 7, 3, TYPE_INT64, "location", true, 2 },
+  // 7.3 location (int64 BCD) left out: no client sends it, and exact
+  // 64-bit parsing would cost ~2 KB of flash
   
   // === COLOR CORRECTION (Group 8) ===
   { 8, 0, TYPE_FIXED16, "lift_adjust", true, 4 },
@@ -99,6 +100,23 @@ static const BMDParamRow bmdParams[] PROGMEM = {
 };
 
 const uint8_t BMD_PARAM_COUNT = sizeof(bmdParams) / sizeof(bmdParams[0]);
+
+// Compile-time table checks. A list (subCount > 1) is a numeric type with
+// at most BMD_MAX_SUB_COUNT values, which CCUControl writes as an array of
+// exactly subCount elements; hasSubIndices mirrors subCount > 1. CCUControl
+// parses integers as 32-bit: no TYPE_INT64 rows.
+static constexpr bool rowOk(const BMDParamRow &r) {
+  return r.subCount >= 1 && r.subCount <= BMD_MAX_SUB_COUNT &&
+         r.hasSubIndices == (r.subCount > 1) &&
+         r.paramType != TYPE_INT64 && r.paramType != TYPE_UNKNOWN &&
+         (r.subCount == 1 || (r.paramType != TYPE_VOID && r.paramType != TYPE_BOOLEAN &&
+                              r.paramType != TYPE_STRING));
+}
+static constexpr bool rowsOk(uint8_t i) {
+  return i >= sizeof(bmdParams) / sizeof(bmdParams[0]) || (rowOk(bmdParams[i]) && rowsOk(i + 1));
+}
+static_assert(rowsOk(0), "bmdParams: bad subCount, hasSubIndices or type");
+static_assert(sizeof(bmdParams) / sizeof(bmdParams[0]) < 128, "bmdParams: int8_t indices");
 
 // Row whose key is exactly the first len chars of key, or -1
 static int8_t findRow(const char *key, size_t len) {

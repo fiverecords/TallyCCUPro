@@ -1,12 +1,10 @@
 /*
  * SdUtils.cpp
  * SD card utilities and preset management implementation
- * Version 3.8
  *
  * Features:
  * - No String usage in critical functions
  * - Static buffer file reading
- * - In-place URL decode
  * - Bounded block writes to the client (NetUtils)
  * - Card loss detection and rate-limited remount
  */
@@ -17,6 +15,7 @@
 #include "NetUtils.h"
 #include "VmixConnector.h"
 #include <avr/wdt.h>
+#include <utility/w5100.h>
 
 // Static variable initialization
 SdFat SdUtils::_sd;
@@ -26,6 +25,38 @@ char SdUtils::_lineBuffer[SD_LINE_BUFFER_SIZE];
 // Card state (SD-03)
 static bool s_sdOk = false;       // mounted, no card error since
 static uint32_t s_mountAt = 0;    // millis() of the last begin()
+
+// Background transfers. The socket index is checked against the peer
+// before every use (NetUtils rules: an index is reused once it closes).
+enum : uint8_t {
+  XF_FREE = 0,
+  XF_BODY,      // file open, body being queued
+  XF_FIN        // body done or cut: FIN once the data is out
+};
+
+struct Xfer {
+  File f;
+  uint32_t left;            // body bytes not yet queued
+  uint32_t rip;
+  unsigned long end;        // deadline of the current state
+  uint16_t rport;
+  uint16_t progressAt;      // last bytes queued (ms, 16 bit)
+  uint8_t sock;
+  uint8_t state;
+};
+static Xfer s_xfer[SD_XFERS];
+
+// Sockets whose FIN is out, kept outside the slots until they close or
+// SD_SEND_LINGER_MS: the tail of the body may still be retransmitted.
+struct Linger {
+  uint32_t rip;
+  uint16_t rport;           // 0: entry unused
+  uint16_t at;              // FIN sent (ms, 16 bit)
+  uint8_t sock;
+};
+static Linger s_linger[SD_LINGERS];
+
+static void abortTransfers(const char* name);
 
 // Keys never applied from a preset (TYPE_VOID actions are skipped by
 // CCUControl): velocities/speeds would leave the head or zoom moving and
@@ -92,6 +123,9 @@ bool SdUtils::begin() {
   digitalWrite(SD_PIN_CS, HIGH);
   pinMode(SD_PIN_CS, OUTPUT);
 
+  // Files of the old mount are not valid after begin()
+  abortTransfers(NULL);
+
   // Up to ~2 s without a card (SdFat init timeout)
   wdt_reset();
   s_sdOk = _sd.begin(SD_PIN_CS, SD_SCK_MHZ(50));
@@ -147,10 +181,7 @@ static bool openRead(File& f, const char* path) {
   return cardOp([&]() { return openIn(f, SdUtils::getSd(), path, 0); });
 }
 
-// One line into buf without its terminator ('\n', '\r' or "\r\n"). Returns
-// the length, -1 at end of file, -2 on a read error. A line that does not
-// fit is consumed whole and flagged in *cut.
-static int readFileLine(File& f, char* buf, size_t size, bool* cut) {
+int SdUtils::readLine(File& f, char* buf, size_t size, bool* cut) {
   size_t len = 0;
   *cut = false;
   if (f.available() <= 0) return -1;
@@ -174,11 +205,22 @@ bool SdUtils::fileExists(const char* filename) {
 }
 
 bool SdUtils::removeFile(const char* filename) {
+  abortTransfers(filename);
   return cardOp([=]() { return _sd.remove(filename); });
 }
 
 bool SdUtils::renameFile(const char* oldName, const char* newName) {
   return cardOp([=]() { return _sd.rename(oldName, newName); });
+}
+
+bool SdUtils::replaceFile(const char* tmp, const char* dst) {
+  abortTransfers(dst);
+  if (!cardOp([=]() { return !_sd.exists(dst) || _sd.remove(dst); })) {
+    removeFile(tmp);   // dst kept
+    return false;
+  }
+  // dst is gone: if the rename fails, tmp (complete) is the only copy: kept
+  return renameFile(tmp, dst);
 }
 
 void SdUtils::invalidateGzip(const char* filename) {
@@ -193,29 +235,6 @@ void SdUtils::invalidateGzip(const char* filename) {
 void SdUtils::getPresetFilename(char* buffer, int bufSize, int cameraId, int presetId, bool isTemp) {
   snprintf_P(buffer, bufSize, isTemp ? PSTR("preset_%d_%d.tmp") : PSTR("preset_%d_%d.dat"),
              cameraId, presetId);
-}
-
-void SdUtils::urlDecodeInPlace(char* str) {
-  if (!str) return;
-
-  int readPos = 0;
-  int writePos = 0;
-
-  while (str[readPos] != '\0') {
-    if (str[readPos] == '%' && str[readPos + 1] != '\0' && str[readPos + 2] != '\0') {
-      char hex[3] = { str[readPos + 1], str[readPos + 2], '\0' };
-      str[writePos] = (char)strtol(hex, NULL, 16);
-      readPos += 3;
-    } else if (str[readPos] == '+') {
-      str[writePos] = ' ';
-      readPos++;
-    } else {
-      str[writePos] = str[readPos];
-      readPos++;
-    }
-    writePos++;
-  }
-  str[writePos] = '\0';
 }
 
 // ============================================================
@@ -272,11 +291,8 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
     return false;
   }
 
-  if (!tryLockSD(2000)) {
-    Serial.println(F("Error: Could not access SD for preset"));
-    return false;
-  }
-
+  // No SD lock: everything runs in loop(), and nothing reached from here
+  // (the tally poll included) touches the SD (SD-07)
   char filename[SD_PATH_BUFFER_SIZE];
   getPresetFilename(filename, SD_PATH_BUFFER_SIZE, cameraId, presetId, false);
 
@@ -285,7 +301,6 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
     presetFile.close();
     Serial.print(s_sdOk ? F("Preset not found: ") : F("SD not available: "));
     Serial.println(filename);
-    unlockSD();
     return false;
   }
 
@@ -303,7 +318,7 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
     wdt_reset();
     if (n % 8 == 0) VmixConnector::pollTally();   // I2C writes add up
     bool overflow;
-    int len = readFileLine(presetFile, _lineBuffer, SD_LINE_BUFFER_SIZE, &overflow);
+    int len = readLine(presetFile, _lineBuffer, SD_LINE_BUFFER_SIZE, &overflow);
     if (len == -1) break;
     if (len < 0) {
       readError = true;
@@ -325,11 +340,10 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
     char* paramKey = _lineBuffer;
     char* paramValue = colonPos + 1;
 
-    // Capture preset name
+    // Capture preset name (stored decoded)
     if (strcmp_P(paramKey, PSTR("name")) == 0) {
       strncpy(presetName, paramValue, 31);
       presetName[31] = '\0';
-      urlDecodeInPlace(presetName);
       continue;
     }
 
@@ -339,7 +353,6 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
       continue;
     }
 
-    urlDecodeInPlace(paramValue);
     if (isPresetSkipKey(paramKey) || !presetValueAllowed(paramKey, paramValue)) {
 #if DEBUG_HOT
       Serial.print(F("[Preset] skip "));
@@ -358,7 +371,6 @@ bool SdUtils::applyPreset(int cameraId, int presetId) {
   }
 
   presetFile.close();
-  unlockSD();
 
   if (readError) {
     cardFailed();
@@ -448,7 +460,7 @@ bool SdUtils::writePresetListToClient(EthernetClient &client) {
       bool named = false;
       for (uint8_t line = 0; line < 4 && !named; line++) {
         bool cut;
-        if (readFileLine(entry, _lineBuffer, SD_LINE_BUFFER_SIZE, &cut) < 0) break;
+        if (readLine(entry, _lineBuffer, SD_LINE_BUFFER_SIZE, &cut) < 0) break;
         named = strncmp_P(_lineBuffer, PSTR("name:"), 5) == 0;
       }
       entry.close();
@@ -470,8 +482,7 @@ bool SdUtils::writePresetListToClient(EthernetClient &client) {
       if (named) {
         char* name = _lineBuffer + 5;
         name[63] = '\0';   // as before: at most 63 stored characters
-        urlDecodeInPlace(name);
-        WebServer::printJsonSafe(out, name);
+        WebServer::printJsonSafe(out, name);   // stored decoded (SD-05)
       } else {
         out.print(F("Preset"));
       }
@@ -516,27 +527,213 @@ static PGM_P contentType(const char* name) {
       return PSTR("image/jpeg");
     if (!strcasecmp_P(ext, PSTR("ico"))) return PSTR("image/x-icon");
     if (!strcasecmp_P(ext, PSTR("svg"))) return PSTR("image/svg+xml");
+    if (!strcasecmp_P(ext, PSTR("woff2"))) return PSTR("font/woff2");
+    if (!strcasecmp_P(ext, PSTR("woff"))) return PSTR("font/woff");
   }
   return PSTR("text/plain");
 }
 
-// 404, or 503 when the card failed. Closed at once if it cannot be sent.
-static void sendFileError(EthernetClient &client, bool notFound, uint8_t* buf, size_t size) {
+// Short error answers
+static const char kResp404[] PROGMEM =
+  "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
+  "Content-Length: 15\r\nConnection: close\r\n\r\n404 Not Found\r\n";
+static const char kResp503Sd[] PROGMEM =
+  "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
+  "Content-Length: 23\r\nConnection: close\r\n\r\nSD card not available\r\n";
+static const char kResp503Busy[] PROGMEM =
+  "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
+  "Retry-After: 2\r\nContent-Length: 13\r\nConnection: close\r\n\r\nServer busy\r\n";
+
+// Closed at once if it cannot be sent
+static void sendFileError(EthernetClient &client, PGM_P resp, uint8_t* buf, size_t size) {
   ClientBufferPrint out(buf, size);
-  if (notFound) {
-    out.print(F("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
-                "Content-Length: 15\r\nConnection: close\r\n\r\n404 Not Found\r\n"));
-  } else {
-    out.print(F("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
-                "Content-Length: 23\r\nConnection: close\r\n\r\nSD card not available\r\n"));
-  }
+  out.print((const __FlashStringHelper*)resp);
   if (!sendBlock(client, out.data(), out.length(), SD_SEND_BLOCK_MS)) NetUtils::closeNow(client);
 }
 
-bool SdUtils::serveFile(EthernetClient &client, const char* filename, bool acceptsGzip) {
-  File f;
+// True while c still holds the connection with that peer (any TCP state up
+// to the close). Otherwise it ended, or the index was taken by someone else.
+static bool peerIs(EthernetClient &c, uint16_t rport, uint32_t rip) {
+  uint8_t sr = c.status();
+  if (sr < SnSR::SYNRECV || sr > SnSR::LAST_ACK) return false;
+  return c.localPort() == HTTP_PORT && c.remotePort() == rport &&
+         (uint32_t)c.remoteIP() == rip;
+}
+
+static bool xferPeer(const Xfer &x, EthernetClient &c) {
+  return peerIs(c, x.rport, x.rip);
+}
+
+// x's FIN is out: its socket goes to the linger table and the slot is
+// freed. A full table closes its oldest socket at once.
+static void lingerAdd(Xfer &x) {
+  uint16_t now = (uint16_t)millis();
+  Linger* l = &s_linger[0];
+  for (uint8_t i = 0; i < SD_LINGERS; i++) {
+    Linger &e = s_linger[i];
+    if (!e.rport) { l = &e; break; }
+    if ((uint16_t)(now - e.at) > (uint16_t)(now - l->at)) l = &e;
+  }
+  if (l->rport) {
+    EthernetClient old(l->sock);
+    if (peerIs(old, l->rport, l->rip)) NetUtils::closeNow(old);
+  }
+  l->sock = x.sock;
+  l->rport = x.rport;
+  l->rip = x.rip;
+  l->at = now;
+  x.state = XF_FREE;   // the file is already closed
+}
+
+// Forgets the sockets that closed (or were reused) and closes the ones
+// still open after SD_SEND_LINGER_MS
+static void lingerStep() {
+  for (uint8_t i = 0; i < SD_LINGERS; i++) {
+    Linger &l = s_linger[i];
+    if (!l.rport) continue;
+    EthernetClient c(l.sock);
+    if (!peerIs(c, l.rport, l.rip)) {
+      l.rport = 0;
+    } else if ((uint16_t)((uint16_t)millis() - l.at) >= SD_SEND_LINGER_MS) {
+      NetUtils::closeNow(c);
+      l.rport = 0;
+    }
+  }
+}
+
+// Body done or cut: FIN once the queued data is out
+static void xferFinish(Xfer &x) {
+  x.f.close();
+  x.state = XF_FIN;
+  x.end = NetUtils::deadlineIn(SD_SEND_FIN_MS);
+}
+
+// Slot freed; the socket is not touched
+static void xferDrop(Xfer &x) {
+  x.f.close();
+  x.state = XF_FREE;
+}
+
+static void xferCloseNow(Xfer &x, EthernetClient &c) {
+  NetUtils::closeNow(c);
+  xferDrop(x);
+}
+
+// Cuts the transfers reading 'name' (any case, as FAT), or all for NULL.
+// A name that cannot be read back counts as a match.
+static void abortTransfers(const char* name) {
+  for (uint8_t i = 0; i < SD_XFERS; i++) {
+    Xfer &x = s_xfer[i];
+    if (x.state != XF_BODY) continue;
+    if (name) {
+      char n[WEB_NAME_MAX + 5];   // longest servable name plus ".gz"
+      if (x.f.getName(n, sizeof(n)) > 0 && strcasecmp(n, name) != 0) continue;
+    }
+    Serial.println(F("Transfer cut: file changed"));
+    xferFinish(x);
+  }
+}
+
+// One step: queues what fits now. True if bytes were queued and more remain.
+static bool xferStep(Xfer &x, uint8_t* buf) {
+  EthernetClient c(x.sock);
+  if (!xferPeer(x, c)) {
+    xferDrop(x);   // reset or timed out: the index is not ours any more
+    return false;
+  }
+
+  if (x.state == XF_FIN) {
+    NetUtils::drainInput(c, 256, 0);   // unread input would turn the close into a reset
+    int8_t r = NetUtils::sendFin(c);
+    if (r > 0) {
+      lingerAdd(x);
+    } else if (r < 0 || NetUtils::expired(x.end)) {
+      xferCloseNow(x, c);   // the data never got out: no FIN possible
+    }
+    return false;
+  }
+
+  // XF_BODY. The stall counts only while there is no room: after a pause
+  // of the server (a long upload) a reader that kept reading goes on.
+  int16_t room = NetUtils::txRoom(c);
+  if (room < 0) {
+    xferCloseNow(x, c);
+    return false;
+  }
+  if (NetUtils::expired(x.end) ||
+      (room == 0 && (uint16_t)((uint16_t)millis() - x.progressAt) >= SD_SEND_STALL_MS)) {
+    Serial.println(F("Transfer cut: reader too slow"));
+    xferFinish(x);
+    return false;
+  }
+  if (room == 0) return false;   // SEND in flight or the reader is behind
+
+  size_t n = (size_t)room;
+  if (n > SD_BUFFER_SIZE) n = SD_BUFFER_SIZE;
+  if (n > x.left) n = (size_t)x.left;
+  if (x.f.read(buf, n) != (int)n) {   // read error or file shorter than its size
+    cardFailed();
+    Serial.println(F("Transfer cut: SD read error"));
+    xferFinish(x);
+    return false;
+  }
+  bool dead;
+  if (!NetUtils::tryWriteAll(c, buf, n, &dead)) {
+    if (dead) xferCloseNow(x, c);
+    else x.f.seekSet(x.f.curPosition() - n);   // not taken: read again next time
+    return false;
+  }
+  x.left -= n;
+  x.progressAt = (uint16_t)millis();
+  if (x.left == 0) {
+    xferFinish(x);
+    return false;
+  }
+  return true;
+}
+
+void SdUtils::pumpTransfers() {
+  lingerStep();
+  uint32_t start = millis();
+  for (;;) {
+    bool more = false;
+    for (uint8_t i = 0; i < SD_XFERS; i++) {
+      if (s_xfer[i].state != XF_FREE && xferStep(s_xfer[i], _sdBuffer)) more = true;
+    }
+    if (!more || (uint32_t)millis() - start >= SD_XFER_PASS_MS) return;
+    wdt_reset();
+  }
+}
+
+bool SdUtils::transferOwns(uint8_t sock) {
+  for (uint8_t i = 0; i < SD_XFERS; i++) {
+    const Xfer &x = s_xfer[i];
+    if ((x.state == XF_BODY || x.state == XF_FIN) && x.sock == sock) return true;
+  }
+  return false;
+}
+
+bool SdUtils::transferSlotFree() {
+  for (uint8_t i = 0; i < SD_XFERS; i++) {
+    if (s_xfer[i].state == XF_FREE) return true;
+  }
+  return false;
+}
+
+bool SdUtils::serveFile(EthernetClient &client, const char* filename, bool acceptsGzip,
+                        bool attachment) {
+  Xfer* x = NULL;
+  for (uint8_t i = 0; i < SD_XFERS && !x; i++) {
+    if (s_xfer[i].state == XF_FREE) x = &s_xfer[i];
+  }
+  if (!x) {
+    sendFileError(client, kResp503Busy, _sdBuffer, SD_BUFFER_SIZE);
+    return false;
+  }
+
+  File &f = x->f;   // closed while FREE
   bool gzip = false;
-  if (acceptsGzip && strlen(filename) + 4 <= SD_LINE_BUFFER_SIZE) {
+  if (acceptsGzip && !attachment && strlen(filename) + 4 <= SD_LINE_BUFFER_SIZE) {
     strcpy(_lineBuffer, filename);
     strcat_P(_lineBuffer, PSTR(".gz"));
     gzip = openRead(f, _lineBuffer) && f.isFile();
@@ -544,103 +741,57 @@ bool SdUtils::serveFile(EthernetClient &client, const char* filename, bool accep
   }
   if (!gzip && !(openRead(f, filename) && f.isFile())) {
     f.close();
-    sendFileError(client, s_sdOk, _sdBuffer, SD_BUFFER_SIZE);
+    sendFileError(client, s_sdOk ? kResp404 : kResp503Sd, _sdBuffer, SD_BUFFER_SIZE);
     return false;
   }
 
-  uint32_t left = (uint32_t)f.fileSize();
+  uint32_t size = (uint32_t)f.fileSize();
 
-  // Headers in one block; the first data block fills the rest of it
+  // Headers, and the first data in the rest of the same block
   size_t used;
   {
     ClientBufferPrint hdr(_sdBuffer, SD_BUFFER_SIZE);
-    hdr.print(F("HTTP/1.1 200 OK\r\nContent-Type: "));
-    hdr.print((const __FlashStringHelper*)contentType(filename));
-    if (gzip) hdr.print(F("\r\nContent-Encoding: gzip"));
+    if (attachment) {
+      hdr.print(F("HTTP/1.1 200 OK\r\nContent-Disposition: attachment; filename=\""));
+      hdr.print(filename);
+      hdr.print(F("\"\r\nContent-Type: application/octet-stream"));
+    } else {
+      hdr.print(F("HTTP/1.1 200 OK\r\nContent-Type: "));
+      hdr.print((const __FlashStringHelper*)contentType(filename));
+      if (gzip) hdr.print(F("\r\nContent-Encoding: gzip"));
+    }
     hdr.print(F("\r\nContent-Length: "));
-    hdr.print(left);
+    hdr.print(size);
     hdr.print(F("\r\nConnection: close\r\n\r\n"));
-    used = hdr.length();
+    used = hdr.failed() ? SD_BUFFER_SIZE : hdr.length();
   }
-
-  uint32_t budget = SD_SEND_BASE_MS + left / SD_SEND_BYTES_PER_MS;
-  if (budget > SD_SEND_MAX_MS) budget = SD_SEND_MAX_MS;
-  uint32_t start = millis();
-  bool ok = true;
-  bool readFailed = false;
-  uint16_t block;
-
-  for (block = 1; ; block++) {
-    wdt_reset();
-    size_t room = SD_BUFFER_SIZE - used;
-    if (room > left) room = (size_t)left;
-    if (room > 0) {
-      int n = f.read(_sdBuffer + used, room);
-      if (n <= 0) {   // read error or file shorter than its size
-        readFailed = true;
-        ok = false;
-        break;
-      }
-      used += (size_t)n;
-      left -= (uint32_t)n;
-    }
-
-    // Peer gone, not reading, or too slow: cut
-    uint32_t spent = (uint32_t)millis() - start;
-    uint32_t t = spent < budget ? budget - spent : 0;
-    if (t > SD_SEND_BLOCK_MS) t = SD_SEND_BLOCK_MS;
-    if (t == 0 || !sendBlock(client, _sdBuffer, used, t)) {
-      ok = false;
-      break;
-    }
-    used = 0;
-    if (left == 0) break;
-
-    WebServer::transferPoll();   // rate limited to WEB_POLL_MS
-  }
-
-  f.close();
-  if (readFailed) {
+  size_t first = SD_BUFFER_SIZE - used;
+  if (first > size) first = (size_t)size;
+  if (first > 0 && f.read(_sdBuffer + used, first) != (int)first) {
+    // Nothing sent yet: 503
+    f.close();
     cardFailed();
-    // Nothing sent yet (the headers were still in the buffer): 503
-    if (block == 1) {
-      sendFileError(client, false, _sdBuffer, SD_BUFFER_SIZE);
-      return false;
-    }
+    sendFileError(client, kResp503Sd, _sdBuffer, SD_BUFFER_SIZE);
+    return false;
   }
-  if (!ok) {
-    // A reader still there gets a FIN behind what it has: with
-    // Content-Length it sees the cut at once instead of waiting for more
-    waitSent(client, SD_CUT_FIN_MS);
-    NetUtils::closeGracefully(client, 0);
+  // A fresh connection: the TX buffer is empty, this goes at once
+  if (used >= SD_BUFFER_SIZE || !sendBlock(client, _sdBuffer, used + first, SD_SEND_BLOCK_MS)) {
+    f.close();
+    NetUtils::closeNow(client);
     return false;
   }
 
-  waitSent(client, SD_SEND_BLOCK_MS);
+  NetUtils::drainInput(client, 2048, 0);   // the rest of the request
+  x->sock = client.getSocketNumber();
+  x->rport = client.remotePort();
+  x->rip = (uint32_t)client.remoteIP();
+  x->left = size - first;
+  uint32_t budget = SD_SEND_BASE_MS + size / SD_SEND_BYTES_PER_MS;
+  if (budget > SD_SEND_MAX_MS) budget = SD_SEND_MAX_MS;
+  x->end = NetUtils::deadlineIn(budget);
+  x->progressAt = (uint16_t)millis();
+  x->state = XF_BODY;
+  if (x->left == 0) xferFinish(*x);
+  client = EthernetClient();   // the transfer owns the socket now
   return true;
-}
-
-// ============================================================
-// LOCKING
-// ============================================================
-
-bool SdUtils::tryLockSD(unsigned long timeout) {
-  unsigned long startTime = millis();
-
-  while (g_isBusyWithSD && (millis() - startTime < timeout)) {
-    wdt_reset();
-    delay(1);
-  }
-
-  if (!g_isBusyWithSD) {
-    g_isBusyWithSD = true;
-    return true;
-  }
-
-  Serial.println(F("SD access timeout"));
-  return false;
-}
-
-void SdUtils::unlockSD() {
-  g_isBusyWithSD = false;
 }

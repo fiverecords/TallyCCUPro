@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TallyCCU Pro Serial Configurator V3.6
+TallyCCU Pro Serial Configurator
 Configure Arduino network settings via serial port
 
 Connecting must not restart the board (it may be on air). On the Mega,
@@ -26,9 +26,13 @@ On Linux/macOS the port is also flock()ed: a second copy of this tool or
 miniterm gets 'Port Busy'. Programs that do not flock are not detected.
 
 TallyCCU_Configurator.exe is built from this file and must be rebuilt
-after every change (older .exe files raise DTR and reset on connect):
-  pyinstaller --onefile --windowed --icon tallyccu_icon.ico
-              --add-data "tallyccu_icon.ico;." TallyCCU_Configurator.py
+after every change (older .exe files raise DTR and reset on connect).
+Recipe: tools/TallyCCU_Configurator.spec (pinned versions in
+tools/requirements-build.txt); every release attaches a fresh .exe:
+  python -m pip install -r tools/requirements-build.txt
+  python -m PyInstaller --clean --noconfirm tools/TallyCCU_Configurator.spec
+Running the .py needs Python 3 with tkinter and pyserial
+(pip install -r tools/requirements.txt).
 """
 
 import errno
@@ -62,6 +66,9 @@ STATUS_FIELDS = {'Local IP': 'ip', 'Subnet': 'subnet',
 _FIELD_RE = re.compile(r'^(Local IP|Subnet|Gateway|vMix IP):\s*(\S+)$')
 _OCTET_RE = re.compile(r'^[0-9]{1,3}$')
 _SAFEMODE_END_RE = re.compile(r'^[0-9.]+ for diagnostics\.$')
+# Firmware version: 'status' and the boot print it (DOC-12)
+_FIRMWARE_RE = re.compile(r'^(?:Firmware:\s*|TallyCCU Pro V)([0-9][0-9A-Za-z.\-]*)$')
+FIRMWARE_UNKNOWN = "TallyCCU Pro - Firmware: press Get Config"
 
 POSIX_RESET_WARNING = (
     "On Linux and macOS opening the serial port can restart the "
@@ -99,6 +106,12 @@ def parse_config_line(line):
     if not m or not validate_ip(m.group(2)):
         return None
     return STATUS_FIELDS[m.group(1)], m.group(2).split('.')
+
+
+def parse_firmware_line(line):
+    """The version in 'Firmware: <version>' or the boot banner, else None."""
+    m = _FIRMWARE_RE.match(line.strip())
+    return m.group(1) if m else None
 
 
 def pick_port(ports, current=''):
@@ -213,7 +226,7 @@ class BootWatch:
 class SerialTerminal:
     def __init__(self, root):
         self.root = root
-        self.root.title("TallyCCU Pro Configurator V3.6")
+        self.root.title("TallyCCU Pro Configurator")
         self.root.resizable(False, False)
         
         # Try to load icon if exists (.ico works on Windows only)
@@ -345,8 +358,9 @@ class SerialTerminal:
         info_frame = tk.Frame(root, bg=self.bg_color)
         info_frame.grid(column=0, row=3, padx=10, pady=10)
         
-        tk.Label(info_frame, text="TallyCCU Pro - Firmware V3.6", 
-                bg=self.bg_color, fg=self.fg_color, font=("Arial", 10, "bold")).pack()
+        self.firmware_label = tk.Label(info_frame, text=FIRMWARE_UNKNOWN,
+                bg=self.bg_color, fg=self.fg_color, font=("Arial", 10, "bold"))
+        self.firmware_label.pack()
         tk.Label(info_frame, text="Created by Joaquin Villodre - github.com/fiverecords", 
                 bg=self.bg_color, fg="#888888", font=("Arial", 8)).pack()
 
@@ -469,6 +483,8 @@ class SerialTerminal:
         self._keeps_dtr = False
         self._boot = None
         self._fill_until = 0.0
+        if not self._closing:
+            self.firmware_label.config(text=FIRMWARE_UNKNOWN)
 
         if stop:
             stop.set()
@@ -605,6 +621,10 @@ class SerialTerminal:
             self.update_terminal(">>> Device is booting: commands wait for 'System ready.'\n")
         elif event == 'ready':
             self.update_terminal(">>> Device ready\n")
+
+        version = parse_firmware_line(line)
+        if version:
+            self.firmware_label.config(text="TallyCCU Pro - Firmware " + version)
 
         if now < self._fill_until:
             parsed = parse_config_line(line)

@@ -1,13 +1,14 @@
 /*
  * VmixConnector.cpp
  * vMix connection implementation - Ultra-fast without String
- * Version 3.8
  *
  * Features tally debounce to avoid flickering
  */
 
 #include "VmixConnector.h"
+#include "Network.h"
 #include "NetUtils.h"
+#include "SafeMode.h"
 
 // Uncomment below to enable debug
 //#define DEBUG_VMIX
@@ -18,18 +19,33 @@
 
 // Static variable initialization
 EthernetClient VmixConnector::_vmixClient;
-byte VmixConnector::_vmixip[4] = {192, 168, 10, 140};
+byte VmixConnector::_vmixip[4] = {DEFAULT_VMIX_IP};
 bool VmixConnector::_connectEnabled = true;
 
+// vMix input states packed 2 bits per input (MEM-05): 0 off, 1 program,
+// 2 preview. n = inputs in the line; n == 0 means no vMix state.
+struct TallyFrame {
+  uint8_t n;
+  uint8_t bits[(MAX_VMIX_INPUTS * 2 + 7) / 8];
+};
+
+static uint8_t frameGet(const TallyFrame& f, uint8_t i) {
+  return (f.bits[i >> 2] >> ((i & 3) * 2)) & 3;
+}
+
+static bool frameEqual(const TallyFrame& a, const TallyFrame& b) {
+  return memcmp(&a, &b, sizeof(TallyFrame)) == 0;
+}
+
 // Last applied vMix state and debounce candidate
-static char lastValidTallyData[MAX_VMIX_INPUTS + 1] = {0};
-static char pendingTallyData[MAX_VMIX_INPUTS + 1] = {0};
+static TallyFrame appliedTally = {0, {0}};
+static TallyFrame pendingTally = {0, {0}};
 
 // Line being received. Kept between calls (TAL-10): a TALLY line split
 // across TCP segments or loop passes is only used once its '\n' arrives.
 // Only the data after "TALLY OK " is stored; inputs above MAX_VMIX_INPUTS
 // are consumed and not evaluated. Other lines are skipped.
-static char rxData[MAX_VMIX_INPUTS + 1];
+static TallyFrame rxFrame;
 enum : uint8_t { RX_PREFIX, RX_DATA, RX_SKIP };
 static uint8_t rxState = RX_PREFIX;
 static uint8_t rxPos = 0;               // prefix chars matched, then data chars
@@ -76,26 +92,44 @@ static bool sendCommand(EthernetClient& c, PGM_P cmd, size_t len) {
   return NetUtils::tryWriteAll(c, (const uint8_t*)buf, len);
 }
 
+#if defined(DEBUG_VMIX) || DEBUG_HOT
+static void printFrame(const TallyFrame& f) {
+  for (uint8_t i = 0; i < f.n; i++) Serial.print(frameGet(f, i));
+  Serial.println();
+}
+#endif
+
 // Turn every tally off and forget the last vMix state
 static void clearTally() {
   TallyManager::clearAll();
-  lastValidTallyData[0] = '\0';
+  appliedTally.n = 0;
   hasPendingTally = false;
 }
 
-bool VmixConnector::begin() {
+// TAL-11: with a static IP the library starts every boot at local port
+// 49153, the port of the connection a vMix PC may still think is open after
+// our reset. Each EthernetUDP begin(0) takes the next port, so a few of
+// them make the first connect use another one.
+static void skipLocalPorts(uint8_t n) {
+  EthernetUDP udp;
+  for (uint8_t i = 0; i < n; i++) {
+    if (!udp.begin(0)) break;   // no chip or no free socket
+  }
+  udp.stop();
+}
+
+bool VmixConnector::begin(const byte vmixip[4]) {
+  memcpy(_vmixip, vmixip, 4);
+
   bool dummyTally, dummyCCU;
   StorageManager::loadOverrides(dummyTally, dummyCCU, _connectEnabled);
 
   Serial.print(F("vMix connection state loaded: "));
   Serial.println(_connectEnabled ? F("ON") : F("OFF"));
 
-  return connect();
-}
+  skipLocalPorts(1 + (SafeMode::getBootSeed() & 63));
 
-bool VmixConnector::begin(const byte vmixip[4]) {
-  memcpy(_vmixip, vmixip, 4);
-  return begin();
+  return connect();
 }
 
 bool VmixConnector::connect() {
@@ -148,7 +182,7 @@ int8_t VmixConnector::openSocket() {
   answered = false;
   rxState = RX_PREFIX;
   rxPos = 0;
-  lastValidTallyData[0] = '\0';
+  appliedTally.n = 0;
   hasPendingTally = false;
   return 1;
 }
@@ -224,8 +258,8 @@ void VmixConnector::readInput(unsigned long now) {
       char ch = (char)chunk[i];
       if (ch == '\n') {
         if (rxState == RX_DATA && rxPos > 0) {
-          rxData[rxPos] = '\0';
-          onTallyLine(rxData, now);
+          rxFrame.n = rxPos;
+          onTallyLine(rxFrame, now);
         }
         rxState = RX_PREFIX;
         rxPos = 0;
@@ -236,12 +270,18 @@ void VmixConnector::readInput(unsigned long now) {
           if (++rxPos == TALLY_PREFIX_LEN) {
             rxState = RX_DATA;
             rxPos = 0;
+            memset(&rxFrame, 0, sizeof(rxFrame));
           }
         } else {
           rxState = RX_SKIP;
         }
       } else if (rxState == RX_DATA) {
-        if (rxPos < MAX_VMIX_INPUTS) rxData[rxPos++] = ch;
+        if (rxPos < MAX_VMIX_INPUTS) {
+          // '1' program, '2' preview, anything else off
+          uint8_t st = (ch == '1') ? 1 : (ch == '2') ? 2 : 0;
+          rxFrame.bits[rxPos >> 2] |= (uint8_t)(st << ((rxPos & 3) * 2));
+          rxPos++;
+        }
       }
     }
   }
@@ -266,16 +306,16 @@ void VmixConnector::heartbeat(unsigned long now) {
 }
 
 // DEBOUNCE: always follow the latest data received
-void VmixConnector::onTallyLine(const char* data, unsigned long now) {
+void VmixConnector::onTallyLine(const TallyFrame& data, unsigned long now) {
   #ifdef DEBUG_VMIX
   Serial.print(F("[vmixdata] Received: "));
-  Serial.println(data);
+  printFrame(data);
   #endif
 
-  if (strcmp(data, lastValidTallyData) == 0) {
+  if (frameEqual(data, appliedTally)) {
     hasPendingTally = false; // Back to the applied state
-  } else if (!hasPendingTally || strcmp(data, pendingTallyData) != 0) {
-    strcpy(pendingTallyData, data);
+  } else if (!hasPendingTally || !frameEqual(data, pendingTally)) {
+    pendingTally = data;
     pendingTallyTime = now;
     hasPendingTally = true;
   }
@@ -286,21 +326,21 @@ void VmixConnector::onTallyLine(const char* data, unsigned long now) {
 void VmixConnector::applyPending(unsigned long now) {
   if (!hasPendingTally || now - pendingTallyTime < TALLY_DEBOUNCE_MS) return;
 
-  applyTallyDirectly(pendingTallyData);
-  strcpy(lastValidTallyData, pendingTallyData);
+  applyTallyDirectly(pendingTally);
+  appliedTally = pendingTally;
   hasPendingTally = false;
 
   #if DEBUG_HOT
   Serial.print(F("[VMIX] "));
-  Serial.println(lastValidTallyData);
+  printFrame(appliedTally);
   #endif
 }
 
 // Map or override changed (TAL-09): show the current vMix state again.
-// While override was off the data kept arriving into lastValidTallyData.
+// While override was off the data kept arriving into appliedTally.
 void VmixConnector::reapply() {
-  if (lastValidTallyData[0] != '\0') {
-    applyTallyDirectly(lastValidTallyData);
+  if (appliedTally.n != 0) {
+    applyTallyDirectly(appliedTally);
   } else {
     TallyManager::clearAll();
   }
@@ -426,26 +466,37 @@ void VmixConnector::pollTally() {
 }
 
 bool VmixConnector::setVmixIP(const byte vmixip[4]) {
+  // BOOT-11: a host address, not ours and not our network or broadcast
+  // address. Outside the local subnet is allowed (routed), with a warning.
+  IPAddress ip(vmixip);
+  if (!NetworkManager::isHostIP(vmixip) || ip == NetworkManager::getLocalIP() ||
+      NetworkManager::isLocalNetOrBroadcast(vmixip)) {
+    Serial.print(F("Error: not a usable vMix address: "));
+    printVmixIP(vmixip);
+    Serial.println();
+    return false;
+  }
+
   // Close the old connection while the old IP still identifies it as ours
   closeSocket(true);
   wasConnected = false;
 
   memcpy(_vmixip, vmixip, 4);
+  StorageManager::saveVmixIP(vmixip);
 
-  StorageManager::writeInt(EEPROM_VMIX_IP0, vmixip[0]);
-  StorageManager::writeInt(EEPROM_VMIX_IP1, vmixip[1]);
-  StorageManager::writeInt(EEPROM_VMIX_IP2, vmixip[2]);
-  StorageManager::writeInt(EEPROM_VMIX_IP3, vmixip[3]);
-
-  Serial.println(F("vMix IP saved permanently to EEPROM"));
+  Serial.print(F("vMix IP saved: "));
   printVmixIP(vmixip);
   Serial.println();
+  if (!NetworkManager::inLocalSubnet(vmixip)) {
+    Serial.println(F("Warning: vMix IP is outside the local subnet (needs the gateway)"));
+  }
 
   // The old vMix state no longer applies
   clearTally();
 
   // Attempted on the next processData() pass, outside the HTTP handler
-  return _connectEnabled ? connect() : false;
+  if (_connectEnabled) connect();
+  return true;
 }
 
 void VmixConnector::getVmixIP(byte vmixip[4]) {
@@ -496,28 +547,26 @@ void VmixConnector::reconnectNow() {
   }
 }
 
-void VmixConnector::applyTallyDirectly(const char* tallyData) {
+void VmixConnector::applyTallyDirectly(const TallyFrame& tallyData) {
   #ifdef DEBUG_VMIX
   Serial.print(F("[VMIX] Data: "));
-  Serial.println(tallyData);
+  printFrame(tallyData);
   #endif
 
   bool states[MAX_CAMERAS + 1][2] = {{false}};
 
-  // Walk the map slots, not the string: any input 1..MAX_VMIX_INPUTS works and
+  // Walk the map slots, not the line: any input 1..MAX_VMIX_INPUTS works and
   // several inputs on one camera are OR-ed instead of overwriting each other.
   // An empty slot reads as 0/0 and is skipped (TAL-07).
-  byte length = (byte)strnlen(tallyData, MAX_VMIX_INPUTS);
-
   for (byte slot = 0; slot < MAXTALLIES; slot++) {
     byte input, cameraId;
     TallyManager::getMapping(slot, input, cameraId);
 
-    if (input < 1 || input > length || cameraId < 1 || cameraId > MAX_CAMERAS) continue;
+    if (input < 1 || input > tallyData.n || cameraId < 1 || cameraId > MAX_CAMERAS) continue;
 
-    char state = tallyData[input - 1];
-    if (state == '1') states[cameraId][0] = true;       // Program
-    else if (state == '2') states[cameraId][1] = true;  // Preview
+    uint8_t state = frameGet(tallyData, input - 1);
+    if (state == 1) states[cameraId][0] = true;       // Program
+    else if (state == 2) states[cameraId][1] = true;  // Preview
   }
 
   // Program wins over preview

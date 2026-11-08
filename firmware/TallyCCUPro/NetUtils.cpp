@@ -60,6 +60,16 @@ bool stableTXRD(uint8_t s, uint16_t* out) {
   return false;
 }
 
+bool stableRSR(uint8_t s, uint16_t* out) {
+  uint16_t prev = W5100.readSnRX_RSR(s);
+  for (uint8_t i = 0; i < 4; i++) {
+    uint16_t v = W5100.readSnRX_RSR(s);
+    if (v == prev) { *out = v; return true; }
+    prev = v;
+  }
+  return false;
+}
+
 // No SEND of ours in flight. Caller holds the SPI transaction.
 bool idleLocked(uint8_t s) {
   uint8_t bit = (uint8_t)(1 << s);
@@ -131,6 +141,21 @@ int16_t queueSome(uint8_t s, const uint8_t* buf, size_t len, size_t minChunk) {
   return ret;
 }
 
+// Caller holds the SPI transaction (both)
+void readPeerLocked(uint8_t s, NetUtils::Peer* p) {
+  W5100.readSnDIPR(s, (uint8_t*)&p->ip);
+  p->port = W5100.readSnDPORT(s);
+  p->lport = W5100.readSnPORT(s);
+}
+
+// A LISTEN keeps the old peer registers: hence the state check
+bool samePeerLocked(uint8_t s, uint8_t sr, const NetUtils::Peer& p) {
+  if (!inConnection(sr)) return false;
+  NetUtils::Peer q;
+  readPeerLocked(s, &q);
+  return q.ip == p.ip && q.port == p.port && q.lport == p.lport;
+}
+
 // The index may already belong to a new LISTEN or connection: close only a
 // TCP connection, and release the client without stop() (its DISCON and
 // 1 s wait would hit whatever now uses the index).
@@ -190,21 +215,85 @@ bool txIdle(EthernetClient& c) {
   return idle;
 }
 
-void closeGracefully(EthernetClient& c, unsigned long timeoutMs) {
+int16_t txRoom(EthernetClient& c) {
+  uint8_t s = c.getSocketNumber();
+  if (s >= MAX_SOCK_NUM) return -1;
+  int16_t ret = 0;
+  SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
+  if (!canSend(W5100.readSnSR(s))) {
+    s_inflight &= (uint8_t)~(1 << s);
+    ret = -1;
+  } else if (idleLocked(s)) {
+    uint16_t fsr;
+    if (stableFSR(s, &fsr)) ret = (int16_t)(fsr < W5100.SSIZE ? fsr : W5100.SSIZE);
+  }
+  SPI.endTransaction();
+  return ret;
+}
+
+int8_t sendFin(EthernetClient& c) {
+  uint8_t s = c.getSocketNumber();
+  if (s >= MAX_SOCK_NUM) return -1;
+  int8_t ret = 0;
+  SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
+  if (!canSend(W5100.readSnSR(s))) {
+    s_inflight &= (uint8_t)~(1 << s);
+    ret = -1;
+  } else if (idleLocked(s)) {
+    W5100.execCmdSn(s, Sock_DISCON);   // FIN behind data already on the wire
+    ret = 1;
+  }
+  SPI.endTransaction();
+  return ret;
+}
+
+size_t peek(EthernetClient& c, uint8_t* buf, size_t len) {
+  uint8_t s = c.getSocketNumber();
+  if (s >= MAX_SOCK_NUM || len == 0) return 0;
+  size_t n = 0;
+  SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
+  uint16_t rsr;
+  if (stableRSR(s, &rsr) && rsr > 0) {
+    n = rsr < len ? rsr : len;
+    uint16_t off = W5100.readSnRX_RD(s) & W5100.SMASK;
+    uint16_t src = W5100.RBASE(s) + off;
+    if (W5100.hasOffsetAddressMapping() || off + n <= W5100.SSIZE) {
+      W5100.read(src, buf, (uint16_t)n);
+    } else {
+      uint16_t first = W5100.SSIZE - off;
+      W5100.read(src, buf, first);
+      W5100.read(W5100.RBASE(s), buf + first, (uint16_t)(n - first));
+    }
+  }
+  SPI.endTransaction();
+  return n;
+}
+
+// poll() may re-arm a listener on the index once the connection is gone,
+// and a client may land there: the socket is only touched while it still
+// holds the connection it had on entry.
+void closeGracefully(EthernetClient& c, unsigned long timeoutMs, void (*poll)()) {
   uint8_t s = c.getSocketNumber();
   if (s >= MAX_SOCK_NUM) return;
   uint32_t start = millis();
+  Peer peer;
+  SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
+  readPeerLocked(s, &peer);
+  SPI.endTransaction();
   bool fin = false;
-  for (;;) {
+  for (bool first = true;; first = false) {
     wdt_reset();
+    if (poll && !first) poll();
     // Once SEND is done the data is on the wire: FIN goes behind it and
     // unACKed data is still retransmitted in FIN_WAIT. No delayed-ACK wait.
     SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
     uint8_t sr = W5100.readSnSR(s);
-    bool ok = canSend(sr) && idleLocked(s);
+    bool mine = samePeerLocked(s, sr, peer);
+    bool ok = mine && canSend(sr) && idleLocked(s);
     if (ok) W5100.execCmdSn(s, Sock_DISCON);
     SPI.endTransaction();
     if (ok) { fin = true; break; }
+    if (!mine) { c = EthernetClient(); return; }   // closed, or no longer ours
     if (!canSend(sr) || since(start) >= (uint32_t)timeoutMs) break;
   }
   if (fin) {
@@ -215,18 +304,38 @@ void closeGracefully(EthernetClient& c, unsigned long timeoutMs) {
     for (;;) {
       wdt_reset();
       SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
-      uint8_t sr = W5100.readSnSR(s);
+      bool mine = samePeerLocked(s, W5100.readSnSR(s), peer);
       SPI.endTransaction();
-      if (sr == SnSR::CLOSED || since(t0) >= finWait) break;
+      if (!mine) { c = EthernetClient(); return; }   // closed, or no longer ours
+      if (since(t0) >= finWait) break;
+      if (poll) poll();
     }
   }
-  forceClose(c, s);
+  forceClose(c, s);   // still ours: no poll() since the last check
 }
 
 void closeNow(EthernetClient& c) {
   uint8_t s = c.getSocketNumber();
   if (s >= MAX_SOCK_NUM) return;
   forceClose(c, s);
+}
+
+void peerOf(EthernetClient& c, Peer* p) {
+  memset(p, 0, sizeof(*p));
+  uint8_t s = c.getSocketNumber();
+  if (s >= MAX_SOCK_NUM) return;
+  SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
+  readPeerLocked(s, p);
+  SPI.endTransaction();
+}
+
+bool samePeer(EthernetClient& c, const Peer& p) {
+  uint8_t s = c.getSocketNumber();
+  if (s >= MAX_SOCK_NUM) return false;
+  SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
+  bool same = samePeerLocked(s, W5100.readSnSR(s), p);
+  SPI.endTransaction();
+  return same;
 }
 
 void setRetransmission(uint16_t timeoutMs, uint8_t count) {
@@ -335,16 +444,30 @@ int LineReader::poll(EthernetClient& c, size_t maxBytes, long* remaining) {
 }  // namespace NetUtils
 
 ClientBufferPrint::ClientBufferPrint(EthernetClient& c, uint8_t* buf, size_t size,
-                                     unsigned long timeoutMs)
-    : _c(&c), _buf(buf), _size(size), _len(0),
+                                     unsigned long timeoutMs, void (*poll)())
+    : _c(&c), _poll(poll), _buf(buf), _size(size), _len(0),
       _deadline(NetUtils::deadlineIn(timeoutMs)), _failed(false) {}
 
 ClientBufferPrint::ClientBufferPrint(uint8_t* buf, size_t size)
-    : _c(NULL), _buf(buf), _size(size), _len(0), _deadline(0), _failed(false) {}
+    : _c(NULL), _poll(NULL), _buf(buf), _size(size), _len(0), _deadline(0),
+      _failed(false) {}
 
 void ClientBufferPrint::fail() {
   _failed = true;
   setWriteError();
+}
+
+// Within the object's budget; with _poll, in slices with _poll() between
+size_t ClientBufferPrint::send(const uint8_t* data, size_t len) {
+  size_t done = 0;
+  for (;;) {
+    int32_t t = (int32_t)((uint32_t)_deadline - (uint32_t)millis());
+    unsigned long left = t > 0 ? (unsigned long)t : 0;
+    unsigned long slice = (_poll && left > NETUTILS_POLL_SLICE_MS) ? NETUTILS_POLL_SLICE_MS : left;
+    done += NetUtils::writeWithDeadline(*_c, data + done, len - done, slice);
+    if (done >= len || slice >= left || !NetUtils::sendable(*_c)) return done;
+    _poll();
+  }
 }
 
 size_t ClientBufferPrint::write(uint8_t b) {
@@ -357,9 +480,7 @@ size_t ClientBufferPrint::write(const uint8_t* data, size_t len) {
     size_t left = len - done;
     if (_c && _len == 0 && left >= _size) {
       // Block at least as large as the buffer: send it without copying
-      int32_t t = (int32_t)((uint32_t)_deadline - (uint32_t)millis());
-      size_t w = NetUtils::writeWithDeadline(*_c, data + done, left,
-                                             t > 0 ? (unsigned long)t : 0);
+      size_t w = send(data + done, left);
       done += w;
       if (w != left) fail();
       break;
@@ -385,9 +506,7 @@ int ClientBufferPrint::availableForWrite() {
 void ClientBufferPrint::flush() {
   if (!_c) return;
   if (!_failed && _len > 0) {
-    int32_t t = (int32_t)((uint32_t)_deadline - (uint32_t)millis());
-    size_t w = NetUtils::writeWithDeadline(*_c, _buf, _len, t > 0 ? (unsigned long)t : 0);
-    if (w != _len) fail();
+    if (send(_buf, _len) != _len) fail();
   }
   _len = 0;
 }

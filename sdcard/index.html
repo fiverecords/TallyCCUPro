@@ -2046,6 +2046,62 @@ body {
   pointer-events: none;
 }
 
+/* === PER-CAMERA UNKNOWN VALUES (UI-02) === */
+.val-unknown { opacity: 0.5; }
+.knob.val-unknown { opacity: 1; }
+.knob.val-unknown .knob-indicator { opacity: 0.2; }
+input.val-unknown:not([type="range"]), select.val-unknown { opacity: 1; color: var(--accent-orange); }
+.knob-input::placeholder, .slider-input::placeholder { color: var(--accent-orange); opacity: 1; }
+.toggle-group.val-unknown, .nd-mode-mini.val-unknown, .checkbox-group.val-unknown {
+  opacity: 1;
+  outline: 1px dashed var(--accent-orange);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+.color-wheel.val-unknown { opacity: 1; }
+.color-wheel.val-unknown .wheel-pointer { opacity: 0.3; }
+.cam-hint {
+  align-self: center;
+  margin-left: var(--spacing-sm);
+  font-size: 10px;
+  color: var(--accent-orange);
+  cursor: help;
+  white-space: nowrap;
+}
+.presets-hint, .memory-hint {
+  font-size: 9px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+.memory-hint { margin-top: var(--spacing-sm); }
+.wb-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.wb-actions .panel-action-btn { padding: 4px 8px; }
+.freq-select { margin-top: 2px; }
+.freq-select .toggle-btn { padding: 3px 8px; font-size: 9px; }
+
+/* === TALLY ON THE CAMERA BUTTONS (UI-18) === */
+.camera-btn.active-camera.tally-pgm,
+.camera-btn.active-camera.tally-pvw { box-shadow: inset 0 0 0 2px var(--accent-blue); }
+
+/* === DESTRUCTIVE BUTTONS APART (UI-17) === */
+.preset-card-actions { gap: 12px; }
+.preset-card-btn.save {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--accent-orange);
+  color: var(--accent-orange);
+}
+.memory-actions-gap { flex: 0 0 var(--spacing-md); }
+.memory-action-btn.save, .memory-action-btn.reset { flex: 0 0 auto; }
+
+/* === TOUCH (UI-21) === */
+html, body { overscroll-behavior-y: contain; }
+button, select, input[type="range"], .switch, .camera-btn, .toggle-btn {
+  touch-action: manipulation;
+}
+
 /* === RESPONSIVE === */
 @media (max-width: 1200px) {
   .color-wheels-row {
@@ -2074,6 +2130,10 @@ body {
   .camera-btn .cam-prefix {
     display: none;
   }
+
+  .cam-hint {
+    display: none;
+  }
   
   .toolbar {
     flex-direction: column;
@@ -2096,10 +2156,6 @@ body {
 </style>
 </head>
 <body>
-<script>
-// Early initialization of global variables
-let multiSubValues = {};
-</script>
 
 <!-- HEADER -->
 <header class="header">
@@ -2136,6 +2192,7 @@ let multiSubValues = {};
   <button id="camBtn6" class="camera-btn" onclick="setCameraId(6)"><span class="cam-prefix">CAM </span>6</button>
   <button id="camBtn7" class="camera-btn" onclick="setCameraId(7)"><span class="cam-prefix">CAM </span>7</button>
   <button id="camBtn8" class="camera-btn" onclick="setCameraId(8)"><span class="cam-prefix">CAM </span>8</button>
+  <span class="cam-hint" title="Each camera keeps its own values. Values shown dimmed with '?' are not known for the selected camera yet: nothing set them from this page and TallyCCU has not reported them since the page loaded.">? = unknown</span>
 </div>
 
 <!-- PRESETS PANEL (Slide-out) -->
@@ -2169,61 +2226,61 @@ let multiSubValues = {};
   
   <!-- Presets Section -->
   <div class="presets-section">
-    <div class="presets-section-title">Camera Presets</div>
+    <div class="presets-section-title">Camera Presets <span class="presets-hint">IDs 0-4, the same as Companion's Preset ID</span></div>
   </div>
   
   <div class="presets-list">
     <div class="preset-card">
       <div class="preset-card-header">
-        <span class="preset-card-number">1</span>
-        <input type="text" id="presetName_0" class="preset-name" value="Preset 1">
+        <span class="preset-card-number">0</span>
+        <input type="text" id="presetName_0" class="preset-name" value="" placeholder="Preset 0 (empty)" maxlength="31">
       </div>
       <div class="preset-card-actions">
-        <button class="preset-card-btn save" onclick="savePreset(0)">Save</button>
+        <button class="preset-card-btn save" onclick="savePreset(0)" title="Save the known values of this camera (asks before overwriting)">Save</button>
         <button class="preset-card-btn load" onclick="loadPreset(0)">Load</button>
       </div>
     </div>
     
     <div class="preset-card">
       <div class="preset-card-header">
-        <span class="preset-card-number">2</span>
-        <input type="text" id="presetName_1" class="preset-name" value="Preset 2">
+        <span class="preset-card-number">1</span>
+        <input type="text" id="presetName_1" class="preset-name" value="" placeholder="Preset 1 (empty)" maxlength="31">
       </div>
       <div class="preset-card-actions">
-        <button class="preset-card-btn save" onclick="savePreset(1)">Save</button>
+        <button class="preset-card-btn save" onclick="savePreset(1)" title="Save the known values of this camera (asks before overwriting)">Save</button>
         <button class="preset-card-btn load" onclick="loadPreset(1)">Load</button>
       </div>
     </div>
     
     <div class="preset-card">
       <div class="preset-card-header">
-        <span class="preset-card-number">3</span>
-        <input type="text" id="presetName_2" class="preset-name" value="Preset 3">
+        <span class="preset-card-number">2</span>
+        <input type="text" id="presetName_2" class="preset-name" value="" placeholder="Preset 2 (empty)" maxlength="31">
       </div>
       <div class="preset-card-actions">
-        <button class="preset-card-btn save" onclick="savePreset(2)">Save</button>
+        <button class="preset-card-btn save" onclick="savePreset(2)" title="Save the known values of this camera (asks before overwriting)">Save</button>
         <button class="preset-card-btn load" onclick="loadPreset(2)">Load</button>
       </div>
     </div>
     
     <div class="preset-card">
       <div class="preset-card-header">
-        <span class="preset-card-number">4</span>
-        <input type="text" id="presetName_3" class="preset-name" value="Preset 4">
+        <span class="preset-card-number">3</span>
+        <input type="text" id="presetName_3" class="preset-name" value="" placeholder="Preset 3 (empty)" maxlength="31">
       </div>
       <div class="preset-card-actions">
-        <button class="preset-card-btn save" onclick="savePreset(3)">Save</button>
+        <button class="preset-card-btn save" onclick="savePreset(3)" title="Save the known values of this camera (asks before overwriting)">Save</button>
         <button class="preset-card-btn load" onclick="loadPreset(3)">Load</button>
       </div>
     </div>
     
     <div class="preset-card">
       <div class="preset-card-header">
-        <span class="preset-card-number">5</span>
-        <input type="text" id="presetName_4" class="preset-name" value="Preset 5">
+        <span class="preset-card-number">4</span>
+        <input type="text" id="presetName_4" class="preset-name" value="" placeholder="Preset 4 (empty)" maxlength="31">
       </div>
       <div class="preset-card-actions">
-        <button class="preset-card-btn save" onclick="savePreset(4)">Save</button>
+        <button class="preset-card-btn save" onclick="savePreset(4)" title="Save the known values of this camera (asks before overwriting)">Save</button>
         <button class="preset-card-btn load" onclick="loadPreset(4)">Load</button>
       </div>
     </div>
@@ -2272,16 +2329,16 @@ let multiSubValues = {};
             <label>Aperture</label>
             <div class="knob-container">
               <div class="knob-with-buttons">
-                <button class="knob-pm-btn" onclick="adjustKnob('aperture', -1)">−</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('aperture', -1, event)" title="Fine step; Shift+click: coarse step">−</button>
                 <div class="knob" id="knob-aperture" data-min="0" data-max="1" data-value="0.5" data-param="aperture_normalised">
                   <div class="knob-track"></div>
                   <div class="knob-indicator"></div>
                 </div>
-                <button class="knob-pm-btn" onclick="adjustKnob('aperture', 1)">+</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('aperture', 1, event)" title="Fine step; Shift+click: coarse step">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="aperture_normalised_input" 
                 data-paramkey="aperture_normalised" data-paramtype="range" data-default="0"
-                value="0.00" min="0" max="1" step="0.05">
+                value="" placeholder="?" min="0" max="1" step="0.005">
             </div>
             <div class="knob-presets">
               <button onclick="setKnobValue('aperture', 0)">Min</button>
@@ -2295,16 +2352,16 @@ let multiSubValues = {};
             <label>Focus</label>
             <div class="knob-container">
               <div class="knob-with-buttons">
-                <button class="knob-pm-btn" onclick="adjustKnob('focus', -1)">−</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('focus', -1, event)" title="Fine step; Shift+click: coarse step">−</button>
                 <div class="knob" id="knob-focus" data-min="0" data-max="1" data-value="0" data-param="focus">
                   <div class="knob-track"></div>
                   <div class="knob-indicator"></div>
                 </div>
-                <button class="knob-pm-btn" onclick="adjustKnob('focus', 1)">+</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('focus', 1, event)" title="Fine step; Shift+click: coarse step">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="focus_input"
                 data-paramkey="focus" data-paramtype="range" data-default="0"
-                value="0.00" min="0" max="1" step="0.05">
+                value="" placeholder="?" min="0" max="1" step="0.005">
             </div>
             <div class="knob-presets">
               <button onclick="setKnobValue('focus', 0)">Near</button>
@@ -2318,16 +2375,16 @@ let multiSubValues = {};
             <label>Zoom</label>
             <div class="knob-container">
               <div class="knob-with-buttons">
-                <button class="knob-pm-btn" onclick="adjustKnob('zoom', -1)">−</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('zoom', -1, event)" title="Fine step; Shift+click: coarse step">−</button>
                 <div class="knob" id="knob-zoom" data-min="0" data-max="1" data-value="0" data-param="set_absolute_zoom_normalised">
                   <div class="knob-track"></div>
                   <div class="knob-indicator"></div>
                 </div>
-                <button class="knob-pm-btn" onclick="adjustKnob('zoom', 1)">+</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('zoom', 1, event)" title="Fine step; Shift+click: coarse step">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="set_absolute_zoom_normalised_input"
                 data-paramkey="set_absolute_zoom_normalised" data-paramtype="range" data-default="0"
-                value="0.00" min="0" max="1" step="0.05">
+                value="" placeholder="?" min="0" max="1" step="0.005">
             </div>
             <div class="knob-presets">
               <button onclick="setKnobValue('zoom', 0)">Wide</button>
@@ -2349,7 +2406,7 @@ let multiSubValues = {};
           <div class="slider-control wide">
             <div class="slider-header">
               <label>Continuous Zoom Speed</label>
-              <input type="number" class="slider-input param-control" id="set_continuous_zoom_speed_input"
+              <input type="number" class="slider-input param-control" id="set_continuous_zoom_speed_input" readonly
                 data-paramkey="set_continuous_zoom_speed" data-paramtype="range" data-default="0"
                 value="0" min="-1" max="1" step="0.1">
             </div>
@@ -2394,21 +2451,25 @@ let multiSubValues = {};
             <label>Shutter</label>
             <div class="knob-container">
               <div class="knob-with-buttons">
-                <button class="knob-pm-btn" onclick="adjustKnob('shutter', -1)">−</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('shutter', -1, event)">−</button>
                 <div class="knob" id="knob-shutter" data-min="24" data-max="2000" data-value="50" data-param="shutter_speed">
                   <div class="knob-track"></div>
                   <div class="knob-indicator"></div>
                 </div>
-                <button class="knob-pm-btn" onclick="adjustKnob('shutter', 1)">+</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('shutter', 1, event)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="shutter_speed_input"
                 data-paramkey="shutter_speed" data-paramtype="range" data-default="24"
-                value="24" min="24" max="2000" step="1">
+                value="" placeholder="?" min="24" max="2000" step="1">
             </div>
             <div class="knob-presets" id="shutter-presets">
-              <button onclick="setShutterToFrameRate()">1/60</button>
-              <button onclick="setShutterDouble()">1/120</button>
-              <button onclick="setShutterQuadruple()">1/240</button>
+              <button onclick="setShutterToFrameRate()">1/50</button>
+              <button onclick="setShutterDouble()">1/100</button>
+              <button onclick="setShutterQuadruple()">1/200</button>
+            </div>
+            <div class="toggle-group freq-select" id="shutter-freq" title="Lighting frequency for the shutter steps">
+              <button class="toggle-btn" data-value="50" onclick="setShutterFreq(50)">50 Hz</button>
+              <button class="toggle-btn" data-value="60" onclick="setShutterFreq(60)">60 Hz</button>
             </div>
           </div>
           
@@ -2416,16 +2477,16 @@ let multiSubValues = {};
             <label>Gain (dB)</label>
             <div class="knob-container">
               <div class="knob-with-buttons">
-                <button class="knob-pm-btn" onclick="adjustKnob('gain', -1)">−</button>
-                <div class="knob" id="knob-gain" data-min="-12" data-max="32" data-value="0" data-param="gain_db">
+                <button class="knob-pm-btn" onclick="adjustKnob('gain', -1, event)">−</button>
+                <div class="knob" id="knob-gain" data-min="-12" data-max="36" data-value="0" data-param="gain_db">
                   <div class="knob-track"></div>
                   <div class="knob-indicator"></div>
                 </div>
-                <button class="knob-pm-btn" onclick="adjustKnob('gain', 1)">+</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('gain', 1, event)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="gain_db_input"
                 data-paramkey="gain_db" data-paramtype="range" data-default="0"
-                value="0" min="-12" max="32" step="2">
+                value="" placeholder="?" min="-12" max="36" step="1">
             </div>
             <div class="knob-presets">
               <button onclick="setKnobValue('gain', 0)">0</button>
@@ -2439,16 +2500,16 @@ let multiSubValues = {};
             <label>ND Filter</label>
             <div class="knob-container">
               <div class="knob-with-buttons">
-                <button class="knob-pm-btn" onclick="adjustKnob('nd', -1)">−</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('nd', -1, event)">−</button>
                 <div class="knob" id="knob-nd" data-min="0" data-max="6" data-value="0" data-param="nd_filter_stop">
                   <div class="knob-track"></div>
                   <div class="knob-indicator"></div>
                 </div>
-                <button class="knob-pm-btn" onclick="adjustKnob('nd', 1)">+</button>
+                <button class="knob-pm-btn" onclick="adjustKnob('nd', 1, event)">+</button>
               </div>
               <input type="number" class="knob-input param-control" id="nd_filter_stop_0_input"
                 data-paramkey="nd_filter_stop" data-paramtype="sub-range" data-subindex="0" data-default="0"
-                value="0" min="0" max="6" step="1">
+                value="" placeholder="?" min="0" max="6" step="1">
             </div>
             <div class="knob-presets">
               <button onclick="setKnobValue('nd', 0)">Clear</button>
@@ -2463,19 +2524,16 @@ let multiSubValues = {};
           </div>
           
         </div>
-        <script>multiSubValues["nd_filter_stop"] = [0, 0];</script>
       </div>
     </div>
     
     <div class="control-panel">
       <div class="control-panel-header">
         <span class="control-panel-title">🌡️ White Balance</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:11px;color:var(--text-secondary);">Auto WB</span>
-          <label class="switch">
-            <input type="checkbox" id="auto_wb_toggle" onchange="toggleAutoWB(this)">
-            <span class="switch-slider"></span>
-          </label>
+        <div class="wb-actions">
+          <button class="panel-action-btn" onclick="triggerVoid('set_auto_wb')" title="One-push auto white balance: the camera picks a balance, then unknown here">One-push AWB</button>
+          <button class="panel-action-btn" onclick="triggerVoid('restore_auto_wb')" title="Back to the last auto white balance, then unknown here">Restore AWB</button>
+          <button class="panel-action-btn" onclick="applyManualWB()" title="Send the manual balance shown below again">Apply manual</button>
         </div>
       </div>
       <div class="control-panel-body">
@@ -2495,7 +2553,7 @@ let multiSubValues = {};
                 data-paramkey="manual_white_balance" data-paramtype="sub-range" data-subindex="0"
                 min="2500" max="10000" step="100" value="5600" data-default="5600"
                 oninput="styledSliderInput('manual_white_balance', 0, this)"
-                onchange="multiSubOnChange('manual_white_balance')">
+                onchange="subSliderChange('manual_white_balance', 0, this)">
             </div>
             <div class="slider-labels"><span>2500K</span><span>6250K</span><span>10000K</span></div>
           </div>
@@ -2514,12 +2572,11 @@ let multiSubValues = {};
                 data-paramkey="manual_white_balance" data-paramtype="sub-range" data-subindex="1"
                 min="-50" max="50" step="1" value="10" data-default="10"
                 oninput="styledSliderInput('manual_white_balance', 1, this)"
-                onchange="multiSubOnChange('manual_white_balance')">
+                onchange="subSliderChange('manual_white_balance', 1, this)">
             </div>
             <div class="slider-labels"><span>Green</span><span>Magenta</span></div>
           </div>
         </div>
-        <script>multiSubValues["manual_white_balance"] = [5600, 10];</script>
       </div>
     </div>
     
@@ -2572,7 +2629,8 @@ let multiSubValues = {};
               <select class="styled-select param-control" id="display_lut_0_select" style="flex:1;"
                 data-paramkey="display_lut" data-paramtype="select" data-subindex="0" data-default="0"
                 onchange="multiSubSelectChange('display_lut', 0, this)">
-                <option value="0" selected>None</option>
+                <option value="" hidden>?</option>
+                <option value="0">None</option>
                 <option value="1">Custom</option>
                 <option value="2">Film to Video</option>
                 <option value="3">Film to Ext Video</option>
@@ -2585,7 +2643,6 @@ let multiSubValues = {};
               </label>
             </div>
           </div>
-          <script>multiSubValues["display_lut"] = [0, 0];</script>
           
         </div>
       </div>
@@ -2603,13 +2660,14 @@ let multiSubValues = {};
             <select class="styled-select param-control" id="video_mode_2_select"
               data-paramkey="video_mode" data-paramtype="select" data-subindex="2" data-default="6"
               onchange="multiSubSelectChange('video_mode', 2, this)">
+              <option value="" hidden>?</option>
               <option value="0">NTSC</option>
               <option value="1">PAL</option>
               <option value="2">720p</option>
               <option value="3">1080p</option>
               <option value="4">2K DCI</option>
               <option value="5">2K 16:9</option>
-              <option value="6" selected>UHD</option>
+              <option value="6">UHD</option>
               <option value="7">3K Anamorphic</option>
               <option value="8">4K DCI</option>
               <option value="9">4K 16:9</option>
@@ -2649,7 +2707,6 @@ let multiSubValues = {};
           </div>
           
         </div>
-        <script>multiSubValues["video_mode"] = [60, 0, 6, 0, 0];</script>
         <input type="hidden" id="video_mode_4_range" class="param-control" data-paramkey="video_mode" data-paramtype="sub-range" data-subindex="4" value="0" data-default="0">
       </div>
     </div>
@@ -2685,7 +2742,7 @@ let multiSubValues = {};
           </div>
           <div class="wheel-master">
             <input type="range" class="master-slider lift" min="-2" max="2" step="0.01" value="0" id="lift-master"
-              oninput="updateWheelMaster('lift', this.value)">
+              oninput="wheelMasterInput('lift', this)" onchange="wheelMasterChange('lift', this)">
           </div>
           <div class="wheel-values">
             <div class="wheel-value"><label class="r">R</label><input type="text" id="lift-r" value="0.00" readonly></div>
@@ -2706,7 +2763,7 @@ let multiSubValues = {};
           </div>
           <div class="wheel-master">
             <input type="range" class="master-slider gamma" min="-4" max="4" step="0.01" value="0" id="gamma-master"
-              oninput="updateWheelMaster('gamma', this.value)">
+              oninput="wheelMasterInput('gamma', this)" onchange="wheelMasterChange('gamma', this)">
           </div>
           <div class="wheel-values">
             <div class="wheel-value"><label class="r">R</label><input type="text" id="gamma-r" value="0.00" readonly></div>
@@ -2727,7 +2784,7 @@ let multiSubValues = {};
           </div>
           <div class="wheel-master">
             <input type="range" class="master-slider gain" min="0" max="15.99" step="0.01" value="1" id="gain-master"
-              oninput="updateWheelMaster('gain', this.value)">
+              oninput="wheelMasterInput('gain', this)" onchange="wheelMasterChange('gain', this)">
           </div>
           <div class="wheel-values">
             <div class="wheel-value"><label class="r">R</label><input type="text" id="gain-r" value="1.00" readonly></div>
@@ -2748,7 +2805,7 @@ let multiSubValues = {};
           </div>
           <div class="wheel-master">
             <input type="range" class="master-slider offset" min="-8" max="8" step="0.01" value="0" id="offset-master"
-              oninput="updateWheelMaster('offset', this.value)">
+              oninput="wheelMasterInput('offset', this)" onchange="wheelMasterChange('offset', this)">
           </div>
           <div class="wheel-values">
             <div class="wheel-value"><label class="r">R</label><input type="text" id="offset-r" value="0.00" readonly></div>
@@ -2788,13 +2845,13 @@ let multiSubValues = {};
             <div class="cp-slider">
               <label>Contrast</label>
               <input type="range" min="0" max="2" step="0.01" value="1" id="cc-contrast"
-                oninput="updateContrastPivot()" onchange="sendContrastPivot()" ontouchend="sendContrastPivot()">
+                oninput="ccInput('contrast', this)" onchange="ccChange('contrast', this)">
               <span class="cc-value" id="cc-contrast-val">1.00</span>
             </div>
             <div class="cp-slider">
               <label>Pivot</label>
               <input type="range" min="0" max="1" step="0.01" value="0.5" id="cc-pivot"
-                oninput="updateContrastPivot()" onchange="sendContrastPivot()" ontouchend="sendContrastPivot()">
+                oninput="ccInput('pivot', this)" onchange="ccChange('pivot', this)">
               <span class="cc-value" id="cc-pivot-val">0.50</span>
             </div>
           </div>
@@ -2812,7 +2869,7 @@ let multiSubValues = {};
               <div class="hue-track-container">
                 <div class="hue-gradient"></div>
                 <input type="range" class="hue-slider" min="-1" max="1" step="0.01" value="0" id="cc-hue"
-                  oninput="updateHueSat()" onchange="sendHueSat()" ontouchend="sendHueSat()">
+                  oninput="ccInput('hue', this)" onchange="ccChange('hue', this)">
               </div>
               <span class="cc-value" id="cc-hue-val">0.00</span>
             </div>
@@ -2821,7 +2878,7 @@ let multiSubValues = {};
               <div class="sat-track-container">
                 <div class="sat-gradient"></div>
                 <input type="range" class="sat-slider" min="0" max="2" step="0.01" value="1" id="cc-saturation"
-                  oninput="updateHueSat()" onchange="sendHueSat()" ontouchend="sendHueSat()">
+                  oninput="ccInput('saturation', this)" onchange="ccChange('saturation', this)">
               </div>
               <span class="cc-value" id="cc-saturation-val">1.00</span>
             </div>
@@ -2831,36 +2888,6 @@ let multiSubValues = {};
       </div>
     </div>
     
-    <!-- Hidden inputs for sync -->
-    <div style="display:none;">
-      <script>multiSubValues["contrast_adjust"] = [0.5, 1.0];</script>
-      <input type="hidden" id="contrast_adjust_0_range" class="param-control" data-paramkey="contrast_adjust" data-paramtype="sub-range" data-subindex="0" value="0.5" data-default="0.5">
-      <input type="hidden" id="contrast_adjust_1_range" class="param-control" data-paramkey="contrast_adjust" data-paramtype="sub-range" data-subindex="1" value="1.0" data-default="1.0">
-      <script>multiSubValues["color_adjust"] = [0, 1.0];</script>
-      <input type="hidden" id="color_adjust_0_range" class="param-control" data-paramkey="color_adjust" data-paramtype="sub-range" data-subindex="0" value="0" data-default="0">
-      <input type="hidden" id="color_adjust_1_range" class="param-control" data-paramkey="color_adjust" data-paramtype="sub-range" data-subindex="1" value="1.0" data-default="1.0">
-      <script>multiSubValues["lift_adjust"] = [0, 0, 0, 0];</script>
-      <input type="hidden" id="lift_adjust_0_range" class="param-control" data-paramkey="lift_adjust" data-paramtype="sub-range" data-subindex="0" value="0" data-default="0">
-      <input type="hidden" id="lift_adjust_1_range" class="param-control" data-paramkey="lift_adjust" data-paramtype="sub-range" data-subindex="1" value="0" data-default="0">
-      <input type="hidden" id="lift_adjust_2_range" class="param-control" data-paramkey="lift_adjust" data-paramtype="sub-range" data-subindex="2" value="0" data-default="0">
-      <input type="hidden" id="lift_adjust_3_range" class="param-control" data-paramkey="lift_adjust" data-paramtype="sub-range" data-subindex="3" value="0" data-default="0">
-      <script>multiSubValues["gamma_adjust"] = [0, 0, 0, 0];</script>
-      <input type="hidden" id="gamma_adjust_0_range" class="param-control" data-paramkey="gamma_adjust" data-paramtype="sub-range" data-subindex="0" value="0" data-default="0">
-      <input type="hidden" id="gamma_adjust_1_range" class="param-control" data-paramkey="gamma_adjust" data-paramtype="sub-range" data-subindex="1" value="0" data-default="0">
-      <input type="hidden" id="gamma_adjust_2_range" class="param-control" data-paramkey="gamma_adjust" data-paramtype="sub-range" data-subindex="2" value="0" data-default="0">
-      <input type="hidden" id="gamma_adjust_3_range" class="param-control" data-paramkey="gamma_adjust" data-paramtype="sub-range" data-subindex="3" value="0" data-default="0">
-      <script>multiSubValues["gain_adjust"] = [1.0, 1.0, 1.0, 1.0];</script>
-      <input type="hidden" id="gain_adjust_0_range" class="param-control" data-paramkey="gain_adjust" data-paramtype="sub-range" data-subindex="0" value="1.0" data-default="1.0">
-      <input type="hidden" id="gain_adjust_1_range" class="param-control" data-paramkey="gain_adjust" data-paramtype="sub-range" data-subindex="1" value="1.0" data-default="1.0">
-      <input type="hidden" id="gain_adjust_2_range" class="param-control" data-paramkey="gain_adjust" data-paramtype="sub-range" data-subindex="2" value="1.0" data-default="1.0">
-      <input type="hidden" id="gain_adjust_3_range" class="param-control" data-paramkey="gain_adjust" data-paramtype="sub-range" data-subindex="3" value="1.0" data-default="1.0">
-      <script>multiSubValues["offset_adjust"] = [0, 0, 0, 0];</script>
-      <input type="hidden" id="offset_adjust_0_range" class="param-control" data-paramkey="offset_adjust" data-paramtype="sub-range" data-subindex="0" value="0" data-default="0">
-      <input type="hidden" id="offset_adjust_1_range" class="param-control" data-paramkey="offset_adjust" data-paramtype="sub-range" data-subindex="1" value="0" data-default="0">
-      <input type="hidden" id="offset_adjust_2_range" class="param-control" data-paramkey="offset_adjust" data-paramtype="sub-range" data-subindex="2" value="0" data-default="0">
-      <input type="hidden" id="offset_adjust_3_range" class="param-control" data-paramkey="offset_adjust" data-paramtype="sub-range" data-subindex="3" value="0" data-default="0">
-      <input type="hidden" id="luma_mix_range" class="param-control" data-paramkey="luma_mix" data-paramtype="range" value="1.0" data-default="1.0">
-    </div>
     
   </div>
 
@@ -2903,7 +2930,7 @@ let multiSubValues = {};
                 data-paramkey="overlays" data-paramtype="sub-range" data-subindex="1"
                 min="0" max="100" step="10" value="100" data-default="100"
                 oninput="styledSliderInput('overlays', 1, this)"
-                onchange="multiSubOnChange('overlays')">
+                onchange="subSliderChange('overlays', 1, this)">
               <input type="number" class="slider-input" id="overlays_1_input" value="100" min="0" max="100" style="width:50px;margin-left:8px;">
             </div>
           </div>
@@ -2918,7 +2945,7 @@ let multiSubValues = {};
                 data-paramkey="overlays" data-paramtype="sub-range" data-subindex="2"
                 min="0" max="100" step="5" value="90" data-default="90"
                 oninput="styledSliderInput('overlays', 2, this)"
-                onchange="multiSubOnChange('overlays')">
+                onchange="subSliderChange('overlays', 2, this)">
               <input type="number" class="slider-input" id="overlays_2_input" value="90" min="0" max="100" style="width:50px;margin-left:8px;">
             </div>
           </div>
@@ -2936,7 +2963,6 @@ let multiSubValues = {};
           </div>
           
         </div>
-        <script>multiSubValues["overlays"] = [5, 100, 90, 11];</script>
       </div>
     </div>
     
@@ -3023,6 +3049,7 @@ let multiSubValues = {};
               <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_hdmi"> HDMI</label>
               <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_evf"> EVF</label>
               <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_main_sdi"> Main SDI</label>
+              <label class="checkbox-item"><input type="checkbox" id="exposure_and_focus_tools_front_sdi"> Front SDI</label>
             </div>
             <input type="hidden" id="exposure_and_focus_tools_1_range" class="param-control"
               data-paramkey="exposure_and_focus_tools" data-paramtype="sub-range" data-subindex="1" data-default="0" value="0">
@@ -3050,6 +3077,7 @@ let multiSubValues = {};
               <button class="toggle-btn" data-value="1" onclick="setFocusAssist(1, 1, this)">Green</button>
               <button class="toggle-btn" data-value="2" onclick="setFocusAssist(1, 2, this)">Blue</button>
               <button class="toggle-btn" data-value="3" onclick="setFocusAssist(1, 3, this)">White</button>
+              <button class="toggle-btn" data-value="4" onclick="setFocusAssist(1, 4, this)">Black</button>
             </div>
             <input type="hidden" id="focus_assist_1_range" class="param-control"
               data-paramkey="focus_assist" data-paramtype="sub-range" data-subindex="1" data-default="0" value="0">
@@ -3064,7 +3092,7 @@ let multiSubValues = {};
               <input type="range" class="styled-slider param-control" id="color_bars_display_time_seconds_range"
                 data-paramkey="color_bars_display_time_seconds" data-paramtype="range"
                 min="0" max="30" step="1" value="0" data-default="0"
-                oninput="simpleSliderInput('color_bars_display_time_seconds', this)" onchange="simpleSliderChange('color_bars_display_time_seconds', this)">
+                oninput="simpleSliderInput('color_bars_display_time_seconds', this)" onchange="sendColorBars(this.value, this)">
               <input type="number" class="slider-input" id="color_bars_display_time_seconds_input" value="0" min="0" max="30" style="width:50px;margin-left:8px;">
             </div>
           </div>
@@ -3080,7 +3108,6 @@ let multiSubValues = {};
           </div>
           
         </div>
-        <script>multiSubValues["exposure_and_focus_tools"] = [0, 0]; multiSubValues["focus_assist"] = [1, 0];</script>
       </div>
     </div>
     
@@ -3122,7 +3149,7 @@ let multiSubValues = {};
               data-paramkey="input_levels" data-paramtype="sub-range" data-subindex="0"
               min="0" max="1" step="0.1" value="0.5" data-default="0.5"
               oninput="styledSliderInput('input_levels', 0, this)"
-              onchange="multiSubOnChange('input_levels')">
+              onchange="subSliderChange('input_levels', 0, this)">
           </div>
           
           <div class="slider-control">
@@ -3137,11 +3164,10 @@ let multiSubValues = {};
               data-paramkey="input_levels" data-paramtype="sub-range" data-subindex="1"
               min="0" max="1" step="0.1" value="0.5" data-default="0.5"
               oninput="styledSliderInput('input_levels', 1, this)"
-              onchange="multiSubOnChange('input_levels')">
+              onchange="subSliderChange('input_levels', 1, this)">
           </div>
           
         </div>
-        <script>multiSubValues["input_levels"] = [0.5, 0.5];</script>
       </div>
     </div>
     
@@ -3318,11 +3344,11 @@ let multiSubValues = {};
               <button class="slider-reset" onclick="resetSlider('offset')">⟳</button>
               <input type="number" class="slider-input param-control" id="offset_input"
                 data-paramkey="offset" data-paramtype="range" data-default="0"
-                value="0" min="0" max="100" step="1">
+                value="" placeholder="?" min="-9999" max="9999" step="1">
             </div>
             <input type="range" class="styled-slider param-control" id="offset_range"
               data-paramkey="offset" data-paramtype="range"
-              min="0" max="100" step="1" value="0" data-default="0"
+              min="-100" max="100" step="1" value="0" data-default="0"
               oninput="simpleSliderInput('offset', this)" onchange="simpleSliderChange('offset', this)">
           </div>
           
@@ -3362,22 +3388,17 @@ let multiSubValues = {};
               <button class="memory-btn" id="memory_slot_select_btn_2" onclick="setMemoryPresetSelection(2)">Slot 3</button>
               <button class="memory-btn" id="memory_slot_select_btn_3" onclick="setMemoryPresetSelection(3)">Slot 4</button>
               <button class="memory-btn" id="memory_slot_select_btn_4" onclick="setMemoryPresetSelection(4)">Slot 5</button>
-              <button class="memory-btn" id="memory_slot_select_btn_5" onclick="setMemoryPresetSelection(5)">Slot 6</button>
+              <button class="memory-btn" id="memory_slot_select_btn_5" onclick="setMemoryPresetSelection(5)" title="Only on this page: Companion has slots 1-5">Slot 6</button>
             </div>
             <div class="memory-actions">
               <button class="memory-action-btn recall" onclick="setMemoryPresetAction(2)">Recall</button>
-              <button class="memory-action-btn save" onclick="setMemoryPresetAction(1)">Save</button>
-              <button class="memory-action-btn reset" onclick="setMemoryPresetAction(0)">Reset</button>
+              <span class="memory-actions-gap"></span>
+              <button class="memory-action-btn save" onclick="setMemoryPresetAction(1)" title="Store the current position in the selected slot (asks first)">Save</button>
+              <button class="memory-action-btn reset" onclick="setMemoryPresetAction(0)" title="Clear the selected slot (asks first)">Reset</button>
             </div>
+            <div class="memory-hint">Slot N is Companion's Slot N (1-5)</div>
           </div>
           
-          <div style="display:none;">
-            <script>multiSubValues["pan_tilt_velocity"] = [0, 0]; multiSubValues["memory_preset"] = [0, 0];</script>
-            <input type="hidden" id="pan_tilt_velocity_0_range" class="param-control"
-              data-paramkey="pan_tilt_velocity" data-paramtype="sub-range" data-subindex="0" value="0" data-default="0">
-            <input type="hidden" id="pan_tilt_velocity_1_range" class="param-control"
-              data-paramkey="pan_tilt_velocity" data-paramtype="sub-range" data-subindex="1" value="0" data-default="0">
-          </div>
           
         </div>
       </div>
@@ -3385,7 +3406,6 @@ let multiSubValues = {};
     
   </div>
 
-</div>
   </main>
 </div>
 
@@ -3394,7 +3414,7 @@ let multiSubValues = {};
 // JAVASCRIPT - CORE FUNCTIONALITY
 // =============================================
 
-// === ESTADO GLOBAL ===
+// === GLOBAL STATE ===
 let currentCamera = 1;
 const MAX_CAMERAS = 8;
 const MAX_PRESETS = 5;
@@ -3407,26 +3427,20 @@ window.addEventListener('unhandledrejection', (e) => {
     }
 });
 
-const cameraValues = {};
-for (let i = 1; i <= MAX_CAMERAS; i++) cameraValues[i] = {};
+const byId = (id) => document.getElementById(id);
 
-// multiSubValues ya definido al inicio del body
+// === STORAGE (UI-27) ===
+// localStorage may be blocked (kiosk or corporate profile) or full: it must
+// never stop the page, so every access goes through these
+function safeGet(key) {
+    try { return window.localStorage.getItem(key); } catch (e) { return null; }
+}
+
+function safeSet(key, value) {
+    try { window.localStorage.setItem(key, value); return true; } catch (e) { return false; }
+}
+
 let selectedParamGroups = {};
-
-// Never stored in presets nor sent by Reset: video format and TYPE_VOID actions
-const NO_PRESET_RESET_PARAMS = new Set([
-    'video_mode',
-    'instantaneous_autofocus', 'instantaneous_auto_aperture',
-    'set_auto_wb', 'restore_auto_wb', 'correction_reset_default'
-]);
-// Never stored in presets: commands with a visible or motion effect
-const NO_PRESET_PARAMS = new Set([
-    ...NO_PRESET_RESET_PARAMS,
-    'color_bars_display_time_seconds',
-    'pan_tilt_velocity', 'set_continuous_zoom_speed', 'memory_preset'
-]);
-// Action params whose sync echo must not touch multiSubValues
-const NO_SYNC_MERGE_PARAMS = new Set(['pan_tilt_velocity', 'memory_preset']);
 
 // Firmware stores up to 31 bytes of preset name
 const PRESET_NAME_MAX_BYTES = 31;
@@ -3526,6 +3540,7 @@ async function checkRebootAfterOutage() {
 function setSyncState(state, detail = '') {
     linkState.sync = state;
     linkState.detail = detail;
+    if (state !== 'live' && tally.known) clearTally();
     renderLink();
 }
 
@@ -3572,20 +3587,26 @@ function describeRequest(url) {
     return (cam ? `CAM ${cam} ` : '') + what;
 }
 
+// Settings endpoints need this header (CSRF, SEC-01): another site cannot
+// add it to a request without a preflight, and TallyCCU refuses preflights
+const CSRF_HEADERS = { 'X-TallyCCU': '1' };
+
 // Every CCU / API request goes through here (UI-14). Never rejects: resolves
 // to the Response, or null when the Arduino did not answer in time. HTTP
 // errors show the server's reason in the notice unless opts.quiet.
-// opts: { timeout, keepalive, quiet, init } (init: extra fetch options)
+// opts: { timeout, keepalive, quiet, protect, init } (init: extra fetch
+// options; protect: send CSRF_HEADERS)
 const CCU_TIMEOUT_MS = 4000;
 
 async function sendCcu(url, opts = {}) {
     const ctrl = new AbortController();
     // Not cleared: it also bounds reading the body (a no-op once read)
     setTimeout(() => ctrl.abort(), opts.timeout || CCU_TIMEOUT_MS);
+    const init = { cache: 'no-store', ...(opts.init || {}) };
+    if (opts.protect) init.headers = { ...(init.headers || {}), ...CSRF_HEADERS };
     let r = null;
     try {
-        r = await fetch(url, { cache: 'no-store', ...(opts.init || {}),
-            signal: ctrl.signal, keepalive: !!opts.keepalive });
+        r = await fetch(url, { ...init, signal: ctrl.signal, keepalive: !!opts.keepalive });
     } catch (e) {}
     setReachable(r !== null);
     if (!opts.quiet) {
@@ -3599,82 +3620,614 @@ async function sendCcu(url, opts = {}) {
     return r;
 }
 
-// === FUNCIONES DE CACHÉ ===
-function cacheValue(paramKey, value, subIndex = null) {
-    const key = subIndex !== null ? `${paramKey}[${subIndex}]` : paramKey;
-    cameraValues[currentCamera][key] = value;
+// JSON body of a quiet sendCcu GET, or null if it failed (UIS-04)
+async function getJson(url) {
+    const r = await sendCcu(url, { quiet: true });
+    if (!r || !r.ok) return null;
+    try { return await r.json(); } catch (e) { return null; }
 }
 
-function restoreUIFromCache() {
-    const cache = cameraValues[currentCamera];
-    document.querySelectorAll('.param-control').forEach(el => {
-        const paramKey = el.dataset.paramkey;
-        const subIndex = el.dataset.subindex;
-        const key = subIndex !== undefined ? `${paramKey}[${subIndex}]` : paramKey;
-        if (cache[key] !== undefined) updateControlValue(el, cache[key]);
+// === PARAMETER TABLE (UI-26) ===
+// What the page knows about each camera parameter it shows:
+//   g: preset / reset group, n: sub-values, r: [min, max] per sub-value
+//   (the last one repeats), def: value sent by 'Reset to Defaults' and shown
+//   dimmed while unknown (null: Reset leaves it; 'freq': 1/50 or 1/60),
+//   dec: decimals sent, subs: sub-value names, bool: accepts true/false,
+//   fixed: sub-values with a single valid value, noPreset: never stored in
+//   presets nor reset (video format), action: a command, not a state.
+// Ranges follow the BMD protocol and the Companion module where they agree.
+const P = {
+    // Lens positions: Reset leaves them (it would close the iris)
+    aperture_normalised: { g: 'lens', label: 'Iris', n: 1, r: [[0, 1]], def: null, dec: 3 },
+    focus: { g: 'lens', label: 'Focus', n: 1, r: [[0, 1]], def: null, dec: 3 },
+    set_absolute_zoom_normalised: { g: 'lens', label: 'Zoom', n: 1, r: [[0, 1]], def: null, dec: 3 },
+    optical_image_stabilisation: { g: 'lens', label: 'Image stabilisation', n: 1, r: [[0, 1]], def: 1, dec: 0, bool: true },
+
+    shutter_speed: { g: 'video', label: 'Shutter', n: 1, r: [[24, 2000]], def: 'freq', dec: 0 },
+    gain_db: { g: 'video', label: 'Gain', n: 1, r: [[-12, 36]], def: 0, dec: 0 },
+    nd_filter_stop: { g: 'video', label: 'ND filter', n: 2, r: [[0, 6], [0, 2]], def: [0, 0], dec: 2,
+        subs: ['stop', 'display mode'] },
+    manual_white_balance: { g: 'video', label: 'White balance', n: 2, r: [[2500, 10000], [-50, 50]],
+        def: [5600, 10], dec: 0, subs: ['temperature', 'tint'] },
+    dynamic_range_mode: { g: 'video', label: 'Dynamic range', n: 1, r: [[0, 2]], def: 2, dec: 0 },
+    video_sharpening_level: { g: 'video', label: 'Sharpening', n: 1, r: [[0, 3]], def: 0, dec: 0 },
+    set_auto_exposure_mode: { g: 'video', label: 'Auto exposure', n: 1, r: [[0, 4]], def: 0, dec: 0 },
+    display_lut: { g: 'video', label: 'Display LUT', n: 2, r: [[0, 3], [0, 1]], def: [0, 0], dec: 0,
+        subs: ['LUT', 'LUT on/off'] },
+    video_mode: { g: 'video', label: 'Video mode', n: 5, r: [[0, 255], [0, 1], [0, 255], [0, 1], [0, 255]],
+        def: null, dec: 0, subs: ['frame rate', 'M-rate', 'resolution', 'scan mode', 'color space'],
+        fixed: { 4: 0 }, noPreset: true },
+
+    lift_adjust: { g: 'color_correction', label: 'Lift', n: 4, r: [[-2, 2]], def: [0, 0, 0, 0], dec: 2,
+        subs: ['R', 'G', 'B', 'Y (master)'] },
+    gamma_adjust: { g: 'color_correction', label: 'Gamma', n: 4, r: [[-4, 4]], def: [0, 0, 0, 0], dec: 2,
+        subs: ['R', 'G', 'B', 'Y (master)'] },
+    gain_adjust: { g: 'color_correction', label: 'Gain', n: 4, r: [[0, 15.99]], def: [1, 1, 1, 1], dec: 2,
+        subs: ['R', 'G', 'B', 'Y (master)'] },
+    offset_adjust: { g: 'color_correction', label: 'Offset', n: 4, r: [[-8, 8]], def: [0, 0, 0, 0], dec: 2,
+        subs: ['R', 'G', 'B', 'Y (master)'] },
+    contrast_adjust: { g: 'color_correction', label: 'Contrast', n: 2, r: [[0, 1], [0, 2]], def: [0.5, 1], dec: 2,
+        subs: ['pivot', 'contrast'] },
+    color_adjust: { g: 'color_correction', label: 'Hue/Saturation', n: 2, r: [[-1, 1], [0, 2]], def: [0, 1], dec: 2,
+        subs: ['hue', 'saturation'] },
+    luma_mix: { g: 'color_correction', label: 'Lum mix', n: 1, r: [[0, 1]], def: 1, dec: 2 },
+
+    overlays: { g: 'output', label: 'Overlays', n: 4, r: [[0, 10], [0, 100], [0, 100], [0, 15]],
+        def: [5, 100, 90, 11], dec: 0, subs: ['frame guide', 'guide opacity', 'safe area', 'grid'] },
+
+    brightness: { g: 'display', label: 'Brightness', n: 1, r: [[0, 1]], def: 1, dec: 2 },
+    zebra_level: { g: 'display', label: 'Zebra level', n: 1, r: [[0, 1]], def: 0.5, dec: 2 },
+    peaking_level: { g: 'display', label: 'Peaking level', n: 1, r: [[0, 1]], def: 0.9, dec: 2 },
+    exposure_and_focus_tools: { g: 'display', label: 'Exposure & focus tools', n: 2, r: [[0, 7], [0, 31]],
+        def: [0, 0], dec: 0, subs: ['tools', 'target displays'] },
+    focus_assist: { g: 'display', label: 'Focus assist', n: 2, r: [[0, 1], [0, 4]], def: [1, 0], dec: 0,
+        subs: ['method', 'line color'] },
+    timecode_source: { g: 'display', label: 'Timecode source', n: 1, r: [[0, 1]], def: 0, dec: 0 },
+    color_bars_display_time_seconds: { g: 'display', label: 'Color bars', n: 1, r: [[0, 30]], def: null, dec: 0,
+        noPreset: true, action: true },
+
+    mic_level: { g: 'audio', label: 'Mic level', n: 1, r: [[0, 1]], def: 0.7, dec: 2 },
+    headphone_level: { g: 'audio', label: 'Headphone level', n: 1, r: [[0, 1]], def: 1, dec: 2 },
+    headphone_program_mix: { g: 'audio', label: 'Program mix', n: 1, r: [[0, 1]], def: 0, dec: 2 },
+    speaker_level: { g: 'audio', label: 'Speaker level', n: 1, r: [[0, 1]], def: 1, dec: 2 },
+    input_type: { g: 'audio', label: 'Input type', n: 1, r: [[0, 3]], def: 0, dec: 0 },
+    input_levels: { g: 'audio', label: 'Input levels', n: 2, r: [[0, 1]], def: [0.5, 0.5], dec: 2,
+        subs: ['channel 1', 'channel 2'] },
+    phantom_power: { g: 'audio', label: 'Phantom power', n: 1, r: [[0, 1]], def: 0, dec: 0, bool: true },
+
+    tally_brightness: { g: 'tally', label: 'Tally brightness', n: 1, r: [[0, 1]], def: 1, dec: 2 },
+    front_tally_brightness: { g: 'tally', label: 'Front tally', n: 1, r: [[0, 1]], def: 1, dec: 2 },
+    rear_tally_brightness: { g: 'tally', label: 'Rear tally', n: 1, r: [[0, 1]], def: 1, dec: 2 },
+
+    source: { g: 'reference', label: 'Reference source', n: 1, r: [[0, 2]], def: 0, dec: 0 },
+    offset: { g: 'reference', label: 'Reference offset', n: 1, r: [[-9999, 9999]], def: 0, dec: 0 }
+};
+
+const GROUP_LABELS = {
+    lens: 'Lens', video: 'Video', color_correction: 'Color', output: 'Output', display: 'Display',
+    audio: 'Audio', tally: 'Tally', reference: 'Reference', ptz_control: 'PTZ'
+};
+
+// Keys from the stream, a preset or an element id: own entries only, never
+// inherited ones ('__proto__', 'constructor'...) (UI-24)
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+function isParam(key) {
+    return typeof key === 'string' && hasOwn(P, key);
+}
+
+function roundTo(v, dec) {
+    const m = 10 ** dec;
+    return Math.round(v * m) / m;
+}
+
+function clampSub(key, i, v) {
+    const meta = P[key];
+    const [lo, hi] = meta.r[Math.min(i, meta.r.length - 1)];
+    return roundTo(Math.min(hi, Math.max(lo, Number(v))), meta.dec);
+}
+
+// Clamped and rounded as sent; only for complete values
+function clampValue(key, value) {
+    const meta = P[key];
+    if (meta.n === 1) return clampSub(key, 0, value);
+    return Array.from({ length: meta.n }, (_, i) => clampSub(key, i, value[i]));
+}
+
+function encodeValue(key, value) {
+    const v = clampValue(key, value);
+    return Array.isArray(v) ? v.join(',') : String(v);
+}
+
+function formatFor(key, v) {
+    const dec = P[key].dec;
+    return (dec === 0 || Number.isInteger(v)) ? String(Math.round(v)) : Number(v).toFixed(dec);
+}
+
+function defaultOf(key, cam) {
+    const d = P[key].def;
+    return d === 'freq' ? shutterFreq(cam) : d;
+}
+
+// A value as the firmware applies it (parseFloatList): a list is positional,
+// an empty field is 0 and missing trailing fields are 0, so a scalar for a
+// multi-valued key means [v, 0, ...]. Malformed values were rejected by the
+// firmware and change nothing: null (UI-24).
+function normalizeValue(key, raw) {
+    const meta = P[key];
+    const parts = Array.isArray(raw) ? raw.map(String) : String(raw).split(',');
+    if (parts.length > meta.n) return null;
+    const nums = parts.map((p) => {
+        const t = p.trim();
+        if (meta.bool && /^(true|on|yes)$/i.test(t)) return 1;
+        if (meta.bool && /^(false|off|no)$/i.test(t)) return 0;
+        if (t === '') return parts.length > 1 ? 0 : NaN;
+        return Number(t);
+    });
+    if (!nums.every(Number.isFinite)) return null;
+    if (meta.n === 1) return meta.bool ? (nums[0] !== 0 ? 1 : 0) : nums[0];
+    while (nums.length < meta.n) nums.push(0);
+    return nums;
+}
+
+// === PER-CAMERA STATE (UI-02) ===
+// cams[cam].v[key]: what this page shows and sends for that camera, a number
+// or an array whose missing entries are unknown sub-values.
+// cams[cam].conf[key]: the last value the camera is known to have (stream
+// echo, accepted write, loaded preset). The protocol is write-only, so a
+// fresh page knows nothing until it sets a value or TallyCCU reports one
+// (Companion's state arrives as events). Nothing is shared between cameras.
+const cams = {};
+for (let i = 1; i <= MAX_CAMERAS; i++) cams[i] = { v: {}, conf: {}, memorySlot: 0 };
+
+function getV(cam, key) {
+    return cams[cam].v[key];
+}
+
+function isComplete(key, value) {
+    const meta = P[key];
+    if (meta.n === 1) return Number.isFinite(value);
+    if (!Array.isArray(value)) return false;
+    for (let i = 0; i < meta.n; i++) if (!Number.isFinite(value[i])) return false;
+    return true;
+}
+
+function knownValue(cam, key) {
+    const v = getV(cam, key);
+    return isComplete(key, v) ? v : undefined;
+}
+
+function copyValue(value) {
+    return Array.isArray(value) ? value.slice() : value;
+}
+
+function setV(cam, key, value) {
+    if (value === undefined) delete cams[cam].v[key];
+    else cams[cam].v[key] = copyValue(value);
+    if (cam === currentCamera) renderParam(key);
+}
+
+function setConf(cam, key, value) {
+    if (value === undefined) delete cams[cam].conf[key];
+    else cams[cam].conf[key] = copyValue(value);
+}
+
+// Forget a value the camera changed by itself (auto iris, AWB...)
+function forget(cam, key) {
+    if (writerBusy(cam, key)) return;
+    setConf(cam, key, undefined);
+    setV(cam, key, undefined);
+}
+
+// === CAMERA WRITES ===
+// Per camera and parameter: one request in flight, the latest value wins
+// and at most one every WRITE_MIN_INTERVAL_MS, so a drag sends ~14 Hz
+// (UI-03, UI-12). The value shows at once; if TallyCCU rejects it, the last
+// confirmed one comes back, and with no answer it is unknown.
+// Echoes (UI-23): the stream reports every applied write in order. An echo
+// of an older value of ours while a newer one is queued or in flight is not
+// shown (it would undo the newer step); any other event is.
+const WRITE_MIN_INTERVAL_MS = 70;
+const ECHO_WAIT_MS = 3000;
+const writers = new Map();   // "cam|key" -> writer
+
+function writerFor(cam, key) {
+    const id = cam + '|' + key;
+    let w = writers.get(id);
+    if (!w) {
+        w = { busy: false, next: null, sent: [], lastStr: null, echoSeen: false, idleTimer: null };
+        writers.set(id, w);
+    }
+    return w;
+}
+
+function writerBusy(cam, key) {
+    const w = writers.get(cam + '|' + key);
+    return !!(w && (w.busy || w.next));
+}
+
+// value must be complete. Resolves true (accepted), false (rejected),
+// undefined (no answer) or null (replaced by a newer value before sending).
+// opts.dedupe: skip a value equal to the last one sent.
+function writeParam(cam, key, value, opts = {}) {
+    const v = clampValue(key, value);
+    const str = encodeValue(key, v);
+    const w = writerFor(cam, key);
+    if (opts.dedupe && !w.next && w.lastStr === str) return Promise.resolve(true);
+    setV(cam, key, v);
+    return new Promise((resolve) => {
+        if (w.next) w.next.resolve(null);
+        w.next = { str, value: v, resolve };
+        pumpWriter(cam, key, w);
     });
 }
 
-// Format number consistently (always use dot as decimal separator)
-function formatNumber(value, decimals = 2) {
-    const num = parseFloat(value);
-    if (isNaN(num)) return value;
-    // For integers or values that should be whole numbers
-    if (Number.isInteger(num) || decimals === 0) return Math.round(num).toString();
-    return num.toFixed(decimals);
-}
-
-function updateControlValue(el, value) {
-    const type = el.dataset.paramtype;
-    const paramKey = el.dataset.paramkey;
-    
-    if (type === 'checkbox' || type === 'sub-check') {
-        el.checked = (value == 1 || value === true);
-    } else if (el.tagName === 'SELECT') {
-        el.value = value;
-    } else if (type === 'range' || type === 'sub-range') {
-        el.value = value;
-        const inputId = el.id.replace('_range', '_input');
-        const input = document.getElementById(inputId);
-        if (input) input.value = formatNumber(value);
-    } else if (el.classList.contains('knob-input')) {
-        // Knob inputs - format based on knob config step
-        const knobName = Object.keys(knobConfig).find(k => knobConfig[k].param === paramKey);
-        if (knobName) {
-            const config = knobConfig[knobName];
-            el.value = config.step < 1 ? formatNumber(value) : Math.round(parseFloat(value));
+async function pumpWriter(cam, key, w) {
+    if (w.busy || !w.next) return;
+    clearTimeout(w.idleTimer);
+    w.busy = true;
+    const item = w.next;
+    w.next = null;
+    w.lastStr = item.str;
+    w.echoSeen = false;
+    w.sent.push(item.str);
+    if (w.sent.length > 16) w.sent.shift();
+    const r = await sendCcu(`/?cameraId=${cam}&${key}=${encodeURIComponent(item.str)}`);
+    try {
+        if (r && r.ok) {
+            // No event meanwhile (stream down or slower): the camera has it
+            if (!w.echoSeen) setConf(cam, key, item.value);
         } else {
-            el.value = formatNumber(value);
-        }
-    } else {
-        el.value = value;
-    }
-    
-    // If it's a knob input, also update the indicator
-    if (paramKey && el.classList.contains('knob-input')) {
-        const knobName = Object.keys(knobConfig).find(k => knobConfig[k].param === paramKey);
-        if (knobName) {
-            const config = knobConfig[knobName];
-            config.value = parseFloat(value);
-            updateKnobIndicator(knobName, config.value);
-            // Multi-valued knob (ND): keep its sub-index in multiSubValues
-            if (config.subIndex !== undefined && Number.isFinite(config.value)) {
-                if (!multiSubValues[config.param]) multiSubValues[config.param] = [];
-                multiSubValues[config.param][config.subIndex] = config.value;
+            w.lastStr = null;
+            const i = w.sent.lastIndexOf(item.str);
+            if (i >= 0) w.sent.splice(i, 1);
+            if (!w.next) {
+                // Rejected: the camera did not change. No answer: it may
+                // have, unless its echo arrived.
+                if (!r && !w.echoSeen) setConf(cam, key, undefined);
+                setV(cam, key, cams[cam].conf[key]);
             }
         }
+    } finally {
+        // Whatever happens above, the writer must not stay busy
+        item.resolve(r ? r.ok : undefined);
+        setTimeout(() => {
+            w.busy = false;
+            if (w.next) return pumpWriter(cam, key, w);
+            // Echoes that never came must not hide later events
+            w.idleTimer = setTimeout(() => { w.sent.length = 0; }, ECHO_WAIT_MS);
+        }, WRITE_MIN_INTERVAL_MS);
     }
-    
-    // Si es un hidden input de toggle, actualizar el toggle visual
-    if (paramKey && el.type === 'hidden') {
-        updateToggleVisual(paramKey, value);
+}
+
+// A parameter event from the stream (any camera, visible or not)
+function onParamEvent(cam, key, raw) {
+    if (!isParam(key) || P[key].action) return;
+    const value = normalizeValue(key, raw);
+    if (value === null) return;
+    setConf(cam, key, value);
+    const w = writers.get(cam + '|' + key);
+    if (w) {
+        if (w.busy) w.echoSeen = true;
+        const i = w.sent.indexOf(raw);
+        if (i >= 0) {
+            w.sent.splice(0, i + 1);
+            if (w.next || w.sent.length) return;   // older value of ours
+        }
     }
+    setV(cam, key, value);
+}
+
+// Sub-values of a multi-valued parameter, changes = { index: value }. The
+// camera takes the whole list, so it is sent only when every sub-value is
+// known for that camera. Otherwise the operator chooses: send the unknown
+// ones as shown (their defaults) or keep the change here unsent. With
+// opts.live (during a drag) the change is only kept; the gesture end asks.
+function setSubs(cam, key, changes, opts = {}) {
+    const meta = P[key];
+    const cur = getV(cam, key);
+    const arr = [];
+    for (let i = 0; i < meta.n; i++) {
+        arr[i] = (Array.isArray(cur) && Number.isFinite(cur[i])) ? cur[i] : undefined;
+    }
+    for (const i in changes) {
+        if (Number.isFinite(Number(changes[i]))) arr[i] = clampSub(key, Number(i), changes[i]);
+    }
+    if (meta.fixed) for (const i in meta.fixed) if (arr[i] === undefined) arr[i] = meta.fixed[i];
+    const missing = [];
+    for (let i = 0; i < meta.n; i++) if (arr[i] === undefined) missing.push(i);
+    if (missing.length && !opts.live) {
+        if (Array.isArray(meta.def) && confirmFill(cam, key, missing, opts.show)) {
+            missing.forEach((i) => { arr[i] = meta.def[i]; });
+            missing.length = 0;
+        } else if (!Array.isArray(meta.def)) {
+            const names = missing.map((i) => meta.subs[i]);
+            notifyError(`CAM ${cam} ${meta.label}: not sent, ${listText(names)} unknown for this camera. ` +
+                `Set ${names.length > 1 ? 'them' : 'it'} too.`);
+        }
+    }
+    if (missing.length) {
+        setV(cam, key, arr);
+        return Promise.resolve(null);
+    }
+    if (key === 'video_mode' && !confirmVideoMode(cam, arr)) {
+        if (cam === currentCamera) renderParam(key);
+        return Promise.resolve(null);
+    }
+    return writeParam(cam, key, arr, opts);
+}
+
+function setSub(cam, key, sub, value, opts) {
+    return setSubs(cam, key, { [sub]: value }, opts);
+}
+
+function listText(items) {
+    return items.length > 1 ? items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1] : items[0];
+}
+
+// show(i): how sub-value i is shown (default: its number)
+function confirmFill(cam, key, missing, show) {
+    const meta = P[key];
+    const names = missing.map((i) => `${meta.subs[i]} (${show ? show(i) : formatFor(key, meta.def[i])})`);
+    const many = missing.length > 1;
+    return confirm(`${onAirText(cam)}CAM ${cam} ${meta.label}: ${listText(names)} ${many ? 'are' : 'is'} ` +
+        `unknown for this camera (not set from this page or reported since it loaded).\n\n` +
+        `Send ${many ? 'them' : 'it'} as shown, together with your change?\n` +
+        `Cancel keeps your change on this page, not sent.`);
+}
+
+// === TALLY (UI-18) ===
+// {"type":"tally","pgm":bits,"pvw":bits} (bit 0 = camera 1) from the stream
+const tally = { known: false, pgm: 0, pvw: 0 };
+
+function applyTally(data) {
+    const pgm = Number(data.pgm), pvw = Number(data.pvw);
+    if (!Number.isInteger(pgm) || !Number.isInteger(pvw)) return;
+    tally.known = true;
+    tally.pgm = pgm;
+    tally.pvw = pvw;
+    renderTally();
+}
+
+// A stale tally is worse than none
+function clearTally() {
+    tally.known = false;
+    renderTally();
+}
+
+function renderTally() {
+    for (let i = 1; i <= MAX_CAMERAS; i++) {
+        const b = byId('camBtn' + i);
+        if (!b) continue;
+        const pgm = tally.known && ((tally.pgm >> (i - 1)) & 1) === 1;
+        const pvw = tally.known && !pgm && ((tally.pvw >> (i - 1)) & 1) === 1;
+        b.classList.toggle('tally-pgm', pgm);
+        b.classList.toggle('tally-pvw', pvw);
+    }
+}
+
+function onAir(cam) {
+    return tally.known && ((tally.pgm >> (cam - 1)) & 1) === 1;
+}
+
+function onAirText(cam) {
+    return onAir(cam) ? `CAM ${cam} IS ON AIR.\n` : '';
+}
+
+// === RENDERING (current camera) ===
+// Unknown values show the default dimmed, '?' in number boxes and no active
+// toggle button
+const UNKNOWN_TITLE = 'Unknown for this camera: not set from this page or reported by TallyCCU since the page loaded';
+
+function markUnknown(el, unknown) {
+    if (!el) return;
+    el.classList.toggle('val-unknown', unknown);
+    if (unknown) el.title = UNKNOWN_TITLE;
+    else if (el.title === UNKNOWN_TITLE) el.title = '';
+}
+
+// Range inputs held by a pointer are not repainted under the finger, and
+// their value goes to the camera they were grabbed on: another finger may
+// switch cameras meanwhile. Per pointer, so lifting one finger does not
+// release a slider another one holds. Keyboard: the current camera.
+const heldControls = new Set();
+const heldPointers = new Map();   // pointerId -> range input
+const rangeCams = new Map();      // range input -> camera it was grabbed on
+
+function isRange(el) {
+    return !!(el && el.matches && el.matches('input[type="range"]'));
+}
+
+document.addEventListener('pointerdown', (e) => {
+    if (!isRange(e.target)) return;
+    heldControls.add(e.target);
+    heldPointers.set(e.pointerId, e.target);
+    rangeCams.set(e.target, currentCamera);
+}, true);
+['pointerup', 'pointercancel'].forEach((t) => document.addEventListener(t, (e) => {
+    const el = heldPointers.get(e.pointerId);
+    if (!el) return;
+    heldPointers.delete(e.pointerId);
+    if (![...heldPointers.values()].includes(el)) heldControls.delete(el);
+}, true));
+window.addEventListener('blur', () => { heldControls.clear(); heldPointers.clear(); });
+document.addEventListener('keydown', (e) => { if (isRange(e.target)) rangeCams.delete(e.target); }, true);
+
+// Camera of a range input's gesture (during it: 'input')
+function rangeCam(el) {
+    const cam = rangeCams.get(el);
+    return cam === undefined ? currentCamera : cam;
+}
+
+// On its 'change' (the gesture is over): that camera. If another one is
+// shown now, the input shows its value again once the handler has read it.
+function rangeDone(el, key) {
+    const cam = rangeCam(el);
+    rangeCams.delete(el);
+    if (cam !== currentCamera) {
+        heldControls.delete(el);
+        setTimeout(() => renderParam(key), 0);
+    }
+    return cam;
+}
+
+// A grab that ended without a change must not tie a later one to its camera
+function dropStaleRangeCams() {
+    for (const el of rangeCams.keys()) if (!heldControls.has(el)) rangeCams.delete(el);
+}
+
+// Number boxes being typed into are not repainted either
+function editing(el) {
+    return el === document.activeElement && el.type !== 'range';
+}
+
+// Controls named after base (key or key_N): _range, _input, _check, _select
+// and the toggle group toggle-base
+function paintControl(base, key, i, val) {
+    const known = Number.isFinite(val);
+    const d = defaultOf(key, currentCamera);
+    const def = Array.isArray(d) ? d[i] : d;
+    const show = known ? val : def;
+    const range = byId(base + '_range');
+    if (range && !heldControls.has(range)) {
+        if (show !== null && show !== undefined) range.value = show;
+        if (range.type === 'range') markUnknown(range, !known);
+    }
+    const input = byId(base + '_input');
+    if (input && !editing(input)) {
+        input.value = known ? formatFor(key, val) : '';
+        input.placeholder = '?';
+        markUnknown(input, !known);
+    }
+    const check = byId(base + '_check');
+    if (check) {
+        check.checked = known ? val !== 0 : !!show;
+        markUnknown(check.closest('.switch') || check, !known);
+    }
+    const sel = byId(base + '_select');
+    if (sel) {
+        sel.value = known ? String(val) : '';
+        markUnknown(sel, !known);
+    }
+    const tg = byId('toggle-' + base);
+    if (tg) {
+        tg.querySelectorAll('.toggle-btn').forEach((b) => {
+            b.classList.toggle('active', known && Number(b.dataset.value) === val);
+        });
+        markUnknown(tg, !known);
+    }
+}
+
+function renderGeneric(key, val) {
+    const meta = P[key];
+    if (meta.n === 1) return paintControl(key, key, 0, val);
+    for (let i = 0; i < meta.n; i++) {
+        paintControl(`${key}_${i}`, key, i, Array.isArray(val) ? val[i] : undefined);
+    }
+}
+
+const RENDER = {
+    aperture_normalised: renderKnob,
+    focus: renderKnob,
+    set_absolute_zoom_normalised: renderKnob,
+    gain_db: renderKnob,
+    shutter_speed: (key, val) => { renderKnob(key, val); updateShutterPresets(); },
+    nd_filter_stop: (key, val) => {
+        renderKnob(key, val);
+        updateNdModeVisual(Array.isArray(val) ? val[1] : undefined);
+    },
+    video_mode: (key, val) => { renderGeneric(key, val); renderParam('shutter_speed'); },
+    overlays: (key, val) => {
+        renderGeneric(key, val);
+        setBits(GRID_BITS, Array.isArray(val) ? val[3] : undefined, P.overlays.def[3]);
+    },
+    exposure_and_focus_tools: (key, val) => {
+        renderGeneric(key, val);
+        const a = Array.isArray(val) ? val : [];
+        setBits(EXPOSURE_TOOL_BITS, a[0], 0);
+        setBits(EXPOSURE_DISPLAY_BITS, a[1], 0);
+    },
+    lift_adjust: renderWheel,
+    gamma_adjust: renderWheel,
+    gain_adjust: renderWheel,
+    offset_adjust: renderWheel,
+    contrast_adjust: (key, val) => {
+        const a = Array.isArray(val) ? val : [];
+        setCcSlider('cc-pivot', a[0], 0.5);
+        setCcSlider('cc-contrast', a[1], 1);
+        drawContrastCurve(parseFloat(byId('cc-pivot').value), parseFloat(byId('cc-contrast').value));
+    },
+    color_adjust: (key, val) => {
+        const a = Array.isArray(val) ? val : [];
+        setCcSlider('cc-hue', a[0], 0);
+        setCcSlider('cc-saturation', a[1], 1);
+    },
+    luma_mix: (key, val) => setCcSlider('cc-lummix', val, 1)
+};
+
+function renderParam(key) {
+    if (!isParam(key) || P[key].action) return;
+    const val = getV(currentCamera, key);
+    (hasOwn(RENDER, key) ? RENDER[key] : renderGeneric)(key, val);
+}
+
+function renderAll() {
+    for (const key in P) renderParam(key);
+    renderMemorySlots();
+    renderPresetNames();
+    updateShutterPresets();
+}
+
+// Checkbox sets of a bitmask sub-value: [[id, bit], ...]
+const GRID_BITS = [['grid_thirds', 1], ['grid_crosshairs', 2], ['grid_center', 4], ['grid_horizon', 8]];
+const EXPOSURE_TOOL_BITS = [['exposure_and_focus_tools_zebra', 1], ['exposure_and_focus_tools_focus', 2],
+    ['exposure_and_focus_tools_false_color', 4]];
+const EXPOSURE_DISPLAY_BITS = [['exposure_and_focus_tools_lcd', 1], ['exposure_and_focus_tools_hdmi', 2],
+    ['exposure_and_focus_tools_evf', 4], ['exposure_and_focus_tools_main_sdi', 8],
+    ['exposure_and_focus_tools_front_sdi', 16]];
+
+function bitsGroup(list) {
+    const first = byId(list[0][0]);
+    return first && first.closest('.checkbox-group');
+}
+
+function setBits(list, bits, def) {
+    const known = Number.isFinite(bits);
+    const b = known ? bits : def;
+    list.forEach(([id, m]) => {
+        const el = byId(id);
+        if (el) el.checked = (b & m) !== 0;
+    });
+    markUnknown(bitsGroup(list), !known);
+}
+
+function readBits(list) {
+    return list.reduce((acc, [id, m]) => acc + (byId(id) && byId(id).checked ? m : 0), 0);
+}
+
+// Ticked boxes by their labels ('Zebra and False Color'), or 'none'
+function bitsText(list) {
+    const on = list.filter(([id]) => byId(id) && byId(id).checked)
+        .map(([id]) => byId(id).closest('label').textContent.trim());
+    return on.length ? listText(on) : 'none';
+}
+
+// cc-* sliders: value or, when unknown, def dimmed and '?'
+function setCcSlider(id, val, def) {
+    const known = Number.isFinite(val);
+    const el = byId(id);
+    if (el && !heldControls.has(el)) {
+        el.value = known ? val : def;
+        markUnknown(el, !known);
+    }
+    const t = byId(id + '-val');
+    if (t) t.textContent = known ? Number(val).toFixed(2) : '?';
 }
 
 // === UI ===
 function showTab(tabId) {
     document.querySelectorAll('.tabcontent').forEach(t => t.style.display = 'none');
-    const tab = document.getElementById(tabId);
+    const tab = byId(tabId);
     if (tab) tab.style.display = 'block';
     document.querySelectorAll('.sidebar-tab').forEach(b => b.classList.remove('active-tab'));
     const btn = document.querySelector(`.sidebar-tab[onclick="showTab('${tabId}')"]`);
@@ -3683,54 +4236,47 @@ function showTab(tabId) {
 
 function highlightCameraButton(camNum) {
     document.querySelectorAll('.camera-btn').forEach(b => b.classList.remove('active-camera'));
-    const btn = document.getElementById('camBtn' + camNum);
+    const btn = byId('camBtn' + camNum);
     if (btn) btn.classList.add('active-camera');
 }
 
+// Every write carries its cameraId, so switching sends nothing (UI-13)
 function setCameraId(num) {
-    saveCurrentStateToCache();
+    if (!(num >= 1 && num <= MAX_CAMERAS)) return;
+    dropStaleRangeCams();
     currentCamera = num;
     highlightCameraButton(num);
-    sendCcu(`/?cameraId=${num}`);
-    restoreUIFromCache();
-    updatePresetNames();
-    
-    // Apply SSE-received state for this camera
-    if (typeof applyCameraState === 'function') {
-        applyCameraState(num);
-    }
+    renderAll();
 }
 
-function saveCurrentStateToCache() {
-    document.querySelectorAll('.param-control').forEach(el => {
-        const paramKey = el.dataset.paramkey;
-        const subIndex = el.dataset.subindex;
-        const type = el.dataset.paramtype;
-        let value = (type === 'checkbox' || type === 'sub-check') ? (el.checked ? 1 : 0) : el.value;
-        cacheValue(paramKey, value, subIndex !== undefined ? parseInt(subIndex) : null);
-    });
-}
+// === ACTIONS ===
+// After these the camera holds a value this page cannot read
+const ACTION_FORGETS = {
+    instantaneous_auto_aperture: 'aperture_normalised',
+    instantaneous_autofocus: 'focus',
+    set_auto_wb: 'manual_white_balance',
+    restore_auto_wb: 'manual_white_balance'
+};
 
-// === ENVÍO DE PARÁMETROS ===
-function sendParam(key, val) {
-    const v = typeof val === 'number' ? parseFloat(val.toFixed(2)) : val;
-    cacheValue(key, v);
-    return sendCcu(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(v)}`);
-}
-
-function triggerVoid(key) {
-    return sendCcu(`/?cameraId=${currentCamera}&${key}=1`);
-}
-
-// The checkbox flips back if the change was not accepted
-async function toggleCheckbox(key, cb) {
+async function triggerVoid(key) {
     const cam = currentCamera;
-    const v = cb.checked ? 1 : 0;
-    const r = await sendParam(key, v);
-    if ((!r || !r.ok) && cam === currentCamera && cb.checked === !!v) {
-        cb.checked = !v;
-        cacheValue(key, v ? 0 : 1);
-    }
+    const r = await sendCcu(`/?cameraId=${cam}&${key}=1`);
+    if (r && r.ok && ACTION_FORGETS[key]) forget(cam, ACTION_FORGETS[key]);
+    return r;
+}
+
+// === WHITE BALANCE (UI-19) ===
+// One-push AWB and Restore AWB are camera actions; the resulting balance
+// is unknown here. 'Apply manual' sends the shown manual balance again.
+function applyManualWB() {
+    const cam = currentCamera;
+    const v = knownValue(cam, 'manual_white_balance');
+    if (v) writeParam(cam, 'manual_white_balance', v);
+    else setSubs(cam, 'manual_white_balance', {});
+}
+
+function toggleCheckbox(key, cb) {
+    return writeParam(currentCamera, key, cb.checked ? 1 : 0);
 }
 
 // === CONTINUOUS MOTION SENDERS ===
@@ -3822,93 +4368,94 @@ const motionSenders = {
 };
 const motionCam = {};   // paramKey -> camera being moved
 
-// === SLIDERS SIMPLES ===
-function simpleSliderInput(paramKey, slider) {
-    const value = parseFloat(slider.value);
-    const input = document.getElementById(paramKey + '_input');
-    if (input) input.value = value.toFixed(2);
-    cacheValue(paramKey, value);
-    // Only update UI, don't send
+// === SLIDERS ===
+// input: shows the value while dragging; change (release): sends it
+function simpleSliderInput(key, slider) {
+    const input = byId(key + '_input');
+    if (input) input.value = formatFor(key, parseFloat(slider.value));
+    markUnknown(slider, false);
 }
 
-function simpleSliderChange(paramKey, slider) {
-    const value = parseFloat(slider.value);
-    sendParam(paramKey, value);
+function simpleSliderChange(key, slider) {
+    const v = parseFloat(slider.value);
+    writeParam(rangeDone(slider, key), key, v);
 }
 
-function resetSlider(paramKey) {
-    const range = document.getElementById(paramKey + '_range');
-    const input = document.getElementById(paramKey + '_input');
-    if (range) {
-        const defaultVal = parseFloat(range.dataset.default) || 0;
-        range.value = defaultVal;
-        if (input) input.value = defaultVal.toFixed(2);
-        cacheValue(paramKey, defaultVal);
-        sendParam(paramKey, defaultVal);
+function resetSlider(key) {
+    if (P[key].action) return sendColorBars(0);
+    writeParam(currentCamera, key, defaultOf(key, currentCamera));
+}
+
+function styledSliderInput(key, sub, slider) {
+    const input = byId(`${key}_${sub}_input`);
+    if (input) input.value = formatFor(key, parseFloat(slider.value));
+    markUnknown(slider, false);
+}
+
+function subSliderChange(key, sub, slider) {
+    const v = parseFloat(slider.value);
+    setSub(rangeDone(slider, key), key, sub, v);
+}
+
+function resetSubSlider(key, sub) {
+    setSub(currentCamera, key, sub, P[key].def[sub]);
+}
+
+// Color bars are a timed command, not a state: the slider returns to 0.
+// From the slider, to the camera it was grabbed on.
+async function sendColorBars(seconds, slider) {
+    const cam = slider ? rangeDone(slider, 'color_bars_display_time_seconds') : currentCamera;
+    const v = Math.round(Math.min(30, Math.max(0, Number(seconds) || 0)));
+    const range = byId('color_bars_display_time_seconds_range');
+    const input = byId('color_bars_display_time_seconds_input');
+    await sendCcu(`/?cameraId=${cam}&color_bars_display_time_seconds=${v}`);
+    if (range) range.value = 0;
+    if (input) input.value = 0;
+}
+
+// Number box of a parameter: { key, sub } (sub null for a single value)
+function numberBox(el) {
+    if (!el || !el.matches || !el.matches('input.knob-input, input.slider-input')) return null;
+    const m = el.id.match(/^(.+?)(?:_(\d))?_input$/);
+    if (!m || !isParam(m[1])) return null;
+    return { key: m[1], sub: m[2] !== undefined ? Number(m[2]) : null };
+}
+
+// Typed values (UI-09): Enter or leaving the box sends it like its knob or
+// slider; an invalid entry shows the current value again
+document.addEventListener('change', (e) => {
+    const el = e.target;
+    const box = numberBox(el);
+    if (!box) return;
+    const { key, sub } = box;
+    const v = parseFloat(el.value);
+    if (P[key].action) return sendColorBars(v);
+    if (Number.isFinite(v)) {
+        if (sub !== null) setSub(currentCamera, key, sub, v);
+        else writeParam(currentCamera, key, v);
     }
-}
+    // Committed: show what is kept (clamped, or the old value if invalid)
+    if (document.activeElement === el) el.blur();
+    renderParam(key);
+});
 
-function resetSubSlider(paramKey, subIndex) {
-    const range = document.getElementById(`${paramKey}_${subIndex}_range`);
-    const input = document.getElementById(`${paramKey}_${subIndex}_input`);
-    if (range) {
-        const defaultVal = parseFloat(range.dataset.default) || 0;
-        range.value = defaultVal;
-        if (input) input.value = defaultVal.toFixed(2);
-        if (!multiSubValues[paramKey]) multiSubValues[paramKey] = [];
-        multiSubValues[paramKey][subIndex] = defaultVal;
-        cacheValue(paramKey, defaultVal, subIndex);
-        multiSubOnChange(paramKey);
-    }
-}
-
-// === STYLED SLIDERS ===
-function styledSliderInput(paramKey, subIndex, slider) {
-    const value = parseFloat(slider.value);
-    const input = document.getElementById(`${paramKey}_${subIndex}_input`);
-    if (input) input.value = paramKey === 'manual_white_balance' && subIndex === 0 ? Math.round(value) : value.toFixed(2);
-    if (!multiSubValues[paramKey]) multiSubValues[paramKey] = [];
-    multiSubValues[paramKey][subIndex] = value;
-    cacheValue(paramKey, value, subIndex);
-}
-
-function multiSubOnChange(key) {
-    if (key === "pan_tilt_velocity") {
-        multiSubValues[key] = [0, 0];
-        motionSenders.pan_tilt_velocity.stop(currentCamera);
-    } else {
-        const arr = multiSubValues[key] || [];
-        const valStr = arr.map(v => typeof v === 'number' ? parseFloat(v.toFixed(2)) : v).join(",");
-        sendCcu(`/?cameraId=${currentCamera}&${key}=${encodeURIComponent(valStr)}`);
-    }
-}
+// A box left without a change ('change' does not fire) was not repainted
+// while focused: show the camera's value again once focus has moved
+document.addEventListener('focusout', (e) => {
+    const box = numberBox(e.target);
+    if (box) setTimeout(() => renderParam(box.key), 0);
+});
 
 // === TOGGLE GROUPS ===
-function setToggleValue(paramKey, value, clickedBtn) {
-    const group = clickedBtn.closest('.toggle-group');
-    group.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
-    clickedBtn.classList.add('active');
-    const hiddenInput = document.getElementById(`${paramKey}_range`);
-    if (hiddenInput) hiddenInput.value = value;
-    cacheValue(paramKey, value);
-    sendParam(paramKey, value);
-}
-
-function updateToggleVisual(paramKey, value) {
-    const group = document.getElementById(`toggle-${paramKey}`);
-    if (!group) return;
-    group.querySelectorAll('.toggle-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.value == value) btn.classList.add('active');
-    });
+function setToggleValue(key, value) {
+    writeParam(currentCamera, key, value);
 }
 
 // === CONTINUOUS SLIDERS ===
 function continuousSliderInput(paramKey, slider) {
     const value = parseFloat(slider.value);
-    const input = document.getElementById(paramKey + '_input');
+    const input = byId(paramKey + '_input');
     if (input) input.value = value.toFixed(2);
-    cacheValue(paramKey, value);
     // Keep the camera that started moving until release
     if (motionCam[paramKey] === undefined) motionCam[paramKey] = currentCamera;
     motionSenders[paramKey].send(motionCam[paramKey], parseFloat(value.toFixed(2)));
@@ -3916,9 +4463,8 @@ function continuousSliderInput(paramKey, slider) {
 
 function continuousSliderRelease(paramKey, slider) {
     slider.value = 0;
-    const input = document.getElementById(paramKey + '_input');
+    const input = byId(paramKey + '_input');
     if (input) input.value = "0.00";
-    cacheValue(paramKey, 0);
     const cam = motionCam[paramKey];
     if (cam === undefined) return;   // already stopped
     delete motionCam[paramKey];
@@ -3927,7 +4473,7 @@ function continuousSliderRelease(paramKey, slider) {
 
 // Release a continuous slider on any end of gesture, not only on 'change'
 function initContinuousSlider(paramKey) {
-    const slider = document.getElementById(paramKey + '_range');
+    const slider = byId(paramKey + '_range');
     if (!slider) return;
     const end = () => { if (motionCam[paramKey] !== undefined) continuousSliderRelease(paramKey, slider); };
     ['pointerup', 'pointercancel', 'blur'].forEach(t => slider.addEventListener(t, end));
@@ -3935,10 +4481,10 @@ function initContinuousSlider(paramKey) {
     document.addEventListener('visibilitychange', () => { if (document.hidden) end(); });
 }
 
-// === OVERRIDES ===
+// === OVERRIDES (UI-10, UI-17) ===
 // isOn: true, false, or null when the state is unknown ('?')
 function updateToggleBtn(btnId, isOn) {
-    const btn = document.getElementById(btnId);
+    const btn = byId(btnId);
     if (btn) {
         btn.classList.toggle('active', isOn === true);
         btn.classList.toggle('unknown', isOn === null);
@@ -3947,12 +4493,17 @@ function updateToggleBtn(btnId, isOn) {
     }
 }
 
+function btnState(btnId) {
+    const btn = byId(btnId);
+    return btn.classList.contains('unknown') ? null : btn.classList.contains('active');
+}
+
 // A click on a '?' button only reads the state (read() updates the button):
 // the operator sees it and clicks again to change it. True if known.
 const toggleReading = new Set();
 
 async function toggleStateKnown(btnId, label, read) {
-    const btn = document.getElementById(btnId);
+    const btn = byId(btnId);
     if (!btn.classList.contains('unknown')) return true;
     if (toggleReading.has(btnId)) return false;
     toggleReading.add(btnId);
@@ -3965,13 +4516,23 @@ async function toggleStateKnown(btnId, label, read) {
     return false;
 }
 
-// JSON body of a quiet sendCcu GET, or null if it failed
-async function getJson(url) {
-    const r = await sendCcu(url, { quiet: true });
-    if (!r || !r.ok) return null;
-    const text = await r.text().catch(() => '');
-    const match = text.match(/\{[\s\S]*\}/);
-    try { return match ? JSON.parse(match[0]) : null; } catch (e) { return null; }
+// Another page (or Companion, for vMix) may have changed it since it was
+// read: act only on the state TallyCCU reports now. True if unchanged.
+async function toggleStateFresh(btnId, label, read) {
+    const before = btnState(btnId);
+    if (toggleReading.has(btnId)) return false;
+    toggleReading.add(btnId);
+    try { await read(); } finally { toggleReading.delete(btnId); }
+    const now = btnState(btnId);
+    if (now === null) {
+        notifyError(`${label}: state unknown (no answer from TallyCCU), nothing changed`);
+        return false;
+    }
+    if (now !== before) {
+        notifyError(`${label} is now ${now ? 'On' : 'Off'} (changed elsewhere): click again to change it`);
+        return false;
+    }
+    return true;
 }
 
 // Unknown on failure: never show 'On' for a state that was not read
@@ -3984,15 +4545,24 @@ async function getOverrides() {
 // Flip the button only when the server accepts the change; with no answer
 // the change may or may not have been applied: '?'
 async function sendOverride(key, val, btnId) {
-    const r = await sendCcu(`/?${key}=${val}`);
+    const r = await sendCcu(`/?${key}=${val}`, { protect: true });
     if (r && r.ok) updateToggleBtn(btnId, !!val);
     else if (!r) updateToggleBtn(btnId, null);
 }
 
+const OVERRIDE_OFF_TEXT = {
+    overrideTally: 'Turn the tally override OFF?\n\nTallyCCU stops driving the tally of ALL cameras ' +
+        '(the SDI input\'s own tally passes through). It stays off after a restart until turned on again.',
+    overrideCCU: 'Turn the camera control (CCU) override OFF?\n\nTallyCCU stops controlling ALL cameras: ' +
+        'this page and Companion have no effect. It stays off after a restart until turned on again.'
+};
+
 async function toggleOverride(key, btnId, label) {
     if (!await toggleStateKnown(btnId, label, getOverrides)) return;
-    const btn = document.getElementById(btnId);
-    sendOverride(key, btn.classList.contains('active') ? 0 : 1, btnId);
+    if (!await toggleStateFresh(btnId, label, getOverrides)) return;
+    const val = btnState(btnId) ? 0 : 1;
+    if (!val && !confirm(OVERRIDE_OFF_TEXT[key])) return;
+    sendOverride(key, val, btnId);
 }
 
 function toggleOverrideTally() {
@@ -4014,12 +4584,46 @@ async function getVmixConnectStatus() {
 
 async function toggleVmixConnect() {
     if (!await toggleStateKnown('btnVmix', 'vMix connection', getVmixConnectStatus)) return;
+    if (!await toggleStateFresh('btnVmix', 'vMix connection', getVmixConnectStatus)) return;
     const newVal = !vmixConnectEnabled;
+    if (!newVal && !confirm('Disconnect from vMix?\n\nThe tally of all cameras stops following vMix ' +
+        'until it is connected again (kept after a restart).')) return;
     const r = await sendCcu(`/?vmixConnect=${newVal ? 1 : 0}`);
     if (r && r.ok) vmixConnectEnabled = newVal;
     else if (!r) vmixConnectEnabled = null;
     else return;
     updateToggleBtn('btnVmix', vmixConnectEnabled);
+}
+
+// {"type":"state",...} from the stream, if the firmware sends it
+let lastStateEvent = -Infinity;
+
+function applyServerState(data) {
+    lastStateEvent = performance.now();
+    if (typeof data.overrideTally === 'boolean') updateToggleBtn('btnTally', data.overrideTally);
+    if (typeof data.overrideCCU === 'boolean') updateToggleBtn('btnCCU', data.overrideCCU);
+    const vm = typeof data.vmixConnect === 'boolean' ? data.vmixConnect : data.vmixConnectEnabled;
+    if (typeof vm === 'boolean') {
+        vmixConnectEnabled = vm;
+        updateToggleBtn('btnVmix', vm);
+    }
+}
+
+// Backup read of the global switches while the page is visible: two short
+// requests every STATE_POLL_MS
+const STATE_POLL_MS = 15000;
+let statePollBusy = false;
+
+async function pollServerState() {
+    if (document.hidden || statePollBusy || toggleReading.size) return;
+    if (performance.now() - lastStateEvent < STATE_POLL_MS) return;
+    statePollBusy = true;
+    try {
+        await getOverrides();
+        await getVmixConnectStatus();
+    } finally {
+        statePollBusy = false;
+    }
 }
 
 // A reset leaves the stream half-open on the W5500: reopen it once the
@@ -4028,7 +4632,7 @@ const REBOOT_SSE_DELAY_MS = 3000;
 
 async function rebootArduino() {
     if (!confirm("Reboot the Arduino?")) return;
-    const r = await sendCcu('/reboot');
+    const r = await sendCcu('/reboot', { protect: true });
     if (r && r.ok) {
         setSyncState('nosync', 'TallyCCU is rebooting');
         setTimeout(() => sseRestart('TallyCCU rebooted'), REBOOT_SSE_DELAY_MS);
@@ -4036,19 +4640,23 @@ async function rebootArduino() {
 }
 
 // === GROUPS ===
+function saveParamGroups() {
+    safeSet('selectedParamGroups', JSON.stringify(selectedParamGroups));
+}
+
 function toggleParamGroup(groupId) {
-    const cb = document.getElementById(`group_selector_${groupId}`);
+    const cb = byId(`group_selector_${groupId}`);
     selectedParamGroups[groupId] = cb.checked;
-    localStorage.setItem('selectedParamGroups', JSON.stringify(selectedParamGroups));
+    saveParamGroups();
 }
 
 function toggleAllParamGroups(state) {
     Object.keys(selectedParamGroups).forEach(group => {
         selectedParamGroups[group] = state;
-        const cb = document.getElementById(`group_selector_${group}`);
+        const cb = byId(`group_selector_${group}`);
         if (cb) cb.checked = state;
     });
-    localStorage.setItem('selectedParamGroups', JSON.stringify(selectedParamGroups));
+    saveParamGroups();
 }
 
 function setDefaultParamGroups() {
@@ -4056,149 +4664,95 @@ function setDefaultParamGroups() {
     Object.keys(selectedParamGroups).forEach(group => {
         const isDefault = defaults.includes(group);
         selectedParamGroups[group] = isDefault;
-        const cb = document.getElementById(`group_selector_${group}`);
+        const cb = byId(`group_selector_${group}`);
         if (cb) cb.checked = isDefault;
     });
-    localStorage.setItem('selectedParamGroups', JSON.stringify(selectedParamGroups));
+    saveParamGroups();
 }
 
-// === EXPOSURE/FOCUS TOOLS ===
-function getExposureFocusToolsValues() {
-    const key = 'exposure_and_focus_tools';
-    let tools = 0;
-    if (document.getElementById(key + '_zebra')?.checked) tools += 1;
-    if (document.getElementById(key + '_focus')?.checked) tools += 2;
-    if (document.getElementById(key + '_false_color')?.checked) tools += 4;
-    
-    let displays = 0;
-    if (document.getElementById(key + '_lcd')?.checked) displays += 1;
-    if (document.getElementById(key + '_hdmi')?.checked) displays += 2;
-    if (document.getElementById(key + '_evf')?.checked) displays += 4;
-    if (document.getElementById(key + '_main_sdi')?.checked) displays += 8;
-    
-    return { tools, displays };
-}
+// === EXPOSURE/FOCUS TOOLS, FOCUS ASSIST, OVERLAYS ===
+// The two checkbox lists are one parameter. 'Apply Tools' sends a list known
+// for the camera or edited here as its boxes show; a list that is neither
+// goes as shown (its default, dimmed) only if the operator agrees (UI-02).
+const EXPOSURE_LISTS = [EXPOSURE_TOOL_BITS, EXPOSURE_DISPLAY_BITS];
 
-function updateExposureFocusTools() {
-    const key = 'exposure_and_focus_tools';
-    const { tools, displays } = getExposureFocusToolsValues();
-    
-    multiSubValues[key] = [tools, displays];
-    const hiddenInput0 = document.getElementById(key + '_0_range');
-    const hiddenInput1 = document.getElementById(key + '_1_range');
-    if (hiddenInput0) hiddenInput0.value = tools;
-    if (hiddenInput1) hiddenInput1.value = displays;
-}
+// A box ticked here makes its list a choice: shown known
+document.addEventListener('change', (e) => {
+    const id = e.target && e.target.id;
+    const list = EXPOSURE_LISTS.find((l) => l.some(([b]) => b === id));
+    if (list) markUnknown(bitsGroup(list), false);
+});
 
 function applyExposureFocusTools() {
-    const key = 'exposure_and_focus_tools';
-    const { tools, displays } = getExposureFocusToolsValues();
-    
-    multiSubValues[key] = [tools, displays];
-    const hiddenInput0 = document.getElementById(key + '_0_range');
-    const hiddenInput1 = document.getElementById(key + '_1_range');
-    if (hiddenInput0) hiddenInput0.value = tools;
-    if (hiddenInput1) hiddenInput1.value = displays;
-    
-    sendCcu(`/?cameraId=${currentCamera}&${key}=${tools},${displays}`);
-}
-
-function setFocusAssist(subIndex, value, btn) {
-    const group = btn.closest('.toggle-group');
-    group.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    if (!multiSubValues["focus_assist"]) multiSubValues["focus_assist"] = [1, 0];
-    multiSubValues["focus_assist"][subIndex] = value;
-    // Actualizar hidden input
-    const hiddenInput = document.getElementById(`focus_assist_${subIndex}_range`);
-    if (hiddenInput) hiddenInput.value = value;
-    sendCcu(`/?cameraId=${currentCamera}&focus_assist=${multiSubValues["focus_assist"].join(',')}`);
-}
-
-function updateOverlayToggleVisual(subIndex, value) {
-    const group = document.getElementById(`toggle-overlays_${subIndex}`);
-    if (!group) return;
-    group.querySelectorAll('.toggle-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.value == value) btn.classList.add('active');
+    const changes = {};
+    EXPOSURE_LISTS.forEach((list, i) => {
+        const g = bitsGroup(list);
+        if (!(g && g.classList.contains('val-unknown'))) changes[i] = readBits(list);
     });
+    setSubs(currentCamera, 'exposure_and_focus_tools', changes,
+        { show: (i) => bitsText(EXPOSURE_LISTS[i]) });
 }
 
-function updateFocusAssistToggleVisual(subIndex, value) {
-    const group = document.getElementById(`toggle-focus_assist_${subIndex}`);
-    if (!group) return;
-    group.querySelectorAll('.toggle-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.value == value) btn.classList.add('active');
-    });
+function setFocusAssist(subIndex, value) {
+    setSub(currentCamera, 'focus_assist', subIndex, value);
 }
 
-function updateVideoModeToggleVisual(subIndex, value) {
-    const group = document.getElementById(`toggle-video_mode_${subIndex}`);
-    if (!group) return;
-    group.querySelectorAll('.toggle-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.value == value) btn.classList.add('active');
-    });
+function setOverlayValue(subIndex, value) {
+    setSub(currentCamera, 'overlays', subIndex, value);
 }
 
-function updateGridCheckboxesFromValue(value) {
-    document.getElementById('grid_thirds').checked = (value & 1) !== 0;
-    document.getElementById('grid_crosshairs').checked = (value & 2) !== 0;
-    document.getElementById('grid_center').checked = (value & 4) !== 0;
-    document.getElementById('grid_horizon').checked = (value & 8) !== 0;
-}
-
-function updateExposureToolsCheckboxesFromValue(tools, displays) {
-    document.getElementById('exposure_and_focus_tools_zebra').checked = (tools & 1) !== 0;
-    document.getElementById('exposure_and_focus_tools_focus').checked = (tools & 2) !== 0;
-    document.getElementById('exposure_and_focus_tools_false_color').checked = (tools & 4) !== 0;
-    document.getElementById('exposure_and_focus_tools_lcd').checked = (displays & 1) !== 0;
-    document.getElementById('exposure_and_focus_tools_hdmi').checked = (displays & 2) !== 0;
-    document.getElementById('exposure_and_focus_tools_evf').checked = (displays & 4) !== 0;
-    document.getElementById('exposure_and_focus_tools_main_sdi').checked = (displays & 8) !== 0;
-}
-
-// === OVERLAYS ===
-function setOverlayValue(subIndex, value, btn) {
-    const group = btn.closest('.toggle-group');
-    group.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    if (!multiSubValues["overlays"]) multiSubValues["overlays"] = [5, 100, 90, 11];
-    multiSubValues["overlays"][subIndex] = value;
-    // Actualizar hidden input
-    const hiddenInput = document.getElementById(`overlays_${subIndex}_range`);
-    if (hiddenInput) hiddenInput.value = value;
-    multiSubOnChange('overlays');
-}
-
+// The grid lines are one bitmask (sub-value 3), sent on each tick. While it
+// is unknown for the camera the other lines show their defaults dimmed:
+// they go out as shown only if the operator agrees, asked in one dialog
+// with the other unknown overlay sub-values. Cancel sends nothing.
 function updateGridOverlays() {
-    let value = 0;
-    if (document.getElementById('grid_thirds')?.checked) value += 1;
-    if (document.getElementById('grid_crosshairs')?.checked) value += 2;
-    if (document.getElementById('grid_center')?.checked) value += 4;
-    if (document.getElementById('grid_horizon')?.checked) value += 8;
-    if (!multiSubValues["overlays"]) multiSubValues["overlays"] = [5, 100, 90, 11];
-    multiSubValues["overlays"][3] = value;
-    // Actualizar hidden input
-    const hiddenInput = document.getElementById('overlays_3_range');
-    if (hiddenInput) hiddenInput.value = value;
-    multiSubOnChange('overlays');
+    const cam = currentCamera;
+    const key = 'overlays';
+    const meta = P[key];
+    const cur = getV(cam, key);
+    const has = (i) => Array.isArray(cur) && Number.isFinite(cur[i]);
+    const changes = { 3: readBits(GRID_BITS) };
+    if (!has(3)) {
+        const missing = [0, 1, 2].filter((i) => !has(i));
+        const also = missing.length ? `, with ${listText(missing.map((i) =>
+            `${meta.subs[i]} (${formatFor(key, meta.def[i])})`))} also unknown and sent as shown` : '';
+        if (!confirm(`${onAirText(cam)}CAM ${cam} ${meta.label}: the grid is unknown for this camera ` +
+            `(not set from this page or reported since it loaded) and is sent whole.\n\n` +
+            `Send it as shown (${bitsText(GRID_BITS)})${also}?\nCancel sends nothing.`)) {
+            renderParam(key);
+            return;
+        }
+        missing.forEach((i) => { changes[i] = meta.def[i]; });
+    }
+    setSubs(cam, key, changes);
 }
 
-// === MEMORY PRESETS ===
-function setMemoryPresetSelection(preset) {
-    multiSubValues["memory_preset"][1] = preset;
+// === MEMORY PRESETS (PTZ) ===
+// Slot N here is Companion's 'Slot N' (index N-1); slot 6 is web only.
+function setMemoryPresetSelection(slot) {
+    cams[currentCamera].memorySlot = slot;
+    renderMemorySlots();
+}
+
+function renderMemorySlots() {
+    const slot = cams[currentCamera].memorySlot;
     for (let i = 0; i < 6; i++) {
-        const btn = document.getElementById("memory_slot_select_btn_" + i);
-        if (btn) btn.classList.toggle("active", i === preset);
+        const btn = byId("memory_slot_select_btn_" + i);
+        if (btn) btn.classList.toggle("active", i === slot);
     }
 }
 
+// action: 2 recall, 1 store, 0 reset. Store and reset replace what the slot
+// held: confirmed (UI-17)
 function setMemoryPresetAction(action) {
-    multiSubValues["memory_preset"][0] = action;
-    const presetValue = multiSubValues["memory_preset"][1] || 0;
-    sendCcu(`/?cameraId=${currentCamera}&memory_preset=${action},${presetValue}`);
+    const cam = currentCamera;
+    const slot = cams[cam].memorySlot;
+    if (action !== 2) {
+        const what = action === 1 ? `store the current position in memory slot ${slot + 1}`
+            : `clear memory slot ${slot + 1}`;
+        if (!confirm(`${onAirText(cam)}CAM ${cam}: ${what}?\n\nWhat the slot held is lost.`)) return;
+    }
+    sendCcu(`/?cameraId=${cam}&memory_preset=${action},${slot}`);
 }
 
 // === POINTER DRAG ===
@@ -4230,212 +4784,279 @@ function bindPointerDrag(el, onStart, onMove, onEnd) {
 }
 
 // === KNOB CONTROLS ===
+// step: +/- (fine), coarse: +/- with Shift, grid: values snap to it.
+// A drag runs the whole range in KNOB_DRAG_PX (Shift: KNOB_FINE_DIV times
+// finer) and sends while it moves (UI-12). An unknown value cannot be
+// nudged: it is set with the buttons below the knob or typed.
 const knobConfig = {
-    aperture: { min: 0, max: 1, value: 0, param: 'aperture_normalised', step: 0.05 },
-    focus: { min: 0, max: 1, value: 0, param: 'focus', step: 0.05 },
-    zoom: { min: 0, max: 1, value: 0, param: 'set_absolute_zoom_normalised', step: 0.05 },
-    shutter: { min: 24, max: 2000, value: 50, param: 'shutter_speed', step: 1 },
-    gain: { min: -12, max: 32, value: 0, param: 'gain_db', step: 2 },
-    nd: { min: 0, max: 6, value: 0, param: 'nd_filter_stop', step: 2, subIndex: 0 }
+    aperture: { min: 0, max: 1, param: 'aperture_normalised', step: 0.005, coarse: 0.05 },
+    focus: { min: 0, max: 1, param: 'focus', step: 0.005, coarse: 0.05 },
+    zoom: { min: 0, max: 1, param: 'set_absolute_zoom_normalised', step: 0.005, coarse: 0.05 },
+    shutter: { min: 24, max: 2000, param: 'shutter_speed' },
+    gain: { min: -12, max: 36, param: 'gain_db', step: 2, grid: 2 },
+    nd: { min: 0, max: 6, param: 'nd_filter_stop', step: 2, grid: 2, subIndex: 0 }
 };
+const KNOB_BY_PARAM = {};
+Object.keys(knobConfig).forEach((name) => { KNOB_BY_PARAM[knobConfig[name].param] = name; });
+const KNOB_DRAG_PX = 200;
+const KNOB_FINE_DIV = 5;
+const SHUTTER_DRAG_PX = 12;   // per shutter step
+
+function knobValue(name, cam) {
+    const c = knobConfig[name];
+    const v = getV(cam, c.param);
+    const x = c.subIndex !== undefined ? (Array.isArray(v) ? v[c.subIndex] : undefined) : v;
+    return Number.isFinite(x) ? x : undefined;
+}
+
+function setKnobValue(name, value, cam = currentCamera, opts = {}) {
+    const c = knobConfig[name];
+    const v = Math.min(c.max, Math.max(c.min, value));
+    return c.subIndex !== undefined ? setSubs(cam, c.param, { [c.subIndex]: v }, opts)
+        : writeParam(cam, c.param, v, opts);
+}
+
+function notifyUnknownKnob(cam, name) {
+    notifyError(`CAM ${cam} ${P[knobConfig[name].param].label} is unknown: ` +
+        'set it with the buttons below the knob or type a value');
+}
+
+function adjustKnob(name, direction, ev) {
+    const c = knobConfig[name];
+    const cam = currentCamera;
+    const cur = knobValue(name, cam);
+    if (cur === undefined) return notifyUnknownKnob(cam, name);
+    const v = name === 'shutter' ? shutterStep(cam, cur, direction)
+        : cur + direction * ((ev && ev.shiftKey && c.coarse) ? c.coarse : c.step);
+    setKnobValue(name, v, cam);
+}
+
+function knobDragValue(name, cam, start, dy, fine) {
+    const c = knobConfig[name];
+    if (name === 'shutter') {
+        const list = shutterList(cam);
+        const i = Math.min(list.length - 1, Math.max(0, nearestIndex(list, start) + Math.round(dy / SHUTTER_DRAG_PX)));
+        return list[i];
+    }
+    let v = start + dy * (c.max - c.min) / (KNOB_DRAG_PX * (fine ? KNOB_FINE_DIV : 1));
+    v = Math.min(c.max, Math.max(c.min, v));
+    if (c.grid) v = Math.round(v / c.grid) * c.grid;
+    return roundTo(v, P[c.param].dec);
+}
 
 function initKnob(name) {
-    const knob = document.getElementById(`knob-${name}`);
+    const knob = byId(`knob-${name}`);
     if (!knob) return;
-    const config = knobConfig[name];
-    let startY, startValue;
-    
-    updateKnobIndicator(name, config.value);
-    
-    function startDrag(clientY) {
-        startY = clientY;
-        startValue = config.value;
+    const c = knobConfig[name];
+    let startY = 0, startValue = 0, dragCam = 0, active = false, moved = false;
+    bindPointerDrag(knob, (e) => {
+        // The camera of the drag: switching camera meanwhile does not move it
+        dragCam = currentCamera;
+        const cur = knobValue(name, dragCam);
+        active = cur !== undefined;
+        moved = false;
+        if (!active) return notifyUnknownKnob(dragCam, name);
+        startY = e.clientY;
+        startValue = cur;
         document.body.style.cursor = 'ns-resize';
-    }
-    
-    function moveDrag(clientY) {
-        const deltaY = startY - clientY;
-        const range = config.max - config.min;
-        const sensitivity = range / 150;
-        let newValue = startValue + (deltaY * sensitivity);
-        newValue = Math.max(config.min, Math.min(config.max, newValue));
-        newValue = Math.round(newValue / config.step) * config.step;
-        config.value = newValue;
-        updateKnobDisplay(name, newValue);
-        updateKnobIndicator(name, newValue);
-    }
-    
-    function endDrag() {
+    }, (e) => {
+        if (!active) return;
+        const v = knobDragValue(name, dragCam, startValue, startY - e.clientY, e.shiftKey);
+        if (v === knobValue(name, dragCam)) return;
+        moved = true;
+        setKnobValue(name, v, dragCam, { live: true });
+    }, () => {
         document.body.style.cursor = '';
-        sendKnobValue(name);
-    }
-    
-    bindPointerDrag(knob, (e) => startDrag(e.clientY), (e) => moveDrag(e.clientY), endDrag);
-    
-    knob.addEventListener('dblclick', () => {
-        const defaults = { aperture: 0, focus: 0, zoom: 0, shutter: 50, gain: 0, nd: 0 };
-        setKnobValue(name, defaults[name]);
+        // A list (ND) kept unsent during the drag: ask now
+        if (active && moved && c.subIndex !== undefined && !isComplete(c.param, getV(dragCam, c.param))) {
+            setSubs(dragCam, c.param, {});
+        }
+        active = false;
     });
 }
 
 function updateKnobIndicator(name, value) {
-    const knob = document.getElementById(`knob-${name}`);
+    const knob = byId(`knob-${name}`);
     if (!knob) return;
     const config = knobConfig[name];
     const indicator = knob.querySelector('.knob-indicator');
     if (!indicator) return;
-    const normalized = (value - config.min) / (config.max - config.min);
+    const normalized = Math.min(1, Math.max(0, (value - config.min) / (config.max - config.min)));
     const angle = -135 + (normalized * 270);
     indicator.style.transform = `translateX(-50%) rotate(${angle}deg)`;
 }
 
-function updateKnobDisplay(name, value) {
-    const config = knobConfig[name];
-    const inputId = config.subIndex !== undefined ? 
-        `${config.param}_${config.subIndex}_input` : `${config.param}_input`;
-    const input = document.getElementById(inputId);
-    if (input) input.value = config.step < 1 ? formatNumber(value) : Math.round(value);
+function renderKnob(key, val) {
+    renderGeneric(key, val);
+    const name = KNOB_BY_PARAM[key];
+    const c = knobConfig[name];
+    const x = c.subIndex !== undefined ? (Array.isArray(val) ? val[c.subIndex] : undefined) : val;
+    const known = Number.isFinite(x);
+    markUnknown(byId('knob-' + name), !known);
+    updateKnobIndicator(name, known ? x : (c.min + c.max) / 2);
 }
 
-function setKnobValue(name, value) {
-    const config = knobConfig[name];
-    config.value = value;
-    updateKnobDisplay(name, value);
-    updateKnobIndicator(name, value);
-    sendKnobValue(name);
+// === SHUTTER (UI-06) ===
+// Steps and shortcuts follow the lighting frequency: from the camera's known
+// video mode (25/50 fps: 50 Hz, 30/60: 60 Hz), else the 50/60 Hz selector.
+const SHUTTER_SPEEDS = {
+    50: [25, 50, 100, 125, 200, 250, 500, 1000, 2000],
+    60: [24, 30, 60, 120, 240, 500, 1000, 2000]
+};
+let projectFreq = safeGet('shutterFreq') === '60' ? 60 : 50;
+
+function videoModeFreq(cam) {
+    const vm = knownValue(cam, 'video_mode');
+    if (!vm) return null;
+    if (vm[0] === 25 || vm[0] === 50) return 50;
+    if (vm[0] === 30 || vm[0] === 60) return 60;
+    return null;
 }
 
-function adjustKnob(name, direction) {
-    const config = knobConfig[name];
-    let newValue;
-    
-    if (name === 'shutter') {
-        // Shutter uses multiples of frame rate
-        const fps = getCurrentFrameRate();
-        const currentMultiple = Math.round(config.value / fps);
-        const newMultiple = Math.max(1, currentMultiple + direction);
-        newValue = fps * newMultiple;
-    } else {
-        const step = config.step || 1;
-        newValue = config.value + (direction * step);
+function shutterFreq(cam) {
+    return videoModeFreq(cam) || projectFreq;
+}
+
+function shutterList(cam) {
+    return SHUTTER_SPEEDS[shutterFreq(cam)];
+}
+
+function nearestIndex(list, v) {
+    let best = 0;
+    list.forEach((x, i) => { if (Math.abs(x - v) < Math.abs(list[best] - v)) best = i; });
+    return best;
+}
+
+function shutterStep(cam, cur, dir) {
+    const list = shutterList(cam);
+    const next = dir > 0 ? list.find((v) => v > cur) : list.slice().reverse().find((v) => v < cur);
+    return next === undefined ? cur : next;
+}
+
+function setShutterFreq(f) {
+    projectFreq = f === 60 ? 60 : 50;
+    safeSet('shutterFreq', String(projectFreq));
+    const vf = videoModeFreq(currentCamera);
+    if (vf && vf !== projectFreq) {
+        notifyError(`CAM ${currentCamera} video mode is ${vf} Hz: its shutter steps follow it`);
     }
-    
-    newValue = Math.max(config.min, Math.min(config.max, newValue));
-    setKnobValue(name, newValue);
+    renderParam('shutter_speed');
 }
 
-function sendKnobValue(name) {
-    const config = knobConfig[name];
-    if (config.subIndex !== undefined) {
-        if (!multiSubValues[config.param]) multiSubValues[config.param] = [];
-        multiSubValues[config.param][config.subIndex] = config.value;
-        multiSubOnChange(config.param);
-    } else {
-        sendParam(config.param, config.value);
+function setShutterToFrameRate() {
+    setKnobValue('shutter', shutterFreq(currentCamera));
+}
+
+function setShutterDouble() {
+    setKnobValue('shutter', shutterFreq(currentCamera) * 2);
+}
+
+function setShutterQuadruple() {
+    setKnobValue('shutter', shutterFreq(currentCamera) * 4);
+}
+
+function updateShutterPresets() {
+    const f = shutterFreq(currentCamera);
+    const box = byId('shutter-presets');
+    if (box) {
+        const buttons = box.querySelectorAll('button');
+        if (buttons[0]) buttons[0].textContent = `1/${f}`;
+        if (buttons[1]) buttons[1].textContent = `1/${f * 2}`;
+        if (buttons[2]) buttons[2].textContent = `1/${f * 4}`;
+    }
+    const sel = byId('shutter-freq');
+    if (sel) {
+        sel.querySelectorAll('.toggle-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.value) === f));
+        sel.title = videoModeFreq(currentCamera)
+            ? `From the video mode of CAM ${currentCamera}`
+            : 'Lighting frequency for the shutter steps (the video mode of this camera is not known)';
     }
 }
 
 // === COLOR WHEELS ===
 const wheels = ['lift', 'gamma', 'gain', 'offset'];
-const wheelDefaults = {
-    lift: { r: 0, g: 0, b: 0, y: 0 },
-    gamma: { r: 0, g: 0, b: 0, y: 0 },
-    gain: { r: 1, g: 1, b: 1, y: 1 },
-    offset: { r: 0, g: 0, b: 0, y: 0 }
-};
-const wheelData = JSON.parse(JSON.stringify(wheelDefaults));
 const wheelParamMap = { lift: 'lift_adjust', gamma: 'gamma_adjust', gain: 'gain_adjust', offset: 'offset_adjust' };
+const WHEEL_BY_PARAM = { lift_adjust: 'lift', gamma_adjust: 'gamma', gain_adjust: 'gain', offset_adjust: 'offset' };
 
+// The wheel sets R, G and B; the master slider sets Y. Both send while they
+// move (UI-25). Pointer math once per frame, with the latest position.
 function initColorWheels() {
     wheels.forEach(wheelName => {
-        const wheel = document.getElementById(`wheel-${wheelName}`);
-        const pointer = document.getElementById(`pointer-${wheelName}`);
+        const wheel = byId(`wheel-${wheelName}`);
+        const pointer = byId(`pointer-${wheelName}`);
         if (!wheel || !pointer) return;
-        
-        let wheelThrottleTimer = null;
-        
-        const updatePointer = (clientX, clientY) => {
+        const key = wheelParamMap[wheelName];
+        let dragCam = 0, last = null, raf = 0;
+
+        const apply = (live) => {
+            raf = 0;
+            if (!last) return;
             const rect = wheel.getBoundingClientRect();
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
             const radius = rect.width / 2 - 8;
-            
-            // Position relative to center
-            let px = clientX - rect.left - centerX;
-            let py = clientY - rect.top - centerY;
-            
-            // Limit to wheel radius
+            let px = last.x - rect.left - rect.width / 2;
+            let py = last.y - rect.top - rect.height / 2;
             const dist = Math.sqrt(px * px + py * py);
             if (dist > radius) {
                 px = (px / dist) * radius;
                 py = (py / dist) * radius;
             }
-            
-            // Normalize coordinates to -1 to 1
             const nx = px / radius;
             const ny = py / radius;
-            
-            // Position pointer using percentage (same as updateWheelDotFromRGB)
-            pointer.style.left = ((nx + 1) / 2 * 100) + '%';
-            pointer.style.top = ((ny + 1) / 2 * 100) + '%';
-            
-            // Calculate RGB
             const rgb = calculateWheelRGB(nx, ny, wheelName);
-            
-            // Throttle DOM updates to ~30fps
-            if (!wheelThrottleTimer) {
-                wheelThrottleTimer = setTimeout(() => {
-                    document.getElementById(`${wheelName}-r`).value = rgb.r.toFixed(2);
-                    document.getElementById(`${wheelName}-g`).value = rgb.g.toFixed(2);
-                    document.getElementById(`${wheelName}-b`).value = rgb.b.toFixed(2);
-                    wheelThrottleTimer = null;
-                }, 33);
+            setSubs(dragCam, key, { 0: rgb.r, 1: rgb.g, 2: rgb.b }, { live, dedupe: !live });
+            // The exact point under the finger (the model holds 2 decimals)
+            if (dragCam === currentCamera) {
+                pointer.style.left = ((nx + 1) / 2 * 100) + '%';
+                pointer.style.top = ((ny + 1) / 2 * 100) + '%';
             }
-            
-            wheelData[wheelName].r = rgb.r;
-            wheelData[wheelName].g = rgb.g;
-            wheelData[wheelName].b = rgb.b;
         };
-        
-        function endDrag() {
-            // Final DOM update
-            const d = wheelData[wheelName];
-            document.getElementById(`${wheelName}-r`).value = d.r.toFixed(2);
-            document.getElementById(`${wheelName}-g`).value = d.g.toFixed(2);
-            document.getElementById(`${wheelName}-b`).value = d.b.toFixed(2);
-            sendWheelValues(wheelName);
-        }
-        
-        const onPointer = (e) => updatePointer(e.clientX, e.clientY);
-        bindPointerDrag(wheel, onPointer, onPointer, endDrag);
+        const at = (e) => { last = { x: e.clientX, y: e.clientY }; };
+
+        bindPointerDrag(wheel,
+            (e) => { dragCam = currentCamera; at(e); apply(true); },
+            (e) => { at(e); if (!raf) raf = requestAnimationFrame(() => apply(true)); },
+            () => {
+                if (raf) cancelAnimationFrame(raf);
+                raf = 0;
+                apply(false);
+                last = null;
+            });
     });
 }
 
-function updateWheelMaster(wheelName, value) {
-    const v = parseFloat(value);
-    wheelData[wheelName].y = v;
-    document.getElementById(`${wheelName}-y`).value = v.toFixed(2);
-    // Only update UI, don't send
+function wheelMasterInput(wheelName, el) {
+    setSub(rangeCam(el), wheelParamMap[wheelName], 3, parseFloat(el.value), { live: true });
 }
 
-function sendWheelMaster(wheelName) {
-    sendWheelValues(wheelName);
+function wheelMasterChange(wheelName, el) {
+    const key = wheelParamMap[wheelName];
+    const v = parseFloat(el.value);
+    setSub(rangeDone(el, key), key, 3, v, { dedupe: true });
 }
 
-// [r, g, b, y] rounded to 2 decimals and clamped to the protocol range
-function getWheelValues(wheelName) {
-    const range = wheelRanges[wheelName];
-    const data = wheelData[wheelName];
-    return [data.r, data.g, data.b, data.y].map(v =>
-        Math.min(range.max, Math.max(range.min, parseFloat(v.toFixed(2)))));
-}
-
-function sendWheelValues(wheelName) {
-    const paramKey = wheelParamMap[wheelName];
-    const values = getWheelValues(wheelName);
-    multiSubValues[paramKey] = values;
-    const valStr = values.map(v => v.toFixed(2)).join(',');
-    sendCcu(`/?cameraId=${currentCamera}&${paramKey}=${encodeURIComponent(valStr)}`);
+function renderWheel(key, val) {
+    const wheelName = WHEEL_BY_PARAM[key];
+    const a = Array.isArray(val) ? val : [];
+    ['r', 'g', 'b', 'y'].forEach((ch, i) => {
+        const el = byId(`${wheelName}-${ch}`);
+        if (!el) return;
+        const known = Number.isFinite(a[i]);
+        el.value = known ? a[i].toFixed(2) : '?';
+        markUnknown(el, !known);
+    });
+    const rgbKnown = [0, 1, 2].every((i) => Number.isFinite(a[i]));
+    markUnknown(byId(`wheel-${wheelName}`), !rgbKnown);
+    if (rgbKnown) {
+        updateWheelDotFromRGB(wheelName, a[0], a[1], a[2]);
+    } else {
+        const pointer = byId(`pointer-${wheelName}`);
+        if (pointer) { pointer.style.left = '50%'; pointer.style.top = '50%'; }
+    }
+    const master = byId(`${wheelName}-master`);
+    if (master && !heldControls.has(master)) {
+        master.value = Number.isFinite(a[3]) ? a[3] : wheelRanges[wheelName].default;
+        markUnknown(master, !Number.isFinite(a[3]));
+    }
 }
 
 // Ranges per BMD protocol (fixed16 tops out below 16.0)
@@ -4450,22 +5071,10 @@ let wheelRangeMultiplier = 0.5; // Default: Normal (50%)
 
 function setWheelRange(multiplier, btn) {
     wheelRangeMultiplier = multiplier;
-    // Update toggle visual
     const group = btn.closest('.toggle-group');
     group.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    // Update all wheel pointers to reflect new range
-    wheels.forEach(wheelName => {
-        updateWheelPointerFromData(wheelName);
-    });
-}
-
-function updateWheelPointerFromData(wheelName) {
-    const pointer = document.getElementById(`pointer-${wheelName}`);
-    if (!pointer) return;
-    const pos = calculateWheelPosition(wheelData[wheelName].r, wheelData[wheelName].g, wheelData[wheelName].b, wheelName);
-    pointer.style.left = ((pos.x + 1) / 2 * 100) + '%';
-    pointer.style.top = ((pos.y + 1) / 2 * 100) + '%';
+    wheels.forEach((w) => renderParam(wheelParamMap[w]));
 }
 
 function calculateWheelRGB(x, y, wheelName) {
@@ -4537,285 +5146,132 @@ function resetAllColorWheels() {
 }
 
 function resetSingleWheel(wheelName) {
-    const pointer = document.getElementById(`pointer-${wheelName}`);
-    const masterSlider = document.getElementById(`${wheelName}-master`);
-    if (pointer) { pointer.style.left = '50%'; pointer.style.top = '50%'; }
-    const range = wheelRanges[wheelName];
-    const defaultVal = range.default;
-    wheelData[wheelName] = { r: defaultVal, g: defaultVal, b: defaultVal, y: defaultVal };
-    document.getElementById(`${wheelName}-r`).value = defaultVal.toFixed(2);
-    document.getElementById(`${wheelName}-g`).value = defaultVal.toFixed(2);
-    document.getElementById(`${wheelName}-b`).value = defaultVal.toFixed(2);
-    document.getElementById(`${wheelName}-y`).value = defaultVal.toFixed(2);
-    if (masterSlider) masterSlider.value = defaultVal;
-    sendWheelValues(wheelName);
+    writeParam(currentCamera, wheelParamMap[wheelName], P[wheelParamMap[wheelName]].def);
 }
 
-function updateColorControl(control, value) {
-    const v = parseFloat(value);
-    document.getElementById(`cc-${control}-val`).textContent = v.toFixed(2);
-    
-    if (control === 'contrast') {
-        multiSubValues['contrast_adjust'][1] = v;
-        sendCcu(`/?cameraId=${currentCamera}&contrast_adjust=${multiSubValues['contrast_adjust'].join(',')}`);
-    } else if (control === 'pivot') {
-        multiSubValues['contrast_adjust'][0] = v;
-        sendCcu(`/?cameraId=${currentCamera}&contrast_adjust=${multiSubValues['contrast_adjust'].join(',')}`);
-    } else if (control === 'saturation') {
-        multiSubValues['color_adjust'][1] = v;
-        sendCcu(`/?cameraId=${currentCamera}&color_adjust=${multiSubValues['color_adjust'].join(',')}`);
-    } else if (control === 'hue') {
-        multiSubValues['color_adjust'][0] = v;
-        sendCcu(`/?cameraId=${currentCamera}&color_adjust=${multiSubValues['color_adjust'].join(',')}`);
-    } else if (control === 'lummix') {
-        sendParam('luma_mix', v);
+// === CONTRAST / PIVOT, HUE / SATURATION, LUM MIX ===
+// input: shows the value while dragging; change (release): sends it
+const CC_SUB = {
+    pivot: ['contrast_adjust', 0], contrast: ['contrast_adjust', 1],
+    hue: ['color_adjust', 0], saturation: ['color_adjust', 1]
+};
+
+function ccInput(which, el) {
+    const t = byId(el.id + '-val');
+    if (t) t.textContent = parseFloat(el.value).toFixed(2);
+    markUnknown(el, false);
+    if (which === 'pivot' || which === 'contrast') {
+        drawContrastCurve(parseFloat(byId('cc-pivot').value), parseFloat(byId('cc-contrast').value));
     }
 }
 
-// === CONTRAST / PIVOT VISUAL CONTROL ===
-// === CONTRAST / PIVOT VISUAL CONTROL (HOSFORD SIGMOID) ===
-function updateContrastPivot() {
-    const contrastInput = document.getElementById('cc-contrast');
-    const pivotInput = document.getElementById('cc-pivot');
-    
-    if (!contrastInput || !pivotInput) return;
-
-    const contrast = parseFloat(contrastInput.value); // Rango 0.0 a 2.0
-    const pivot = parseFloat(pivotInput.value);       // Rango 0.0 a 1.0
-    
-    document.getElementById('cc-contrast-val').textContent = contrast.toFixed(2);
-    document.getElementById('cc-pivot-val').textContent = pivot.toFixed(2);
-    
-    // Pivot marker - positioned at X=Pivot, Y=50%
-    const pivotPoint = document.getElementById('pivot-point');
-    if (pivotPoint) {
-        pivotPoint.style.left = (pivot * 100) + '%';
-        pivotPoint.style.top = '50%'; 
-    }
-    
-    const path = document.getElementById('contrast-curve-path');
-    if (path) {
-        // 1. MAPEO DE PARÁMETRO C A EXPONENTE b
-        // C=0 -> b=1 (Lineal), C=1 -> b=7 (S-Curve), C=2 -> b=21 (Z-Curve)
-        // Quadratic formula: b = 1 + 2C + 4C²
-        const b = 1 + (2 * contrast) + (4 * Math.pow(contrast, 2));
-        
-        // 2. CÁLCULO DE BIAS PARA EL PIVOT
-        // k = log(0.5) / log(pivot) - deforma X para que pivot se convierta en 0.5
-        const safePivot = Math.max(0.01, Math.min(0.99, pivot));
-        const k = Math.log(0.5) / Math.log(safePivot);
-
-        // 3. GENERACIÓN DE POLILÍNEA (100 muestras)
-        const samples = 100;
-        let d = `M 0,100`;
-
-        for (let i = 1; i <= samples; i++) {
-            const x = i / samples;
-            
-            // A. Aplicar desplazamiento de Pivot (Bias)
-            const xBiased = Math.pow(x, k);
-            
-            // B. Apply Hosford Sigmoid Formula
-            // f(x) = x^b / (x^b + (1-x)^b)
-            const xB = Math.pow(xBiased, b);
-            const invXB = Math.pow(1 - xBiased, b);
-            
-            let y = 0;
-            if (xB + invXB !== 0) {
-                y = xB / (xB + invXB);
-            }
-            
-            // C. Mapeo a Coordenadas SVG (Y invertida)
-            const svgY = 100 - (y * 100);
-            d += ` L ${i},${svgY}`;
-        }
-        
-        path.setAttribute('d', d);
-        
-        // Feedback visual para curva extrema
-        if (contrast > 1.8) {
-            path.style.stroke = "#e87a35";
-            path.style.strokeWidth = "3";
-        } else {
-            path.style.stroke = "#4a90d9";
-            path.style.strokeWidth = "2";
-        }
-    }
-    
-    multiSubValues['contrast_adjust'][0] = pivot;
-    multiSubValues['contrast_adjust'][1] = contrast;
-}
-
-let contrastPivotTimeout = null;
-function sendContrastPivot() {
-    clearTimeout(contrastPivotTimeout);
-    contrastPivotTimeout = setTimeout(() => {
-        const pivot = parseFloat(multiSubValues['contrast_adjust'][0].toFixed(2));
-        const contrast = parseFloat(multiSubValues['contrast_adjust'][1].toFixed(2));
-        sendCcu(`/?cameraId=${currentCamera}&contrast_adjust=${pivot},${contrast}`);
-    }, 50);
+function ccChange(which, el) {
+    const [key, sub] = CC_SUB[which];
+    const v = parseFloat(el.value);
+    setSub(rangeDone(el, key), key, sub, v);
 }
 
 function resetContrastPivot() {
-    document.getElementById('cc-contrast').value = 1;
-    document.getElementById('cc-pivot').value = 0.5;
-    multiSubValues['contrast_adjust'] = [0.5, 1];
-    updateContrastPivot();
-    sendContrastPivot();
-}
-
-// === HUE / SATURATION VISUAL CONTROL ===
-function updateHueSat() {
-    const hue = parseFloat(document.getElementById('cc-hue').value);
-    const sat = parseFloat(document.getElementById('cc-saturation').value);
-    
-    document.getElementById('cc-hue-val').textContent = hue.toFixed(2);
-    document.getElementById('cc-saturation-val').textContent = sat.toFixed(2);
-    
-    // Only update UI and cache, don't send
-    multiSubValues['color_adjust'][0] = hue;
-    multiSubValues['color_adjust'][1] = sat;
-}
-
-let hueSatTimeout = null;
-function sendHueSat() {
-    clearTimeout(hueSatTimeout);
-    hueSatTimeout = setTimeout(() => {
-        const hue = parseFloat(multiSubValues['color_adjust'][0].toFixed(2));
-        const sat = parseFloat(multiSubValues['color_adjust'][1].toFixed(2));
-        sendCcu(`/?cameraId=${currentCamera}&color_adjust=${hue},${sat}`);
-    }, 50);
+    writeParam(currentCamera, 'contrast_adjust', P.contrast_adjust.def);
 }
 
 function resetHueSat() {
-    document.getElementById('cc-hue').value = 0;
-    document.getElementById('cc-saturation').value = 1;
-    document.getElementById('cc-hue-val').textContent = '0.00';
-    document.getElementById('cc-saturation-val').textContent = '1.00';
-    multiSubValues['color_adjust'] = [0, 1];
-    sendCcu(`/?cameraId=${currentCamera}&color_adjust=0,1`);
+    writeParam(currentCamera, 'color_adjust', P.color_adjust.def);
 }
 
 function updateLumMix(value) {
-    const v = parseFloat(value);
-    document.getElementById('cc-lummix-val').textContent = v.toFixed(2);
-    cacheValue('luma_mix', v);
+    byId('cc-lummix-val').textContent = parseFloat(value).toFixed(2);
+    markUnknown(byId('cc-lummix'), false);
 }
 
 function sendLumMix() {
-    const v = parseFloat(document.getElementById('cc-lummix').value);
-    sendParam('luma_mix', v);
+    const el = byId('cc-lummix');
+    const v = parseFloat(el.value);
+    writeParam(rangeDone(el, 'luma_mix'), 'luma_mix', v);
 }
 
 function resetLumMix() {
-    document.getElementById('cc-lummix').value = 1;
-    document.getElementById('cc-lummix-val').textContent = '1.00';
-    cacheValue('luma_mix', 1);
-    sendParam('luma_mix', 1);
+    writeParam(currentCamera, 'luma_mix', 1);
 }
 
-// === VIDEO MODE CONTROLS ===
-function setVideoModeValue(subIndex, value, btn) {
-    const group = btn.closest('.toggle-group');
-    group.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    
-    if (!multiSubValues["video_mode"]) multiSubValues["video_mode"] = [60, 0, 6, 0, 0];
-    multiSubValues["video_mode"][subIndex] = value;
-    // Actualizar hidden input
-    const hiddenInput = document.getElementById(`video_mode_${subIndex}_range`);
-    if (hiddenInput) hiddenInput.value = value;
-    multiSubOnChange('video_mode');
-    
-    // If frame rate changed, update shutter presets
-    if (subIndex === 0) {
-        updateShutterPresets();
+// Hosford sigmoid curve of the contrast / pivot control
+function drawContrastCurve(pivot, contrast) {
+    const pivotPoint = byId('pivot-point');
+    if (pivotPoint) {
+        pivotPoint.style.left = (pivot * 100) + '%';
+        pivotPoint.style.top = '50%';
     }
+    const path = byId('contrast-curve-path');
+    if (!path) return;
+    // C=0 -> b=1 (linear), C=1 -> b=7 (S-curve), C=2 -> b=21 (Z-curve)
+    const b = 1 + (2 * contrast) + (4 * Math.pow(contrast, 2));
+    // Bias so that the pivot maps to 0.5
+    const safePivot = Math.max(0.01, Math.min(0.99, pivot));
+    const k = Math.log(0.5) / Math.log(safePivot);
+    const samples = 100;
+    let d = `M 0,100`;
+    for (let i = 1; i <= samples; i++) {
+        const xBiased = Math.pow(i / samples, k);
+        // f(x) = x^b / (x^b + (1-x)^b)
+        const xB = Math.pow(xBiased, b);
+        const invXB = Math.pow(1 - xBiased, b);
+        const y = (xB + invXB !== 0) ? xB / (xB + invXB) : 0;
+        d += ` L ${i},${100 - (y * 100)}`;
+    }
+    path.setAttribute('d', d);
+    // Extreme curve feedback
+    path.style.stroke = contrast > 1.8 ? "#e87a35" : "#4a90d9";
+    path.style.strokeWidth = contrast > 1.8 ? "3" : "2";
 }
 
-function multiSubSelectChange(paramKey, subIndex, select) {
-    const value = parseInt(select.value);
-    if (!multiSubValues[paramKey]) multiSubValues[paramKey] = [];
-    multiSubValues[paramKey][subIndex] = value;
-    multiSubOnChange(paramKey);
+// === VIDEO MODE / LUT / ND ===
+const VIDEO_DIMENSIONS = ['NTSC', 'PAL', '720', '1080', '2K DCI', '2K 16:9', 'UHD', '3K Anamorphic',
+    '4K DCI', '4K 16:9', '4.6K 2.4:1', '4.6K'];
+
+function describeVideoMode(v) {
+    const fps = v[1] ? (v[0] * 1000 / 1001).toFixed(2) : String(v[0]);
+    return `${VIDEO_DIMENSIONS[v[2]] || 'resolution ' + v[2]} ${fps}${v[3] ? 'i' : 'p'}`;
 }
 
-function multiSubCheckChange(paramKey, subIndex, checkbox) {
-    const value = checkbox.checked ? 1 : 0;
-    if (!multiSubValues[paramKey]) multiSubValues[paramKey] = [];
-    multiSubValues[paramKey][subIndex] = value;
-    multiSubOnChange(paramKey);
+// The format changes the camera output at once (UI-01)
+function confirmVideoMode(cam, v) {
+    return confirm(`${onAirText(cam)}CAM ${cam}: change the video format to ${describeVideoMode(v)}?\n\n` +
+        'The camera output changes at once. The SDI shield passes 1080p60 at most.');
 }
 
-function setNdDisplayMode(value, btn) {
-    const group = btn.closest('.nd-mode-mini');
-    group.querySelectorAll('.nd-mode-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    
-    if (!multiSubValues["nd_filter_stop"]) multiSubValues["nd_filter_stop"] = [0, 0];
-    multiSubValues["nd_filter_stop"][1] = value;
-    multiSubOnChange('nd_filter_stop');
+function setVideoModeValue(subIndex, value) {
+    setSub(currentCamera, 'video_mode', subIndex, value);
+}
+
+function multiSubSelectChange(key, subIndex, select) {
+    if (select.value === '') return;
+    setSub(currentCamera, key, subIndex, Number(select.value));
+}
+
+function multiSubCheckChange(key, subIndex, checkbox) {
+    setSub(currentCamera, key, subIndex, checkbox.checked ? 1 : 0);
+}
+
+function setNdDisplayMode(value) {
+    setSub(currentCamera, 'nd_filter_stop', 1, value);
 }
 
 function updateNdModeVisual(value) {
+    const known = Number.isFinite(value);
     document.querySelectorAll('.nd-mode-mini .nd-mode-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.value == value);
+        b.classList.toggle('active', known && Number(b.dataset.value) === value);
     });
-}
-
-// === SHUTTER PRESETS BASED ON FRAME RATE ===
-function getCurrentFrameRate() {
-    if (multiSubValues["video_mode"] && multiSubValues["video_mode"][0]) {
-        return parseInt(multiSubValues["video_mode"][0]);
-    }
-    return 60; // default
-}
-
-function setShutterToFrameRate() {
-    const fps = getCurrentFrameRate();
-    setKnobValue('shutter', fps);
-}
-
-function setShutterDouble() {
-    const fps = getCurrentFrameRate();
-    setKnobValue('shutter', fps * 2);
-}
-
-function setShutterQuadruple() {
-    const fps = getCurrentFrameRate();
-    setKnobValue('shutter', fps * 4);
-}
-
-function updateShutterPresets() {
-    const fps = getCurrentFrameRate();
-    const presetsContainer = document.getElementById('shutter-presets');
-    if (presetsContainer) {
-        const buttons = presetsContainer.querySelectorAll('button');
-        if (buttons[0]) buttons[0].textContent = `1/${fps}`;
-        if (buttons[1]) buttons[1].textContent = `1/${fps * 2}`;
-        if (buttons[2]) buttons[2].textContent = `1/${fps * 4}`;
-    }
-}
-
-// === AUTO WB TOGGLE ===
-function toggleAutoWB(checkbox) {
-    if (checkbox.checked) {
-        // One-push auto white balance
-        triggerVoid('set_auto_wb');
-    } else {
-        // Restore to manual white balance
-        triggerVoid('restore_auto_wb');
-    }
+    markUnknown(document.querySelector('.nd-mode-mini'), !known);
 }
 
 // === PTZ JOYSTICK ===
 function initJoystick() {
-    const joystick = document.getElementById('ptz-joystick');
-    const handle = document.getElementById('joystick-handle');
+    const joystick = byId('ptz-joystick');
+    const handle = byId('joystick-handle');
     if (!joystick || !handle) return;
-    
+
     let dragCam = currentCamera;   // camera captured at drag start
-    
+
     const updateJoystick = (clientX, clientY) => {
         const rect = joystick.getBoundingClientRect();
         const centerX = rect.width / 2;
@@ -4830,26 +5286,23 @@ function initJoystick() {
         }
         handle.style.left = `${centerX + x}px`;
         handle.style.top = `${centerY + y}px`;
-        
+
         const pan = (x / maxRadius).toFixed(2);
         const tilt = (-y / maxRadius).toFixed(2);
-        document.getElementById('pan-value').textContent = pan;
-        document.getElementById('tilt-value').textContent = tilt;
-        
-        multiSubValues["pan_tilt_velocity"] = [parseFloat(pan), parseFloat(tilt)];
+        byId('pan-value').textContent = pan;
+        byId('tilt-value').textContent = tilt;
         motionSenders.pan_tilt_velocity.send(dragCam, `${pan},${tilt}`);
     };
-    
+
     const resetJoystick = () => {
         handle.style.left = '50%';
         handle.style.top = '50%';
         handle.style.transform = 'translate(-50%, -50%)';
-        document.getElementById('pan-value').textContent = '0.00';
-        document.getElementById('tilt-value').textContent = '0.00';
-        multiSubValues["pan_tilt_velocity"] = [0, 0];
+        byId('pan-value').textContent = '0.00';
+        byId('tilt-value').textContent = '0.00';
         motionSenders.pan_tilt_velocity.stop(dragCam);
     };
-    
+
     bindPointerDrag(joystick,
         (e) => { dragCam = currentCamera; updateJoystick(e.clientX, e.clientY); },
         (e) => updateJoystick(e.clientX, e.clientY),
@@ -4861,8 +5314,10 @@ function initJoystick() {
 // ': keepalive' comments (sent after SSE_TIMEOUT without events) count as
 // traffic: EventSource hides comments. Nothing for sse.staleMs (two keepalive
 // periods plus a margin) means a dead stream, e.g. half-open after an Arduino
-// reset: it is closed and reopened with backoff, the indicator shows 'No sync'
-// meanwhile, and the current camera is refreshed on reconnect (UI-15).
+// reset: it is closed and reopened with backoff, and the indicator shows
+// 'No sync' meanwhile (UI-15). On reconnect the switches and preset names are
+// read again; camera values are not (the protocol is write-only): only what
+// Companion resends after the firmware's REQUESTSYNC comes back.
 // EventSource is only a fallback for browsers that cannot stream a fetch.
 //
 // One stream per tab: the firmware serves MAX_SSE_CLIENTS (2) and a new one
@@ -4870,7 +5325,6 @@ function initJoystick() {
 // off up to SSE_EVICT_MAX_MS. Tabs do not share a stream (HTTP-03): Web Locks
 // need a secure context and the page is served over http, and a heartbeat
 // election over BroadcastChannel breaks under background-tab throttling.
-const SYNC_CONFIG = { timeout: 2000 };
 const SSE_KEEPALIVE_MS = 30000;      // firmware SSE_TIMEOUT
 const SSE_STALE_MARGIN_MS = 5000;
 const SSE_CONNECT_MS = 10000;        // answer + first event
@@ -4881,12 +5335,10 @@ const SSE_STABLE_MS = 60000;         // a stream this old resets the backoff
 const SSE_WATCHDOG_TICK_MS = 5000;
 const SSE_SUSPEND_MS = 10000;        // wall clock ahead of the monotonic one
 
-let syncInProgress = false;
-let lastKnownState = {};
-
-// Per-camera state storage (SSE sends all cameras)
-let cameraStates = {};
-for (let i = 1; i <= 8; i++) cameraStates[i] = {};
+// Raw stream values per camera, as received: the page's answer to
+// requestSync (Companion asking for the current state)
+const cameraStates = {};
+for (let i = 1; i <= MAX_CAMERAS; i++) cameraStates[i] = Object.create(null);
 
 const sse = {
     ctrl: null,          // AbortController of the open fetch stream
@@ -5109,12 +5561,10 @@ function onSseEvent(name, data) {
 // The firmware asks Companion for its state (its CCUSYNC lines come back as
 // events); the rest is read again here, one request at a time.
 async function refreshAfterResync() {
-    console.log('[SSE] Reconnected: refreshing camera', currentCamera);
-    applyCameraState(currentCamera);
+    console.log('[SSE] Reconnected: refreshing state');
     await getOverrides();
     await getVmixConnectStatus();
-    await updatePresetNames();
-    forceSync();
+    await loadPresetList();
 }
 
 window.addEventListener('online', () => {
@@ -5129,103 +5579,44 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pageshow', (e) => { if (e.persisted) startSync(); });
 
 function handleSSEMessage(data) {
-    // Handle requestSync - Arduino asking web to send its state
+    if (!data || typeof data !== 'object') return;
+    // Arduino asking for this page's state (a Companion connected)
     if (data.type === 'requestSync') {
         console.log('[SSE] Received requestSync, sending cached state to Arduino');
         sendCachedStateToArduino();
         return;
     }
-    
-    // Handle preset events
     if (data.type === 'presetSaved' || data.type === 'presetLoaded') {
-        const camId = data.cam;
-        const presetId = data.preset;
-        const presetName = data.name;
-        
-        console.log(`[SSE] ${data.type}: Cam${camId} P${presetId} "${presetName}"`);
-        
-        // Update localStorage
-        localStorage.setItem(`preset_${camId}_${presetId}`, presetName);
-        
-        // Update UI if this is current camera
-        if (camId === currentCamera) {
-            const input = document.getElementById("presetName_" + presetId);
-            if (input) {
-                input.value = presetName;
-            }
-        }
+        const cam = Number(data.cam), id = Number(data.preset);
+        if (validPreset(cam, id) && typeof data.name === 'string') setPresetName(cam, id, data.name);
         return;
     }
-    
-    // Handle parameter changes: { cam: 1, key: "gain_db", val: "6" }
-    const camId = data.cam;
-    const paramKey = data.key;
-    const value = data.val;
-    
-    // Store in per-camera state
-    cameraStates[camId] = cameraStates[camId] || {};
-    cameraStates[camId][paramKey] = value;
-    
-    // Update UI only if this is the currently selected camera
-    if (camId === currentCamera) {
-        // Parse value (could be array like "0.5,1")
-        let parsedValue = value;
-        if (typeof value === 'string' && value.includes(',')) {
-            parsedValue = value.split(',').map(v => parseFloat(v.trim()));
-        } else if (!isNaN(parseFloat(value))) {
-            parsedValue = parseFloat(value);
-        }
-        
-        updateFieldFromSync(paramKey, parsedValue);
-        
-        // Update lastKnownState for compatibility
-        const stateKey = `cam${camId}_${paramKey}`;
-        lastKnownState[stateKey] = parsedValue;
-    }
-}
+    if (data.type === 'tally') return applyTally(data);
+    if (data.type === 'state') return applyServerState(data);
+    if (data.type !== undefined) return;
 
-// Called when user switches camera - apply stored state
-function applyCameraState(camId) {
-    const state = cameraStates[camId];
-    if (!state) return;
-    
-    console.log(`[SSE] Applying stored state for camera ${camId}:`, Object.keys(state).length, 'params');
-    
-    for (const paramKey in state) {
-        let value = state[paramKey];
-        // Parse value
-        if (typeof value === 'string' && value.includes(',')) {
-            value = value.split(',').map(v => parseFloat(v.trim()));
-        } else if (!isNaN(parseFloat(value))) {
-            value = parseFloat(value);
-        }
-        updateFieldFromSync(paramKey, value);
-    }
+    // Parameter change: { cam: 1, key: "gain_db", val: "6" }
+    const cam = Number(data.cam);
+    if (!Number.isInteger(cam) || cam < 1 || cam > MAX_CAMERAS || typeof data.key !== 'string') return;
+    const raw = (data.val === undefined || data.val === null) ? '' : String(data.val);
+    cameraStates[cam][data.key] = raw;
+    onParamEvent(cam, data.key, raw);
 }
 
 // Send all cached camera states to Arduino (for TCP client sync)
 async function sendCachedStateToArduino() {
     // Build body: lines of "cam:key:value"
-    let lines = [];
-    for (let camId = 1; camId <= 8; camId++) {
+    const lines = [];
+    for (let camId = 1; camId <= MAX_CAMERAS; camId++) {
         const state = cameraStates[camId];
-        if (!state) continue;
-        
-        for (const paramKey in state) {
-            const value = state[paramKey];
-            const valueStr = Array.isArray(value) ? value.join(',') : String(value);
-            lines.push(`${camId}:${paramKey}:${valueStr}`);
-        }
+        for (const paramKey in state) lines.push(`${camId}:${paramKey}:${state[paramKey]}`);
     }
-    
     if (lines.length === 0) {
         console.log('[SSE] No cached state to send');
         return;
     }
-    
     console.log(`[SSE] Sending ${lines.length} params to Arduino`);
-    
-    const response = await sendCcu('/syncState', { quiet: true, timeout: 10000, init: {
+    const response = await sendCcu('/syncState', { quiet: true, protect: true, timeout: 10000, init: {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: lines.join('\n')
@@ -5235,366 +5626,89 @@ async function sendCachedStateToArduino() {
     console.log('[SSE] syncState response:', data || message);
 }
 
-async function syncFromArduino() {
-    if (syncInProgress) return;
-    syncInProgress = true;
-    const cam = currentCamera;
-    try {
-        const response = await sendCcu(`/?getParams=${cam}&t=${Date.now()}`,
-            { quiet: true, timeout: SYNC_CONFIG.timeout });
-        if (response && response.ok) {
-            const data = await response.json();
-            // Camera changed while waiting: the reply is not for the visible UI
-            if (cam !== currentCamera) return;
-            if (data?.params) processSyncData(data);
-        }
-    } catch (e) {
-        // Bad JSON: ignored, SSE is the sync source
-    }
-    finally { syncInProgress = false; }
-}
-
-function processSyncData(data) {
-    const params = data.params;
-    console.log('Sync data received:', Object.keys(params));
-    
-    for (const paramKey in params) {
-        const newValue = params[paramKey];
-        const stateKey = `cam${data.cameraId}_${paramKey}`;
-        const oldValue = lastKnownState[stateKey];
-        const hasChanged = JSON.stringify(oldValue) !== JSON.stringify(newValue);
-        
-        if (hasChanged) {
-            console.log('Changed:', paramKey, oldValue, '->', newValue);
-            lastKnownState[stateKey] = newValue;
-            updateFieldFromSync(paramKey, newValue);
-        }
-    }
-}
-
-
-function updateFieldFromSync(paramKey, value) {
-    const activeEl = document.activeElement;
-    
-    // Manejar controles especiales que no tienen data-paramkey
-    if (handleSpecialControlSync(paramKey, value)) {
-        return;
-    }
-
-    // Multi-valued param: merge into multiSubValues so the next partial edit
-    // sends the synced values. Like the firmware (parseFloatList), missing
-    // sub-indexes are 0: a scalar "4" for ND means [4, 0].
-    const multi = multiSubValues[paramKey];
-    if (Array.isArray(multi) && !NO_SYNC_MERGE_PARAMS.has(paramKey)) {
-        const nums = (Array.isArray(value) ? value : String(value).split(','))
-            .map(v => typeof v === 'number' ? v : parseFloat(v));
-        // The firmware rejects malformed lists, so the camera did not change
-        if (nums.length === 0 || !nums.every(Number.isFinite)) return;
-        // Skip the sub-index the user is dragging right now
-        const busy = (activeEl && activeEl.dataset && activeEl.dataset.paramkey === paramKey &&
-            activeEl.dataset.subindex !== undefined && activeEl.matches(':active'))
-            ? parseInt(activeEl.dataset.subindex) : -1;
-        const len = Math.max(multi.length, nums.length);
-        for (let i = 0; i < len; i++) {
-            if (i !== busy) multi[i] = i < nums.length ? nums[i] : 0;
-        }
-        // Repaint every sub-index from the merged state
-        value = multi.slice();
-        if (paramKey === 'nd_filter_stop') updateNdModeVisual(multi[1]);
-    }
-    
-    document.querySelectorAll(`[data-paramkey="${paramKey}"]`).forEach(el => {
-        if (el === activeEl) return;
-        const subIndex = el.dataset.subindex;
-        let val = Array.isArray(value) && subIndex !== undefined ? value[parseInt(subIndex)] : value;
-        if (val !== undefined) {
-            updateControlValue(el, val);
-            cacheValue(paramKey, val, subIndex !== undefined ? parseInt(subIndex) : null);
-        }
-    });
-}
-
-// Mapping of special parameters to their controls
-const specialParamHandlers = {
-    'lift_adjust': (v) => updateWheelFromSync('lift', v),
-    'gamma_adjust': (v) => updateWheelFromSync('gamma', v),
-    'gain_adjust': (v) => updateWheelFromSync('gain', v),
-    'offset_adjust': (v) => updateWheelFromSync('offset', v),
-    'contrast_adjust': (v) => {
-        console.log('contrast_adjust sync received:', v);
-        let values = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(x => parseFloat(x.trim())) : [0.5, 1]);
-        const pivot = values.length > 0 ? parseFloat(values[0]) : 0.5;
-        const contrast = values.length > 1 ? parseFloat(values[1]) : 1;
-        
-        const pivotEl = document.getElementById('cc-pivot');
-        const contrastEl = document.getElementById('cc-contrast');
-        const pivotValEl = document.getElementById('cc-pivot-val');
-        const contrastValEl = document.getElementById('cc-contrast-val');
-        
-        if (pivotEl) pivotEl.value = pivot;
-        if (contrastEl) contrastEl.value = contrast;
-        if (pivotValEl) pivotValEl.textContent = pivot.toFixed(2);
-        if (contrastValEl) contrastValEl.textContent = contrast.toFixed(2);
-        
-        multiSubValues['contrast_adjust'] = [pivot, contrast];
-        updateContrastPivot();
-    },
-    'color_adjust': (v) => {
-        let values = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(x => parseFloat(x.trim())) : [0, 1]);
-        const hue = values.length > 0 ? parseFloat(values[0]) : 0;
-        const sat = values.length > 1 ? parseFloat(values[1]) : 1;
-        
-        const hueEl = document.getElementById('cc-hue');
-        const satEl = document.getElementById('cc-saturation');
-        const hueValEl = document.getElementById('cc-hue-val');
-        const satValEl = document.getElementById('cc-saturation-val');
-        
-        if (hueEl) hueEl.value = hue;
-        if (satEl) satEl.value = sat;
-        if (hueValEl) hueValEl.textContent = hue.toFixed(2);
-        if (satValEl) satValEl.textContent = sat.toFixed(2);
-        
-        multiSubValues['color_adjust'] = [hue, sat];
-    },
-    'luma_mix': (v) => {
-        const val = parseFloat(v);
-        const lumEl = document.getElementById('cc-lummix');
-        const lumValEl = document.getElementById('cc-lummix-val');
-        if (lumEl) lumEl.value = val;
-        if (lumValEl) lumValEl.textContent = val.toFixed(2);
-    },
-    'overlays': (v) => {
-        let values = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(x => parseInt(x.trim())) : [5, 100, 0, 0]);
-        multiSubValues['overlays'] = values;
-        // Frame Guide Style [0]
-        if (values[0] !== undefined) {
-            updateOverlayToggleVisual(0, values[0]);
-            const h0 = document.getElementById('overlays_0_range');
-            if (h0) h0.value = values[0];
-        }
-        // Grid Overlays [3]
-        if (values[3] !== undefined) {
-            updateGridCheckboxesFromValue(values[3]);
-            const h3 = document.getElementById('overlays_3_range');
-            if (h3) h3.value = values[3];
-        }
-    },
-    'exposure_and_focus_tools': (v) => {
-        let values = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(x => parseInt(x.trim())) : [0, 0]);
-        multiSubValues['exposure_and_focus_tools'] = values;
-        const tools = values[0] || 0;
-        const displays = values[1] || 0;
-        updateExposureToolsCheckboxesFromValue(tools, displays);
-        const h0 = document.getElementById('exposure_and_focus_tools_0_range');
-        const h1 = document.getElementById('exposure_and_focus_tools_1_range');
-        if (h0) h0.value = tools;
-        if (h1) h1.value = displays;
-    },
-    'focus_assist': (v) => {
-        let values = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(x => parseInt(x.trim())) : [1, 0]);
-        multiSubValues['focus_assist'] = values;
-        if (values[0] !== undefined) {
-            updateFocusAssistToggleVisual(0, values[0]);
-            const h0 = document.getElementById('focus_assist_0_range');
-            if (h0) h0.value = values[0];
-        }
-        if (values[1] !== undefined) {
-            updateFocusAssistToggleVisual(1, values[1]);
-            const h1 = document.getElementById('focus_assist_1_range');
-            if (h1) h1.value = values[1];
-        }
-    },
-    'video_mode': (v) => {
-        let values = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(x => parseInt(x.trim())) : [60, 0, 6, 0, 0]);
-        multiSubValues['video_mode'] = values;
-        // Frame Rate [0]
-        if (values[0] !== undefined) {
-            updateVideoModeToggleVisual(0, values[0]);
-            const h0 = document.getElementById('video_mode_0_range');
-            if (h0) h0.value = values[0];
-        }
-        // M-Rate [1]
-        if (values[1] !== undefined) {
-            updateVideoModeToggleVisual(1, values[1]);
-            const h1 = document.getElementById('video_mode_1_range');
-            if (h1) h1.value = values[1];
-        }
-        // Dimensions [2] - es un select, no toggle
-        if (values[2] !== undefined) {
-            const sel = document.getElementById('video_mode_2_select');
-            if (sel) sel.value = values[2];
-        }
-        // Scan Mode [3]
-        if (values[3] !== undefined) {
-            updateVideoModeToggleVisual(3, values[3]);
-            const h3 = document.getElementById('video_mode_3_range');
-            if (h3) h3.value = values[3];
-        }
-        // Color Space [4]
-        if (values[4] !== undefined) {
-            const h4 = document.getElementById('video_mode_4_range');
-            if (h4) h4.value = values[4];
-        }
-        // Update shutter presets if frame rate changed
-        updateShutterPresets();
-    }
-};
-
-function handleSpecialControlSync(paramKey, value) {
-    if (specialParamHandlers[paramKey]) {
-        specialParamHandlers[paramKey](value);
-        return true;
-    }
-    return false;
-}
-
-function updateWheelFromSync(wheelName, value) {
-    let values = [];
-    if (Array.isArray(value)) {
-        values = value.map(v => parseFloat(v));
-    } else if (typeof value === 'string') {
-        values = value.split(',').map(v => parseFloat(v.trim()));
-    } else {
-        return;
-    }
-    
-    const range = wheelRanges[wheelName];
-    const defaultVal = range ? range.default : 0;
-    
-    const r = values.length > 0 ? values[0] : defaultVal;
-    const g = values.length > 1 ? values[1] : defaultVal;
-    const b = values.length > 2 ? values[2] : defaultVal;
-    const y = values.length > 3 ? values[3] : defaultVal;
-    
-    // Check if values are almost the same (tolerance for rounding errors)
-    const current = wheelData[wheelName];
-    const tolerance = 0.05;
-    const sameValues = current &&
-        Math.abs(current.r - r) < tolerance &&
-        Math.abs(current.g - g) < tolerance &&
-        Math.abs(current.b - b) < tolerance &&
-        Math.abs(current.y - y) < tolerance;
-    
-    if (sameValues) return; // Skip update if values haven't changed significantly
-    
-    wheelData[wheelName] = { r, g, b, y };
-    
-    const rEl = document.getElementById(`${wheelName}-r`);
-    const gEl = document.getElementById(`${wheelName}-g`);
-    const bEl = document.getElementById(`${wheelName}-b`);
-    const yEl = document.getElementById(`${wheelName}-y`);
-    
-    if (rEl) rEl.value = r.toFixed(2);
-    if (gEl) gEl.value = g.toFixed(2);
-    if (bEl) bEl.value = b.toFixed(2);
-    if (yEl) yEl.value = y.toFixed(2);
-    
-    const masterEl = document.getElementById(`${wheelName}-master`);
-    if (masterEl) masterEl.value = y;
-    
-    updateWheelDotFromRGB(wheelName, r, g, b);
-}
-
-function forceSync() { lastKnownState = {}; syncFromArduino(); }
-
 // === PRESETS ===
+// Preset IDs 0-4, as in Companion (UI-20). Names come from one /?listPresets
+// at load and after a reconnect, then from the stream's preset events
+// (UI-13); they are shown as TallyCCU stores them (UI-16).
 let saveInProgress = false;
+let resetInProgress = false;
 const PRESET_TIMEOUT_MS = 15000;   // SD access plus one I2C command per parameter
 
+const presetNames = {};   // cam -> { presetId: name } of the presets on the SD
+for (let i = 1; i <= MAX_CAMERAS; i++) presetNames[i] = {};
+const presetList = { loaded: false, busy: null };   // busy: the read in flight
+
+function validPreset(cam, id) {
+    return Number.isInteger(cam) && cam >= 1 && cam <= MAX_CAMERAS && Number.isInteger(id) && id >= 0 && id < MAX_PRESETS;
+}
+
 function togglePresetsPanel() {
-    const panel = document.getElementById('presetsPanel');
-    const toggle = document.getElementById('presetsToggle');
+    const panel = byId('presetsPanel');
+    const toggle = byId('presetsToggle');
     panel.classList.toggle('open');
     toggle.classList.toggle('panel-open');
+    // The list failed at load (Arduino busy): read it when needed
+    if (panel.classList.contains('open') && !presetList.loaded) loadPresetList();
 }
 
-function updatePresetNames() {
+// One read at a time: a caller during a read waits for that one
+function loadPresetList() {
+    if (!presetList.busy) {
+        presetList.busy = readPresetList().finally(() => { presetList.busy = null; });
+    }
+    return presetList.busy;
+}
+
+async function readPresetList() {
+    const data = await getJson('/?listPresets');
+    if (!data || !Array.isArray(data.presets)) return;   // keep what is known
+    for (let i = 1; i <= MAX_CAMERAS; i++) presetNames[i] = {};
+    data.presets.forEach((p) => {
+        const cam = Number(p.cameraId), id = Number(p.presetId);
+        if (validPreset(cam, id) && typeof p.name === 'string') {
+            presetNames[cam][id] = p.name;
+            safeSet(`preset_${cam}_${id}`, p.name);
+        }
+    });
+    presetList.loaded = true;
+    renderPresetNames();
+}
+
+function setPresetName(cam, id, name) {
+    presetNames[cam][id] = name;
+    safeSet(`preset_${cam}_${id}`, name);
+    if (cam === currentCamera) renderPresetNames();
+}
+
+// Before the first list, the names last seen by this browser
+function storedPresetName(cam, id) {
+    if (presetNames[cam][id] !== undefined) return presetNames[cam][id];
+    return presetList.loaded ? null : safeGet(`preset_${cam}_${id}`);
+}
+
+function renderPresetNames() {
     for (let i = 0; i < MAX_PRESETS; i++) {
-        const input = document.getElementById("presetName_" + i);
-        if (input) {
-            const saved = localStorage.getItem(`preset_${currentCamera}_${i}`);
-            input.value = saved || `Preset ${i + 1}`;
-        }
+        const input = byId("presetName_" + i);
+        if (!input || input === document.activeElement) continue;
+        const name = storedPresetName(currentCamera, i);
+        input.value = name === null ? '' : name;
+        input.placeholder = `Preset ${i} (empty)`;
     }
-    const cam = currentCamera;
-    return getJson('/?listPresets').then(data => {
-        if (data?.presets && cam === currentCamera) {
-            data.presets.filter(p => p.cameraId === cam).forEach(preset => {
-                const input = document.getElementById("presetName_" + preset.presetId);
-                if (input && preset.name) {
-                    input.value = decodeURIComponent(preset.name);
-                    localStorage.setItem(`preset_${cam}_${preset.presetId}`, preset.name);
-                }
-            });
-        }
-    }).catch(() => {});
 }
 
-function collectAllParameters() {
+// Known values of the selected groups for that camera (UI-01): what was
+// set from this page or reported by TallyCCU; the rest is left out
+function collectKnownParameters(cam) {
     const params = {};
-    
-    document.querySelectorAll('.param-control:not([data-subindex])').forEach(el => {
-        const parent = el.closest('.tabcontent');
-        if (!parent) return;
-        const groupId = parent.id.replace('group_', '');
-        if (!selectedParamGroups[groupId]) return;
-        const key = el.dataset.paramkey;
-        if (!key || NO_PRESET_PARAMS.has(key)) return;
-        const type = el.dataset.paramtype;
-        if (type === 'checkbox') params[key] = el.checked ? 1 : 0;
-        else if (type !== 'void') params[key] = el.value;
-    });
-    
-    const multiParams = new Map();
-    document.querySelectorAll('.param-control[data-subindex]').forEach(el => {
-        const parent = el.closest('.tabcontent');
-        if (!parent) return;
-        const groupId = parent.id.replace('group_', '');
-        if (!selectedParamGroups[groupId]) return;
-        const key = el.dataset.paramkey;
-        const subIndex = parseInt(el.dataset.subindex);
-        if (!key || isNaN(subIndex) || NO_PRESET_PARAMS.has(key)) return;
-        const type = el.dataset.paramtype;
-        let value = type === 'sub-check' ? (el.checked ? 1 : 0) : el.value;
-        if (type === 'sub-void') return;
-        if (!multiParams.has(key)) multiParams.set(key, []);
-        multiParams.get(key).push({ subIndex, value });
-    });
-    
-    multiParams.forEach((entries, key) => {
-        entries.sort((a, b) => a.subIndex - b.subIndex);
-        const values = [];
-        entries.forEach(e => values[e.subIndex] = e.value);
-        for (let i = 0; i < values.length; i++) if (values[i] === undefined) values[i] = 0;
-        params[key] = values;
-    });
-    
-    // ND: the DOM only holds the stop; keep the display mode too
-    if (params['nd_filter_stop'] !== undefined) {
-        const nd = multiSubValues['nd_filter_stop'] || [0, 0];
-        params['nd_filter_stop'] = [nd[0] || 0, nd[1] || 0];
+    let unknown = 0;
+    for (const key in P) {
+        const meta = P[key];
+        if (meta.noPreset || !selectedParamGroups[meta.g]) continue;
+        const v = knownValue(cam, key);
+        if (v === undefined) unknown++;
+        else params[key] = v;
     }
-
-    // Add special Color Correction controls if group is selected
-    if (selectedParamGroups['color_correction']) {
-        // Color Wheels - 2 decimals, clamped to protocol range
-        params['lift_adjust'] = getWheelValues('lift');
-        params['gamma_adjust'] = getWheelValues('gamma');
-        params['gain_adjust'] = getWheelValues('gain');
-        params['offset_adjust'] = getWheelValues('offset');
-        
-        // Contrast/Pivot
-        params['contrast_adjust'] = multiSubValues['contrast_adjust'] || [0.5, 1];
-        
-        // Hue/Saturation
-        params['color_adjust'] = multiSubValues['color_adjust'] || [0, 1];
-        
-        // Luma Mix
-        const lumMixEl = document.getElementById('cc-lummix');
-        if (lumMixEl) params['luma_mix'] = parseFloat(lumMixEl.value);
-    }
-    
-    return params;
+    return { params, unknown };
 }
 
 // A pending hide belongs to the previous message: a new one cancels it
@@ -5603,7 +5717,7 @@ let saveStatusHideTimer = null;
 function showSaveStatus(message, type = 'info', progress = null) {
     clearTimeout(saveStatusHideTimer);
     saveStatusHideTimer = null;
-    let statusEl = document.getElementById('saveStatusElement');
+    let statusEl = byId('saveStatusElement');
     if (!statusEl) {
         statusEl = document.createElement('div');
         statusEl.id = 'saveStatusElement';
@@ -5622,28 +5736,51 @@ function hideSaveStatus(delay = 0) {
     clearTimeout(saveStatusHideTimer);
     saveStatusHideTimer = setTimeout(() => {
         saveStatusHideTimer = null;
-        const el = document.getElementById('saveStatusElement');
+        const el = byId('saveStatusElement');
         if (el) el.remove();
     }, delay);
 }
 
+// Overwriting a preset asks (UI-17). The SD's list is read first if it was
+// not (Companion may have saved there); if it cannot be read, it asks anyway.
+async function confirmPresetOverwrite(cam, idx) {
+    if (!presetList.loaded) await loadPresetList();
+    const name = storedPresetName(cam, idx);
+    if (name !== null) return confirm(`Overwrite preset ${idx} "${name}" of CAM ${cam}?`);
+    if (presetList.loaded) return true;
+    return confirm(`Preset ${idx} of CAM ${cam} may already exist on TallyCCU (its list could not be read).\n\n` +
+        'Overwrite it?');
+}
+
 async function savePreset(idx) {
     if (saveInProgress) return notifyError('Preset save in progress');
-    saveInProgress = true;
     const cam = currentCamera;
-    const nameEl = document.getElementById("presetName_" + idx);
-    const presetName = truncateUtf8(nameEl.value.trim() || `Preset ${idx + 1}`, PRESET_NAME_MAX_BYTES);
-    nameEl.value = presetName;
+    const nameEl = byId("presetName_" + idx);
+    const typed = nameEl.value.trim();
+    const listWasLoaded = presetList.loaded;
+    let { params, unknown } = collectKnownParameters(cam);
+    let keys = Object.keys(params);
+    if (keys.length === 0) {
+        showSaveStatus(`CAM ${cam}: nothing to save. No value of the selected groups is known for this camera ` +
+            '(set from this page or reported by TallyCCU) yet.', 'error');
+        hideSaveStatus(4000);
+        return;
+    }
+    saveInProgress = true;
+    let go = false;
+    try { go = await confirmPresetOverwrite(cam, idx); } catch (e) {}
+    if (!go) { saveInProgress = false; return; }
+    // An empty box could not show the name of a preset not listed yet: keep it
+    const presetName = truncateUtf8(typed || (!listWasLoaded && storedPresetName(cam, idx)) || `Preset ${idx}`,
+        PRESET_NAME_MAX_BYTES);
+    // What is known once confirmed (the list read may have taken a while)
+    ({ params, unknown } = collectKnownParameters(cam));
+    keys = Object.keys(params);
+    if (cam === currentCamera) nameEl.value = presetName;
     showSaveStatus(`Saving "${presetName}"...`, 'info', 30);
     try {
-        const params = collectAllParameters();
-        if (Object.keys(params).length === 0) throw new Error('No parameters');
-        let dataString = '';
-        for (const key of Object.keys(params)) {
-            const value = params[key];
-            dataString += `${key}:${Array.isArray(value) ? value.join(',') : value};`;
-        }
-        showSaveStatus('Sending...', 'info', 60);
+        if (keys.length === 0) throw new Error(`CAM ${cam}: nothing known to save any more`);
+        const dataString = keys.map((k) => `${k}:${encodeValue(k, params[k])};`).join('');
         // Body: cameraId=X&presetId=Y&name=Z&data=...
         const body = `cameraId=${cam}&presetId=${idx}&name=${encodeURIComponent(presetName)}&data=${dataString}`;
         const response = await sendCcu('/savePreset', { quiet: true, timeout: PRESET_TIMEOUT_MS, init: {
@@ -5654,41 +5791,43 @@ async function savePreset(idx) {
         if (!response) throw new Error('no answer from TallyCCU');
         const { data, message } = await readReply(response);
         if (!response.ok || !data || data.success !== true) throw new Error(message);
-        // Remember the name only once the Arduino confirms the save
-        localStorage.setItem(`preset_${cam}_${idx}`, presetName);
-        const count = Number.isFinite(data.paramCount) ? ` (${data.paramCount})` : '';
-        showSaveStatus(`"${presetName}" saved ✓${count}`, 'success', 100);
+        setPresetName(cam, idx, presetName);
+        const count = Number.isFinite(data.paramCount) ? data.paramCount : keys.length;
+        showSaveStatus(`"${presetName}" saved ✓ (${count} values` +
+            (unknown ? `; ${unknown} unknown for CAM ${cam}, not saved)` : ')'), 'success', 100);
     } catch (error) {
         showSaveStatus(`Error: ${error.message}`, 'error');
     } finally {
         saveInProgress = false;
-        hideSaveStatus(2000);
+        hideSaveStatus(unknown ? 3500 : 2000);
     }
 }
 
 async function loadPreset(idx) {
     const cam = currentCamera;
-    const presetName = document.getElementById("presetName_" + idx).value || `Preset ${idx + 1}`;
+    const presetName = storedPresetName(cam, idx) || `Preset ${idx}`;
+    if (onAir(cam) && !confirm(`CAM ${cam} IS ON AIR.\n\nLoad preset ${idx} "${presetName}" on it now?`)) return;
     showSaveStatus(`Loading "${presetName}"...`, 'info', 50);
     try {
-        // Formato esperado: /?loadPreset=cameraId,presetIdx&returnValues=1
         const response = await sendCcu(`/?loadPreset=${cam},${idx}&returnValues=1`,
             { quiet: true, timeout: PRESET_TIMEOUT_MS });
         if (!response) throw new Error('no answer from TallyCCU');
         const { data, message } = await readReply(response);
         if (!response.ok || !data || data.success !== true) throw new Error(message);
-        // El servidor devuelve 'parameters' no 'params'
+        // The answer holds 'parameters' (older firmware: 'params')
         const params = data.parameters || data.params;
-        // Old presets may hold keys the firmware skips on load: do not show them
-        if (params) NO_PRESET_PARAMS.forEach(k => delete params[k]);
-        // Camera changed while loading: SSE already updated cameraStates[cam]
-        if (params && cam === currentCamera) {
-            // Force refresh by clearing known state for these parameters
-            Object.keys(params).forEach(key => {
-                delete lastKnownState[`cam${cam}_${key}`];
-            });
-            // Actualizar UI con los valores del preset
-            processSyncData({ cameraId: cam, params: params });
+        // Into that camera's state, whichever camera is shown now; the
+        // stream reports the same values (this covers it being down)
+        if (params && typeof params === 'object') {
+            for (const key in params) {
+                if (!isParam(key) || P[key].action) continue;
+                const v = normalizeValue(key, params[key]);
+                if (v === null) continue;
+                // Never applied from a preset by the firmware (old presets)
+                if (key === 'video_mode' && encodeValue(key, v) === '60,0,6,0,0') continue;
+                setConf(cam, key, v);
+                if (!writerBusy(cam, key)) setV(cam, key, v);
+            }
         }
         showSaveStatus(`CAM ${cam}: "${presetName}" loaded ✓`, 'success', 100);
     } catch (error) {
@@ -5699,255 +5838,102 @@ async function loadPreset(idx) {
     }
 }
 
-function resetSelectedGroupParams() {
-    if (!confirm('Reset parameters to default values?')) return;
-    showSaveStatus('Resetting...', 'info');
-    let count = 0;
-    const selectedGroups = Object.entries(selectedParamGroups).filter(([_, sel]) => sel).map(([g]) => g);
-    
-    // ND display mode back to Stop; the ND knob reset below sends both sub-indexes
-    if (selectedGroups.includes('video')) {
-        if (!multiSubValues['nd_filter_stop']) multiSubValues['nd_filter_stop'] = [0, 0];
-        multiSubValues['nd_filter_stop'][1] = 0;
-        updateNdModeVisual(0);
+// Reset to Defaults (UI-07): the table defaults of the selected groups, one
+// request at a time. Never the video format, actions, color bars or the lens
+// position (iris, focus, zoom); for PTZ it only stops the motion.
+async function resetSelectedGroupParams() {
+    if (resetInProgress) return notifyError('Reset in progress');
+    const cam = currentCamera;
+    const groups = Object.keys(selectedParamGroups).filter((g) => selectedParamGroups[g]);
+    const list = [];
+    for (const key in P) {
+        const meta = P[key];
+        if (meta.noPreset || meta.def === null || !groups.includes(meta.g)) continue;
+        list.push([key, defaultOf(key, cam)]);
     }
+    const ptz = groups.includes('ptz_control');
+    if (!list.length && !ptz) return notifyError('Reset: select at least one parameter group');
+    const names = groups.map((g) => GROUP_LABELS[g] || g).join(', ');
+    if (!confirm(`${onAirText(cam)}Reset CAM ${cam} to defaults: ${names}?\n\n` +
+        `${list.length} values are sent${ptz ? ' and PTZ motion is stopped' : ''}. ` +
+        'Iris, focus, zoom and the video format are not changed.')) return;
+    resetInProgress = true;
+    if (ptz) motionSenders.pan_tilt_velocity.stop(cam);
+    let done = 0, failed = 0, lost = false;
+    try {
+        for (const [key, value] of list) {
+            showSaveStatus(`CAM ${cam}: resetting ${done + 1}/${list.length}`, 'info',
+                Math.round(100 * done / list.length));
+            const r = await writeParam(cam, key, value);
+            done++;
+            if (r === false) failed++;
+            if (r === undefined) { lost = true; break; }
+        }
+    } finally {
+        resetInProgress = false;
+    }
+    if (lost) showSaveStatus(`CAM ${cam}: no answer from TallyCCU, reset stopped after ${done - 1} of ${list.length}`, 'error');
+    else if (failed) showSaveStatus(`CAM ${cam}: ${failed} of ${list.length} values not reset`, 'error');
+    else showSaveStatus(`CAM ${cam}: ${list.length} values reset ✓`, 'success');
+    hideSaveStatus(2500);
+}
 
-    document.querySelectorAll('.tabcontent').forEach(tab => {
-        const groupId = tab.id.replace('group_', '');
-        if (!selectedGroups.includes(groupId)) return;
-        
-        tab.querySelectorAll('.param-control').forEach(el => {
-            const defVal = el.dataset.default;
-            const paramKey = el.dataset.paramkey;
-            
-            if (defVal === undefined) return;
-            if (NO_PRESET_RESET_PARAMS.has(paramKey)) return;
-            
-            const type = el.dataset.paramtype;
-            
-            if (type === 'checkbox' || type === 'sub-check') {
-                el.checked = defVal === '1';
-                el.dispatchEvent(new Event('change'));
-            } else if (el.tagName !== 'BUTTON' && type !== 'void') {
-                el.value = defVal;
-                // No disparar eventos para sub-range, se manejan en bloques especiales
-                if (type !== 'sub-range') {
-                    el.dispatchEvent(new Event('input'));
-                    el.dispatchEvent(new Event('change'));
-                }
-                
-                // Si es un knob-input, actualizar el indicador visual y enviar
-                if (el.classList.contains('knob-input') && paramKey) {
-                    const knobName = Object.keys(knobConfig).find(k => knobConfig[k].param === paramKey);
-                    if (knobName) {
-                        knobConfig[knobName].value = parseFloat(defVal);
-                        updateKnobIndicator(knobName, parseFloat(defVal));
-                        sendKnobValue(knobName);
-                    }
-                }
-                
-                // Si es un hidden input de toggle, actualizar el toggle visual
-                if (el.type === 'hidden' && paramKey) {
-                    updateToggleVisual(paramKey, defVal);
-                }
-            }
-            count++;
-        });
+// Accessible names for the controls without a <label> (UI-28)
+function labelControls() {
+    document.querySelectorAll('input:not([type="hidden"]), select').forEach((el) => {
+        if (el.getAttribute('aria-label')) return;
+        if (el.labels && [...el.labels].some((l) => l.textContent.trim())) return;
+        const wv = el.closest('.wheel-value');
+        if (wv) {
+            const group = el.closest('.color-wheel-group');
+            const title = group && group.querySelector('.wheel-title');
+            const ch = wv.querySelector('label');
+            el.setAttribute('aria-label', `${title ? title.textContent : ''} ${ch ? ch.textContent : ''}`.trim());
+            return;
+        }
+        const box = el.closest('.knob-control, .slider-control, .setting-item, .cp-slider, .hs-slider, ' +
+            '.lummix-control-centered, .wheel-master, .preset-card');
+        let text = '';
+        if (box && box.classList.contains('wheel-master')) {
+            const t = box.closest('.color-wheel-group').querySelector('.wheel-title');
+            text = (t ? t.textContent : '') + ' master';
+        } else if (box && box.classList.contains('preset-card')) {
+            text = 'Preset ' + box.querySelector('.preset-card-number').textContent + ' name';
+        } else {
+            const lab = box && box.querySelector('label');
+            text = lab ? lab.textContent.trim() : '';
+        }
+        if (text) el.setAttribute('aria-label', text);
     });
-    
-    // Resetear controles especiales de Color Correction
-    if (selectedGroups.includes('color_correction')) {
-        // Color Wheels
-        resetAllColorWheels();
-        
-        // Contrast/Pivot
-        document.getElementById('cc-pivot').value = 0.5;
-        document.getElementById('cc-contrast').value = 1;
-        document.getElementById('cc-pivot-val').textContent = '0.50';
-        document.getElementById('cc-contrast-val').textContent = '1.00';
-        multiSubValues['contrast_adjust'] = [0.5, 1];
-        updateContrastPivot();
-        sendContrastPivot();
-        
-        // Hue/Saturation
-        document.getElementById('cc-hue').value = 0;
-        document.getElementById('cc-saturation').value = 1;
-        document.getElementById('cc-hue-val').textContent = '0.00';
-        document.getElementById('cc-saturation-val').textContent = '1.00';
-        multiSubValues['color_adjust'] = [0, 1];
-        sendHueSat();
-        
-        // Luma Mix
-        document.getElementById('cc-lummix').value = 1;
-        document.getElementById('cc-lummix-val').textContent = '1.00';
-        sendParam('luma_mix', 1);
-        
-        count += 10;
-    }
-    
-    // Resetear controles especiales de Video
-    if (selectedGroups.includes('video')) {
-        // Video Mode is never reset: it would change the camera format
-        
-        // Manual White Balance - reset a 5600K, tint 10
-        multiSubValues['manual_white_balance'] = [5600, 10];
-        document.getElementById('manual_white_balance_0_range').value = 5600;
-        document.getElementById('manual_white_balance_1_range').value = 10;
-        const wbTempInput = document.getElementById('manual_white_balance_0_input');
-        const wbTintInput = document.getElementById('manual_white_balance_1_input');
-        if (wbTempInput) wbTempInput.value = 5600;
-        if (wbTintInput) wbTintInput.value = 10;
-        multiSubOnChange('manual_white_balance');
-        
-        // Dynamic Range Mode - reset a Extended Video (2)
-        document.getElementById('dynamic_range_mode_range').value = 2;
-        updateToggleVisual('dynamic_range_mode', 2);
-        sendParam('dynamic_range_mode', 2);
-        
-        // Video Sharpening Level - reset a Off (0)
-        document.getElementById('video_sharpening_level_range').value = 0;
-        updateToggleVisual('video_sharpening_level', 0);
-        sendParam('video_sharpening_level', 0);
-        
-        // Auto Exposure Mode - reset a Manual (0)
-        document.getElementById('set_auto_exposure_mode_range').value = 0;
-        updateToggleVisual('set_auto_exposure_mode', 0);
-        sendParam('set_auto_exposure_mode', 0);
-        
-        // ND Filter: sent once by the knob loop above, mode already reset
-        
-        count += 10;
-    }
-    
-    // Resetear controles especiales de Audio
-    if (selectedGroups.includes('audio')) {
-        // Input Levels - reset a 0.5, 0.5
-        multiSubValues['input_levels'] = [0.5, 0.5];
-        document.getElementById('input_levels_0_range').value = 0.5;
-        document.getElementById('input_levels_1_range').value = 0.5;
-        const il0Input = document.getElementById('input_levels_0_input');
-        const il1Input = document.getElementById('input_levels_1_input');
-        if (il0Input) il0Input.value = 0.5;
-        if (il1Input) il1Input.value = 0.5;
-        multiSubOnChange('input_levels');
-        
-        // Input Type - reset a Internal (0)
-        document.getElementById('input_type_range').value = 0;
-        updateToggleVisual('input_type', 0);
-        sendParam('input_type', 0);
-        
-        // Timecode Source - reset a Clip (0)
-        const tcSourceEl = document.getElementById('timecode_source_range');
-        if (tcSourceEl) {
-            tcSourceEl.value = 0;
-            updateToggleVisual('timecode_source', 0);
-            sendParam('timecode_source', 0);
-        }
-        
-        count += 5;
-    }
-    
-    // Resetear controles especiales de Output
-    if (selectedGroups.includes('output')) {
-        // Frame Guide Style - reset a 16:9 (valor 5), safe area 90%, grids activados
-        multiSubValues['overlays'] = [5, 100, 90, 11];
-        document.getElementById('overlays_0_range').value = 5;
-        document.getElementById('overlays_1_range').value = 100;
-        document.getElementById('overlays_2_range').value = 90;
-        document.getElementById('overlays_3_range').value = 11;
-        // Actualizar displays
-        const ov1Input = document.getElementById('overlays_1_input');
-        const ov2Input = document.getElementById('overlays_2_input');
-        if (ov1Input) ov1Input.value = 100;
-        if (ov2Input) ov2Input.value = 90;
-        updateOverlayToggleVisual(0, 5);
-        // Grid Overlays - activar thirds, crosshairs, horizon
-        document.getElementById('grid_thirds').checked = true;
-        document.getElementById('grid_crosshairs').checked = true;
-        document.getElementById('grid_center').checked = false;
-        document.getElementById('grid_horizon').checked = true;
-        multiSubOnChange('overlays');
-        count += 5;
-    }
-    
-    // Resetear controles especiales de Display
-    if (selectedGroups.includes('display')) {
-        // Exposure and Focus Tools - reset a todo desactivado
-        multiSubValues['exposure_and_focus_tools'] = [0, 0];
-        document.getElementById('exposure_and_focus_tools_0_range').value = 0;
-        document.getElementById('exposure_and_focus_tools_1_range').value = 0;
-        document.getElementById('exposure_and_focus_tools_zebra').checked = false;
-        document.getElementById('exposure_and_focus_tools_focus').checked = false;
-        document.getElementById('exposure_and_focus_tools_false_color').checked = false;
-        document.getElementById('exposure_and_focus_tools_lcd').checked = false;
-        document.getElementById('exposure_and_focus_tools_hdmi').checked = false;
-        document.getElementById('exposure_and_focus_tools_evf').checked = false;
-        document.getElementById('exposure_and_focus_tools_main_sdi').checked = false;
-        updateExposureFocusTools();
-        
-        // Focus Assist - reset a defaults (Colored Lines, Red)
-        multiSubValues['focus_assist'] = [1, 0];
-        document.getElementById('focus_assist_0_range').value = 1;
-        document.getElementById('focus_assist_1_range').value = 0;
-        updateFocusAssistToggleVisual(0, 1);
-        updateFocusAssistToggleVisual(1, 0);
-        sendCcu(`/?cameraId=${currentCamera}&focus_assist=1,0`);
-        count += 12;
-    }
-    
-    // Resetear controles especiales de PTZ
-    if (selectedGroups.includes('ptz_control')) {
-        // Pan/Tilt Velocity - reset a 0, 0
-        multiSubValues['pan_tilt_velocity'] = [0, 0];
-        document.getElementById('pan_tilt_velocity_0_range').value = 0;
-        document.getElementById('pan_tilt_velocity_1_range').value = 0;
-        multiSubOnChange('pan_tilt_velocity');
-        count += 2;
-    }
-    
-    // Resetear controles especiales de Output (source)
-    if (selectedGroups.includes('output')) {
-        // Source - reset a 0
-        const sourceEl = document.getElementById('source_range');
-        if (sourceEl) {
-            sourceEl.value = 0;
-            updateToggleVisual('source', 0);
-            sendParam('source', 0);
-        }
-    }
-    
-    showSaveStatus(`${count} controls reset`, 'success');
-    hideSaveStatus(2000);
 }
 
 // === INIT ===
 document.addEventListener('DOMContentLoaded', function() {
     highlightCameraButton(currentCamera);
     showTab('group_lens');
-    getOverrides();
-    setTimeout(getVmixConnectStatus, 500);
-    
+
     document.querySelectorAll('[id^="group_selector_"]').forEach(cb => {
         const groupId = cb.id.replace('group_selector_', '');
         selectedParamGroups[groupId] = cb.checked;
     });
-    
-    const saved = localStorage.getItem('selectedParamGroups');
+
+    const saved = safeGet('selectedParamGroups');
     if (saved) {
         try {
-            Object.assign(selectedParamGroups, JSON.parse(saved));
+            const groups = JSON.parse(saved);
             Object.keys(selectedParamGroups).forEach(group => {
-                const cb = document.getElementById(`group_selector_${group}`);
-                if (cb) cb.checked = selectedParamGroups[group];
+                if (typeof groups[group] !== 'boolean') return;
+                selectedParamGroups[group] = groups[group];
+                const cb = byId(`group_selector_${group}`);
+                if (cb) cb.checked = groups[group];
             });
         } catch (e) {}
     }
-    
+
     Object.keys(knobConfig).forEach(initKnob);
     initColorWheels();
     initJoystick();
     initContinuousSlider('set_continuous_zoom_speed');
-    initColorSliderEvents();
 
     // Preset names: limit to what the firmware stores (bytes, not characters)
     document.querySelectorAll('.preset-name').forEach(el => {
@@ -5958,51 +5944,19 @@ document.addEventListener('DOMContentLoaded', function() {
         el.addEventListener('input', (e) => { if (!e.isComposing) clip(); });
         el.addEventListener('compositionend', clip);
     });
-    updatePresetNames();
-    updateShutterPresets();
-    updateContrastPivot();
-    
-    // Inicializar toggles visuales desde multiSubValues
-    if (multiSubValues['overlays']) {
-        updateOverlayToggleVisual(0, multiSubValues['overlays'][0]);
-        updateGridCheckboxesFromValue(multiSubValues['overlays'][3]);
-    }
-    if (multiSubValues['video_mode']) {
-        updateVideoModeToggleVisual(0, multiSubValues['video_mode'][0]);
-        updateVideoModeToggleVisual(1, multiSubValues['video_mode'][1]);
-        updateVideoModeToggleVisual(3, multiSubValues['video_mode'][3]);
-        // Dimensions select
-        const dimSelect = document.getElementById('video_mode_2_select');
-        if (dimSelect) dimSelect.value = multiSubValues['video_mode'][2];
-    }
-    if (multiSubValues['focus_assist']) {
-        updateFocusAssistToggleVisual(0, multiSubValues['focus_assist'][0]);
-        updateFocusAssistToggleVisual(1, multiSubValues['focus_assist'][1]);
-    }
-    if (multiSubValues['exposure_and_focus_tools']) {
-        updateExposureToolsCheckboxesFromValue(
-            multiSubValues['exposure_and_focus_tools'][0],
-            multiSubValues['exposure_and_focus_tools'][1]
-        );
-    }
-    
-    startSync();
-});
+    labelControls();
+    renderAll();
 
-function initColorSliderEvents() {
-    // Solo para wheel masters que no tienen onchange en HTML
-    const wheelMasters = ['lift-master', 'gamma-master', 'gain-master', 'offset-master'];
-    
-    wheelMasters.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('change', () => {
-                const wheelName = id.replace('-master', '');
-                sendWheelMaster(wheelName);
-            });
-        }
-    });
-}
+    startSync();
+    // One request at a time: the Arduino serves one connection at a time
+    (async () => {
+        await getOverrides();
+        await getVmixConnectStatus();
+        await loadPresetList();
+    })();
+    setInterval(pollServerState, STATE_POLL_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pollServerState(); });
+});
 
 window.addEventListener('beforeunload', stopSync);
 </script>

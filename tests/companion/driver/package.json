@@ -1,0 +1,17 @@
+{
+	"name": "tallyccu-companion-harness",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Runs the official Companion module (unmodified) against a TallyCCU Pro host and records HTTP/TCP traffic",
+	"main": "driver.js",
+	"license": "MIT",
+	"scripts": {
+		"gen": "node gen-cases.js",
+		"test": "node test-mock.js",
+		"test:quick": "node test-mock.js --quick",
+		"test:slow": "node test-mock.js --slow"
+	},
+	"engines": {
+		"node": ">=22.8"
+	}
+}

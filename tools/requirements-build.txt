@@ -1,0 +1,3 @@
+# Building TallyCCU_Configurator.exe (tools/TallyCCU_Configurator.spec)
+-r requirements.txt
+pyinstaller==6.16.0

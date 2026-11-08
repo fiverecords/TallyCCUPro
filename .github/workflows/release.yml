@@ -1,0 +1,108 @@
+name: Release
+
+# Push a tag such as v3.8 (with docs/release-notes/v3.8.md committed) to build and publish
+# TallyCCUPro-<tag>.zip and TallyCCU_Configurator.exe as a GitHub release. The full CI runs first.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Firmware, pages and tools zip
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Release notes present
+        run: |
+          f="docs/release-notes/${GITHUB_REF_NAME}.md"
+          test -s "$f" || { echo "::error::$f is missing or empty"; exit 1; }
+      - name: Compressed pages
+        run: |
+          python3 tools/gzip_sdcard.py --force
+          python3 tools/gzip_sdcard.py --check
+      - name: Build the zip
+        run: |
+          name="TallyCCUPro-${GITHUB_REF_NAME}"
+          root="dist/$name"
+          mkdir -p "$root/firmware" "$root/sdcard" "$root/tools"
+          cp -r firmware/TallyCCUPro "$root/firmware/"
+          cp sdcard/*.html sdcard/*.gz "$root/sdcard/"
+          cp tools/*.py tools/requirements.txt "$root/tools/"
+          cp README.md LICENSE "$root/"
+          # stable order and timestamps: the zip only changes when its files do
+          find "$root" -exec touch -d "@$(git log -1 --format=%ct)" {} +
+          (cd dist && find "$name" -type f | LC_ALL=C sort | zip -X -q "$name.zip" -@)
+          unzip -l "dist/$name.zip"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: package
+          path: dist/TallyCCUPro-*.zip
+          if-no-files-found: error
+
+  exe:
+    name: TallyCCU_Configurator.exe (PyInstaller)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned build tools
+        run: python -m pip install -r tools/requirements-build.txt
+      - name: Build from tools/TallyCCU_Configurator.spec
+        env:
+          PYTHONHASHSEED: '0'
+        run: python -m PyInstaller --clean --noconfirm tools/TallyCCU_Configurator.spec
+      - name: Check the executable
+        shell: bash
+        run: |
+          f=dist/TallyCCU_Configurator.exe
+          test -f "$f" && [ "$(stat -c %s "$f")" -gt 1000000 ]
+          sha256sum "$f"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: exe
+          path: dist/TallyCCU_Configurator.exe
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    needs: [ci, package, exe]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      # only the two release files, not the CI reports of this run
+      - uses: actions/download-artifact@v5
+        with:
+          name: package
+          path: dist
+      - uses: actions/download-artifact@v5
+        with:
+          name: exe
+          path: dist
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum "TallyCCUPro-${GITHUB_REF_NAME}.zip" TallyCCU_Configurator.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" --verify-tag "${flags[@]}" \
+            --title "TallyCCU Pro ${GITHUB_REF_NAME}" \
+            --notes-file "docs/release-notes/${GITHUB_REF_NAME}.md" \
+            "dist/TallyCCUPro-${GITHUB_REF_NAME}.zip" \
+            dist/TallyCCU_Configurator.exe \
+            dist/SHA256SUMS.txt
