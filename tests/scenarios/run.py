@@ -264,6 +264,7 @@ SCENARIOS = {
     'coop2': ('s_coop2.py', [], False, True, 200, c_fails),
     'upl': ('s_upl.py', [], False, False, 150, c_fails),
     'sm': ('s_sm.py', [], False, True, 200, c_fails),
+    'ser': ('s_ser.py', [], False, True, 60, c_fails),
 }
 
 

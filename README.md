@@ -628,6 +628,8 @@ Started by hand (*Actions*, *CI*, *Run workflow*), it can also run every scenari
 ## Changelog
 
 ### Unreleased
+- **Fixed**: Serial configurator: since v3.8 it connects without restarting the board, and the first command after connecting (often Get Config) could be lost: opening the USB port can deliver a garbage byte to the Arduino. The configurator now sends a newline before each command (this also fixes it with the v3.8 and v3.8.1 firmware), and the firmware ignores control and non-ASCII bytes on the serial console
+- **Improved**: The web page retries a request that TallyCCU refuses at once. With nearly every network socket in use (vMix, Companion, two pages with the real-time sync, a page reloading), the next request could be refused for a moment: Reset to Defaults then stopped halfway and left the rest of the values unknown, and Load or Save preset failed. Error messages now stay on screen for 8 s
 - **Fixed**: Safe Mode page without the SD card: when the card is missing or cannot be read, or `safemode.html` is not on it, `/` shows a built-in page with the reason, the last reset, the firmware version and the **Restart in normal mode** button, instead of `404` or `503`. v3.8 announced it, but the page was never served
 
 ### v3.8.1 (Latest)

@@ -346,10 +346,16 @@ void loop() {
 }
 
 // Lines end at CR or LF. A line longer than SERIAL_CMD_MAX is dropped
-// whole, never run truncated (BOOT-19).
+// whole, never run truncated (BOOT-19). Other control and non-ASCII bytes
+// are dropped: opening the USB port without a reset (serial configurator)
+// can deliver a garbage byte (0x00, 0xFF) that would otherwise spoil the
+// first command, and a 0x00 would even cut it to an empty line.
 void processSerialCommands() {
   while (Serial.available()) {
     char c = Serial.read();
+    if (((uint8_t)c < 0x20 && c != '\n' && c != '\r' && c != '\t') || (uint8_t)c >= 0x7F) {
+      continue;
+    }
 
     if (c == '\n' || c == '\r') {
       if (serialOverflow) {

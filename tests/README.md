@@ -70,7 +70,7 @@ decoder) are covered end to end by the scenarios and the Companion runs instead.
 tests/emulator/build.sh                   # -> tests/out/emu/bin/emu (see emulator/README.md)
 sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0    # or run as root
 python3 tests/scenarios/run.py --list
-python3 tests/scenarios/run.py --fast     # csrf misc k fh i d g boot coop coop2 sm
+python3 tests/scenarios/run.py --fast     # csrf misc k fh i d g boot coop coop2 sm ser
 sudo -E python3 tests/scenarios/run.py --all            # + slow clients, network cuts, Safe Mode
 python3 tests/scenarios/run.py misc csrf
 ```
@@ -97,6 +97,7 @@ runs can share a machine; `EMU_BIN` selects the binary.
 | `j` | Safe Mode: shield absent, automatic recovery, anti-loop strikes |
 | `boot` | reset causes (power-up, restart, reset pin, watchdog in operation or during boot): only hangs in the 20 s boot window count, Safe Mode after 3, a power cycle boots normally |
 | `sm` | built-in Safe Mode page: `/` and `/ccu` answer it when `safemode.html` cannot be read (file missing, SD failing), the SD page again once it is back, its exit request restarts in normal mode; outside Safe Mode a failing SD still gives 503 |
+| `ser` | serial console: a garbage byte before a command (USB-serial chip when the configurator opens the port without a reset) does not lose it; the configurator's leading newline is ignored |
 | `coop`, `coopgz` | background transfers: Companion-style PTZ stop and API under 100/150 ms during a 2 KB/s page download, byte-exact parallel downloads, a third page waits for a slot (or `503` after 10 s with the sockets short), stalled and slow readers cut with FIN, delete during a transfer, SSE tally events |
 | `coop2` | transfers during a slow upload: not cut, byte exact; replacing the file being sent cuts that transfer; SSE events keep flowing |
 | `upl` | tally latency around the end of slow uploads |
