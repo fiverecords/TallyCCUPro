@@ -202,7 +202,7 @@ Connect via serial monitor (115200 baud) or use the Serial Configurator tool:
 
 *(Screenshot of the V3.0 configurator; its free RAM figure is not representative, see [Memory Usage](#memory-usage).)*
 
-- **Windows**: run `TallyCCU_Configurator.exe`. Download the current one from the [latest release](https://github.com/fiverecords/TallyCCUPro/releases/latest): the copy in `tools/` is older and resets the Arduino when it connects.
+- **Windows**: run `TallyCCU_Configurator.exe` from the [latest release](https://github.com/fiverecords/TallyCCUPro/releases/latest). Between releases, a build of the current code can be made by hand: *Actions*, *Configurator exe*, *Run workflow*; the `.exe` is in the run's artifacts (see [Serial Configurator (.exe)](#serial-configurator-exe)).
 - **Any OS**: `pip install -r tools/requirements.txt` (pyserial; Python 3 with tkinter), then `python3 tools/TallyCCU_Configurator.py`.
 
 > Opening the serial port can restart the Arduino (the USB adapter's DTR line pulses its reset pin). The configurator avoids it where the OS allows (see the notes at the top of `tools/TallyCCU_Configurator.py`); do not connect a serial monitor to a board that is on air.
@@ -467,7 +467,6 @@ TallyCCUPro/
 ├── tools/
 │   ├── TallyCCU_Configurator.py    Serial configurator (Python, pyserial)
 │   ├── TallyCCU_Configurator.spec  PyInstaller recipe for the .exe
-│   ├── TallyCCU_Configurator.exe   Windows build (old; current one in the releases)
 │   ├── gzip_sdcard.py              Builds the .gz copies of the pages
 │   └── requirements*.txt           Python dependencies (run / build the .exe)
 ├── tests/                Emulator, scenarios, host unit tests, Companion harness (see Testing)
@@ -560,7 +559,7 @@ The Blackmagic SDI protocol is **write-only** - parameters can be sent to camera
 | Settings reset after reboot | Resolved in v3.5+; update firmware if running an older version |
 | Controls not working on tablet | Requires v3.7.1+ which adds touch support for knobs, wheels, and joystick |
 | Own script gets `403 ERROR forbidden` | Add the header `X-TallyCCU: 1` to that request (see [Security](#security)) |
-| Serial configurator restarts the Arduino | Use the `.exe` of the latest release or the `.py`, not the old `.exe` in `tools/`; see Step 3 |
+| Serial configurator restarts the Arduino, or Get Config does not fill the fields | An old configurator (before v3.8, for example the `.exe` that was in `tools/` until v3.8.1): use the `.exe` of the latest release, the *Configurator exe* build or the `.py`; see Step 3 |
 
 ---
 
@@ -590,7 +589,7 @@ rem -> dist\TallyCCU_Configurator.exe
 
 In PowerShell, replace the `set` line with `$env:PYTHONHASHSEED='0'`; in Git Bash, run `PYTHONHASHSEED=0 python -m PyInstaller --clean --noconfirm tools/TallyCCU_Configurator.spec`. PyInstaller needs a fixed `PYTHONHASHSEED` to give the same `.exe` from the same source and tool versions.
 
-The release workflow builds it the same way for every version and attaches it to the [GitHub release](https://github.com/fiverecords/TallyCCUPro/releases), with its SHA-256 in `SHA256SUMS.txt`, so each `.exe` can be traced to the source of its tag. The `.exe` kept in `tools/` is an older build (it shows V3.0 and resets the Arduino when it connects); prefer the one from the latest release. The `.exe` is not code-signed: Windows SmartScreen may warn the first time.
+The release workflow builds it the same way for every version and attaches it to the [GitHub release](https://github.com/fiverecords/TallyCCUPro/releases), with its SHA-256 in `SHA256SUMS.txt`, so each `.exe` can be traced to the source of its tag. Between releases, *Actions*, *Configurator exe*, *Run workflow* (`.github/workflows/configurator.yml`) builds it the same way from the chosen branch, without a release: the `.exe` and its SHA-256 (with the commit) are the run's artifact `TallyCCU_Configurator`, kept 30 days (downloading it needs a GitHub login). The repository no longer keeps an `.exe` in `tools/` (the one there was a V3.6-era build that restarted the Arduino on connect and did not fill the fields on Get Config). The `.exe` is not code-signed: Windows SmartScreen may warn the first time.
 
 ---
 
@@ -628,6 +627,7 @@ Started by hand (*Actions*, *CI*, *Run workflow*), it can also run every scenari
 ## Changelog
 
 ### Unreleased
+- **Changed**: The old `TallyCCU_Configurator.exe` in `tools/` is gone (a V3.6-era build: it restarted the Arduino on connect and Get Config did not fill the fields). Use the `.exe` of the latest release, or build the current one by hand with the new *Configurator exe* workflow (no release needed)
 - **Fixed**: Serial configurator: since v3.8 it connects without restarting the board, and the first command after connecting (often Get Config) could be lost: opening the USB port can deliver a garbage byte to the Arduino. The configurator now sends a newline before each command (this also fixes it with the v3.8 and v3.8.1 firmware), and the firmware ignores control and non-ASCII bytes on the serial console
 - **Improved**: The web page retries a request that TallyCCU refuses at once. With nearly every network socket in use (vMix, Companion, two pages with the real-time sync, a page reloading), the next request could be refused for a moment: Reset to Defaults then stopped halfway and left the rest of the values unknown, and Load or Save preset failed. Error messages now stay on screen for 8 s
 - **Fixed**: Safe Mode page without the SD card: when the card is missing or cannot be read, or `safemode.html` is not on it, `/` shows a built-in page with the reason, the last reset, the firmware version and the **Restart in normal mode** button, instead of `404` or `503`. v3.8 announced it, but the page was never served
