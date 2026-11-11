@@ -839,7 +839,11 @@ class SerialTerminal:
             return False
 
         try:
-            port.write(f"{command}\n".encode('utf-8'))
+            # The leading newline ends any partial line in the firmware: a
+            # port opened without a reset can deliver a garbage byte (0x00,
+            # 0xFF) that would spoil the first command. An empty line is
+            # ignored by every firmware version.
+            port.write(f"\n{command}\n".encode('utf-8'))
             return True
         except Exception as e:
             messagebox.showerror("Send Error", f"Failed to send command:\n{str(e)}")

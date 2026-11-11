@@ -531,26 +531,46 @@ const __FlashStringHelper* SafeMode::getSafeModeReasonString() {
 
 void SafeMode::printFallbackPage(Print& out) {
   out.print(F("<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-              "<meta name=\"viewport\" content=\"width=device-width\">"
-              "<title>TallyCCU Pro - Safe Mode</title></head>"
-              "<body style=\"font-family:sans-serif\"><h1>TallyCCU Pro: "));
-  out.print(_safeMode ? F("Safe Mode") : F("Diagnostics"));
-  out.print(F("</h1><p>The SD card page could not be read.</p><p>Reason: "));
+              "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+              "<title>TallyCCU Pro - Safe Mode</title>"
+              "<style>body{font-family:sans-serif;margin:16px;max-width:40em;line-height:1.4}"
+              "button{font-size:1em;padding:.6em 1em}</style></head><body>"
+              "<h1>TallyCCU Pro: Safe Mode</h1>"
+              "<p>Built-in page: safemode.html could not be read from the SD card "
+              "(no card, card not readable or file missing).</p>"
+              "<p><b>SDI tally and camera control are off:</b> nothing reaches the cameras. "
+              "vMix is monitored only; Companion stays connected but camera commands "
+              "are rejected.</p><p>Reason: "));
   out.print(getSafeModeReasonString());
   out.print(F("<br>Last reset: "));
   out.print(getResetReasonString());
-  out.print(F("<br>Failed boots: "));
-  out.print(_resetCount);
+  if (_cause == SAFEMODE_BY_FAILURES) {   // a manual request sets the count to the maximum
+    out.print(F("<br>Failed boots: "));
+    out.print(_resetCount);
+  }
   out.print(F("<br>Uptime: "));
   out.print(getUptime());
-  out.print(F(" s</p>"));
-  if (_safeMode) {
-    out.print(F("<button onclick=\"fetch('/safemode-exit',{method:'POST',"
-                "headers:{'X-TallyCCU':'1'}}).then(function(){"
-                "document.body.textContent='Restarting...'})\">"
-                "Restart in normal mode</button>"));
-  }
-  out.print(F("</body></html>"));
+  out.print(F(" s<br>Firmware: " FIRMWARE_VERSION "</p>"
+              "<p><button id=\"b\" onclick=\"x()\">Restart in normal mode</button></p>"
+              "<p id=\"m\"></p>"
+              "<p>Or send <code>normalboot</code> on the serial console (115200 baud).</p>"
+              // Then the main page: '/' is the CCU page in normal mode and this
+              // one in Safe Mode ('/ccu' would be a 404 in normal mode)
+              "<script>function g(t,s){document.getElementById('m').textContent=t;"
+              "setTimeout(function(){location.replace('/')},s*1000)}"
+              "function x(){var b=document.getElementById('b');b.disabled=true;"
+              "document.getElementById('m').textContent='Restarting...';"
+              "fetch('/safemode-exit',{method:'POST',cache:'no-store',"
+              "headers:{'X-TallyCCU':'1'}}).then(function(r){"
+              "if(r.status==404)return g('Not in Safe Mode any more: it already restarted "
+              "in normal mode. Opening the main page...',2);"
+              "if(!r.ok)throw new Error('HTTP '+r.status);"
+              "g('Restarting in normal mode; the main page opens in 15 s.',15)})"
+              ".catch(function(e){if(e instanceof TypeError)return g('No answer: it may "
+              "already be restarting. The main page opens in 15 s.',15);"
+              "b.disabled=false;document.getElementById('m').textContent="
+              "'Could not restart: '+e.message})}</script>"
+              "</body></html>"));
 }
 
 // ============================================================

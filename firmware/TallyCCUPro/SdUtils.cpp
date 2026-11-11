@@ -721,7 +721,8 @@ bool SdUtils::transferSlotFree() {
 }
 
 bool SdUtils::serveFile(EthernetClient &client, const char* filename, bool acceptsGzip,
-                        bool attachment) {
+                        bool attachment, bool* unreadable) {
+  if (unreadable) *unreadable = false;
   Xfer* x = NULL;
   for (uint8_t i = 0; i < SD_XFERS && !x; i++) {
     if (s_xfer[i].state == XF_FREE) x = &s_xfer[i];
@@ -741,7 +742,8 @@ bool SdUtils::serveFile(EthernetClient &client, const char* filename, bool accep
   }
   if (!gzip && !(openRead(f, filename) && f.isFile())) {
     f.close();
-    sendFileError(client, s_sdOk ? kResp404 : kResp503Sd, _sdBuffer, SD_BUFFER_SIZE);
+    if (unreadable) *unreadable = true;
+    else sendFileError(client, s_sdOk ? kResp404 : kResp503Sd, _sdBuffer, SD_BUFFER_SIZE);
     return false;
   }
 
@@ -771,7 +773,8 @@ bool SdUtils::serveFile(EthernetClient &client, const char* filename, bool accep
     // Nothing sent yet: 503
     f.close();
     cardFailed();
-    sendFileError(client, kResp503Sd, _sdBuffer, SD_BUFFER_SIZE);
+    if (unreadable) *unreadable = true;
+    else sendFileError(client, kResp503Sd, _sdBuffer, SD_BUFFER_SIZE);
     return false;
   }
   // A fresh connection: the TX buffer is empty, this goes at once

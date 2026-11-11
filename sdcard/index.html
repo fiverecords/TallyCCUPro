@@ -3597,6 +3597,15 @@ const CSRF_HEADERS = { 'X-TallyCCU': '1' };
 // opts: { timeout, keepalive, quiet, protect, init } (init: extra fetch
 // options; protect: send CSRF_HEADERS)
 const CCU_TIMEOUT_MS = 4000;
+// opts.retry: a connection refused at once never reached TallyCCU, so it is
+// tried again after these pauses, within the same timeout. With every W5500
+// socket but one in use (vMix, Companion, two pages with the stream, a page
+// reloading), the single port-80 socket is busy closing the previous request
+// for a moment and the next one is refused: a Reset then stopped there and
+// a Load failed, leaving values unknown. Windows retries a refused connection
+// itself for about 1-2 s, hence the threshold.
+const CCU_RETRY_MS = [50, 150, 400];
+const CCU_FAST_FAIL_MS = 2500;
 
 async function sendCcu(url, opts = {}) {
     const ctrl = new AbortController();
@@ -3605,9 +3614,16 @@ async function sendCcu(url, opts = {}) {
     const init = { cache: 'no-store', ...(opts.init || {}) };
     if (opts.protect) init.headers = { ...(init.headers || {}), ...CSRF_HEADERS };
     let r = null;
-    try {
-        r = await fetch(url, { ...init, signal: ctrl.signal, keepalive: !!opts.keepalive });
-    } catch (e) {}
+    for (let attempt = 0; ; attempt++) {
+        const t = performance.now();
+        try {
+            r = await fetch(url, { ...init, signal: ctrl.signal, keepalive: !!opts.keepalive });
+        } catch (e) {}
+        if (r || !opts.retry || ctrl.signal.aborted || attempt >= CCU_RETRY_MS.length ||
+            performance.now() - t > CCU_FAST_FAIL_MS) break;
+        console.log(`[CCU] ${describeRequest(url)}: connection refused, retry ${attempt + 1}`);
+        await new Promise((res) => setTimeout(res, CCU_RETRY_MS[attempt]));
+    }
     setReachable(r !== null);
     if (!opts.quiet) {
         if (!r) {
@@ -3622,7 +3638,7 @@ async function sendCcu(url, opts = {}) {
 
 // JSON body of a quiet sendCcu GET, or null if it failed (UIS-04)
 async function getJson(url) {
-    const r = await sendCcu(url, { quiet: true });
+    const r = await sendCcu(url, { quiet: true, retry: true });
     if (!r || !r.ok) return null;
     try { return await r.json(); } catch (e) { return null; }
 }
@@ -3872,7 +3888,8 @@ async function pumpWriter(cam, key, w) {
     w.echoSeen = false;
     w.sent.push(item.str);
     if (w.sent.length > 16) w.sent.shift();
-    const r = await sendCcu(`/?cameraId=${cam}&${key}=${encodeURIComponent(item.str)}`);
+    // Absolute values: sending one again changes nothing
+    const r = await sendCcu(`/?cameraId=${cam}&${key}=${encodeURIComponent(item.str)}`, { retry: true });
     try {
         if (r && r.ok) {
             // No event meanwhile (stream down or slower): the camera has it
@@ -5783,7 +5800,7 @@ async function savePreset(idx) {
         const dataString = keys.map((k) => `${k}:${encodeValue(k, params[k])};`).join('');
         // Body: cameraId=X&presetId=Y&name=Z&data=...
         const body = `cameraId=${cam}&presetId=${idx}&name=${encodeURIComponent(presetName)}&data=${dataString}`;
-        const response = await sendCcu('/savePreset', { quiet: true, timeout: PRESET_TIMEOUT_MS, init: {
+        const response = await sendCcu('/savePreset', { quiet: true, retry: true, timeout: PRESET_TIMEOUT_MS, init: {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: body
@@ -5810,7 +5827,7 @@ async function loadPreset(idx) {
     showSaveStatus(`Loading "${presetName}"...`, 'info', 50);
     try {
         const response = await sendCcu(`/?loadPreset=${cam},${idx}&returnValues=1`,
-            { quiet: true, timeout: PRESET_TIMEOUT_MS });
+            { quiet: true, retry: true, timeout: PRESET_TIMEOUT_MS });
         if (!response) throw new Error('no answer from TallyCCU');
         const { data, message } = await readReply(response);
         if (!response.ok || !data || data.success !== true) throw new Error(message);
@@ -5830,11 +5847,11 @@ async function loadPreset(idx) {
             }
         }
         showSaveStatus(`CAM ${cam}: "${presetName}" loaded ✓`, 'success', 100);
+        hideSaveStatus(2000);
     } catch (error) {
         console.error('[Preset] Load error:', error);
         showSaveStatus(`Error: ${error.message}`, 'error');
-    } finally {
-        hideSaveStatus(2000);
+        hideSaveStatus(8000);   // an error must be seen
     }
 }
 
@@ -5859,7 +5876,7 @@ async function resetSelectedGroupParams() {
         'Iris, focus, zoom and the video format are not changed.')) return;
     resetInProgress = true;
     if (ptz) motionSenders.pan_tilt_velocity.stop(cam);
-    let done = 0, failed = 0, lost = false;
+    let done = 0, failed = 0, lost = null;
     try {
         for (const [key, value] of list) {
             showSaveStatus(`CAM ${cam}: resetting ${done + 1}/${list.length}`, 'info',
@@ -5867,15 +5884,16 @@ async function resetSelectedGroupParams() {
             const r = await writeParam(cam, key, value);
             done++;
             if (r === false) failed++;
-            if (r === undefined) { lost = true; break; }
+            if (r === undefined) { lost = P[key].label; break; }
         }
     } finally {
         resetInProgress = false;
     }
-    if (lost) showSaveStatus(`CAM ${cam}: no answer from TallyCCU, reset stopped after ${done - 1} of ${list.length}`, 'error');
+    if (lost) showSaveStatus(`CAM ${cam}: no answer from TallyCCU at ${lost}, reset stopped: ` +
+        `${list.length - done} values not sent`, 'error');
     else if (failed) showSaveStatus(`CAM ${cam}: ${failed} of ${list.length} values not reset`, 'error');
     else showSaveStatus(`CAM ${cam}: ${list.length} values reset ✓`, 'success');
-    hideSaveStatus(2500);
+    hideSaveStatus(lost || failed ? 8000 : 2500);   // an error must be seen
 }
 
 // Accessible names for the controls without a <label> (UI-28)

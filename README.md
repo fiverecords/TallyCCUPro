@@ -302,6 +302,8 @@ The system enters Safe Mode automatically after **3 consecutive boot failures**.
 
 Alternatively, use the serial command `normalboot` to exit Safe Mode.
 
+**Without the SD card (newer than v3.8.1)**: if the card is missing or cannot be read, or `safemode.html` is not on it, `http://YOUR_ARDUINO_IP/` shows a small built-in page instead, with the reason, the last reset, the firmware version and a **Restart in normal mode** button. v3.8.1 and older answer `404` or `503` there; `normalboot` on the serial console works in every version.
+
 **Automatic recovery (v3.8+)**: in Safe Mode the firmware checks the SDI shield on I2C every 5 s. When the shield has answered for 30 s in a row (for example, the 12 V supply came back), the board restarts in normal mode by itself. If that normal boot fails again, the next automatic attempt waits 5 minutes, and after 2 failed attempts automatic recovery stays off until Safe Mode is left by hand or a normal boot completes again (for example after a power cycle). Note that the check only shows that the shield is powered: problems caused by the SDI input (no signal yet, 4K, Level A) are not detected beforehand.
 
 ### Manual Safe Mode Entry
@@ -625,6 +627,11 @@ Started by hand (*Actions*, *CI*, *Run workflow*), it can also run every scenari
 
 ## Changelog
 
+### Unreleased
+- **Fixed**: Serial configurator: since v3.8 it connects without restarting the board, and the first command after connecting (often Get Config) could be lost: opening the USB port can deliver a garbage byte to the Arduino. The configurator now sends a newline before each command (this also fixes it with the v3.8 and v3.8.1 firmware), and the firmware ignores control and non-ASCII bytes on the serial console
+- **Improved**: The web page retries a request that TallyCCU refuses at once. With nearly every network socket in use (vMix, Companion, two pages with the real-time sync, a page reloading), the next request could be refused for a moment: Reset to Defaults then stopped halfway and left the rest of the values unknown, and Load or Save preset failed. Error messages now stay on screen for 8 s
+- **Fixed**: Safe Mode page without the SD card: when the card is missing or cannot be read, or `safemode.html` is not on it, `/` shows a built-in page with the reason, the last reset, the firmware version and the **Restart in normal mode** button, instead of `404` or `503`. v3.8 announced it, but the page was never served
+
 ### v3.8.1 (Latest)
 Hotfix for v3.8. Same behaviour on the cameras, tally and Companion as v3.8 (apart from the version number, the firmware compiles to the same machine code).
 
@@ -652,7 +659,7 @@ Phases 1 to 3 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](
 - **Fixed**: The tally heals itself: each mapped camera gets its tally again every 4 s and a shield that reset gets its settings back; after a restart the first vMix connection uses a new local port, so vMix does not take it for the old one
 - **New**: The real cause of the last reset (power on, reset button, restart, watchdog, and where a hang happened) is shown by `status` and the Safe Mode page; only hangs in the first 20 s count as boot failures
 - **New**: Serial console: `mac` (show or set the MAC), `factoryreset yes`; `safemode` restarts at once into Safe Mode; commands are case-insensitive, and over-long lines are rejected instead of run truncated. IP settings are validated strictly and report a missing cable or Ethernet chip
-- **New**: Safe Mode page also without the SD card (built-in page); "Stay in Safe Mode" explains what stays off
+- **New**: "Stay in Safe Mode" explains what stays off
 - **New**: The EEPROM has a layout header (settings of older versions are kept) and a boot writes it less; low RAM warning from the deepest stack point; static RAM about 3.5 KB
 - **New**: The firmware version is written only in `FIRMWARE_VERSION`; the serial configurator reads it from the board (`status`), and `/safemode-status` reports it
 - **New**: Tests and CI without the hardware (emulator, robustness scenarios, host unit tests, the official Companion module), pinned library versions, release workflow and a reproducible configurator `.exe` (see [Testing / CI](#testing--ci)); one license (CC BY-NC-SA 4.0) everywhere
