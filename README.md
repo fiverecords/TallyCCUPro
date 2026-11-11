@@ -598,7 +598,7 @@ Changes can be tested without the hardware. Everything lives in `tests/` (detail
 
 | Directory | What |
 |-----------|------|
-| `tests/stubs/BMDSDIControl` | compile-only stub of the proprietary Blackmagic library |
+| `tests/stubs/BMDSDIControl` | compile-only stub of the Blackmagic library, with the official library's declarations (non-const array writes, `void setCameraTally`) |
 | `tests/ci` | AVR build with static RAM limit, web page checks, firmware version in one place |
 | `tests/host` | unit tests (g++) of the parsers, NetUtils readers, JSON escaping, tally map, IP validation and factory defaults |
 | `tests/emulator` | the unmodified firmware built as a Linux program: emulated W5500, SD, EEPROM, watchdog and SDI shield |
@@ -607,6 +607,7 @@ Changes can be tested without the hardware. Everything lives in `tests/` (detail
 
 ```bash
 tests/emulator/fetch_libs.sh && tests/ci/build_avr.sh    # pinned libraries, AVR build and RAM
+BMD_DIR=~/Arduino/libraries/BMDSDIControl tests/ci/build_avr.sh   # same, with the real Blackmagic library
 tests/host/run.sh                                        # host unit tests
 tests/emulator/build.sh && python3 tests/scenarios/run.py --fast
 ```
@@ -624,7 +625,14 @@ Started by hand (*Actions*, *CI*, *Run workflow*), it can also run every scenari
 
 ## Changelog
 
-### v3.8 (Latest)
+### v3.8.1 (Latest)
+Hotfix for v3.8. Same behaviour on the cameras, tally and Companion as v3.8 (apart from the version number, the firmware compiles to the same machine code).
+
+- **Fixed**: v3.8 did not compile with the official Blackmagic `BMDSDIControl` library (`no matching function for call to ... writeCommandInt8(..., const int8_t [2])`). The library takes list values (for example color correction) as non-const arrays; the stub used by CI accepted const ones, so CI did not see it. The CI stub now copies the official library's declarations, so this kind of mismatch fails CI
+- **Fixed**: With firmware older than v3.8, the SD Card Manager listed the `.gz` copies of the system pages (`index.html.gz`...). The page now hides the system pages and their `.gz` by itself (v3.8 firmware already hid them)
+- **New**: `tests/ci/build_avr.sh` builds against a real `BMDSDIControl` library with `BMD_DIR=<library folder>`
+
+### v3.8
 Phases 1 to 3 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/AUDITORIA-v3.7.1.md)). Compatible with the current Bitfocus Companion module (v3.1.0), checked with differential tests of v3.7.1 vs v3.8 driving the unmodified module.
 
 **Hardening and web interface (phase 3)**
