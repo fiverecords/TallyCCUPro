@@ -619,7 +619,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
 - `node --check` of the scripts in `sdcard/*.html`, and a check that the firmware version is only written in `FIRMWARE_VERSION`;
 - the Companion module v3.1.0 against the emulated firmware.
 
-Started by hand (*Actions*, *CI*, *Run workflow*), it can also run every scenario (`full_scenarios`) and the full Companion differential against a reference firmware (`companion_diff`, default reference v3.7.1). Pushing a tag `v*` runs `.github/workflows/release.yml`: CI, the release zip (firmware, pages with `.gz`, tools), the configurator `.exe` and the GitHub release with the notes from `docs/release-notes/<tag>.md`.
+Started by hand (*Actions*, *CI*, *Run workflow*), it can also run every scenario (`full_scenarios`) and the full Companion differential against a reference firmware (`companion_diff`, default reference v3.7.1). Pushing a tag `v*` runs `.github/workflows/release.yml`: CI, the release zip (firmware, pages with `.gz`, tools), the configurator `.exe` and the GitHub release with the notes from `docs/release-notes/<tag>.md`. To change the notes of a published release, edit that file, merge it and run *Actions*, *Release notes*, *Run workflow* with the tag.
 
 ---
 
@@ -633,6 +633,8 @@ Hotfix for v3.8. Same behaviour on the cameras, tally and Companion as v3.8 (apa
 - **New**: `tests/ci/build_avr.sh` builds against a real `BMDSDIControl` library with `BMD_DIR=<library folder>`
 
 ### v3.8
+> ⚠️ v3.8 has a bug and does not compile with the official Blackmagic `BMDSDIControl` library: use v3.8.1, which has all the changes below.
+
 Phases 1 to 3 of the fixes from the full code audit ([docs/AUDITORIA-v3.7.1.md](docs/AUDITORIA-v3.7.1.md)). Compatible with the current Bitfocus Companion module (v3.1.0), checked with differential tests of v3.7.1 vs v3.8 driving the unmodified module.
 
 **Hardening and web interface (phase 3)**

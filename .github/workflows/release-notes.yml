@@ -1,0 +1,47 @@
+name: Release notes
+
+# Copies docs/release-notes/<tag>.md onto the GitHub release <tag> that already exists, for
+# example to add a notice to a published release. Run it by hand (Actions > Release notes >
+# Run workflow) on main after the change to the notes is merged. Only the description changes:
+# the tag, the title and the files of the release are kept.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Published release whose notes to update (e.g. v3.8)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  notes:
+    name: Update the release notes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the tag and the notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::bad tag '$TAG'"; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::run it only on main"; exit 1; }
+          f="docs/release-notes/${TAG}.md"
+          test -s "$f" || { echo "::error::$f is missing or empty"; exit 1; }
+          gh release view "$TAG" --json tagName >/dev/null || { echo "::error::no release $TAG"; exit 1; }
+      - name: Update the release description
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f="docs/release-notes/${TAG}.md"
+          gh release edit "$TAG" --notes-file "$f"
+          gh release view "$TAG" --json body --jq .body > "$RUNNER_TEMP/body.md"
+          # same text, apart from line endings and blank lines
+          diff --strip-trailing-cr -B "$f" "$RUNNER_TEMP/body.md" \
+            || { echo "::error::the release description differs from $f"; exit 1; }
+          sed -n '1,5p' "$RUNNER_TEMP/body.md"

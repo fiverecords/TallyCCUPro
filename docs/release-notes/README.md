@@ -13,5 +13,10 @@ git add docs/release-notes/v3.9.md && git commit -m "Release notes v3.9"
 git tag v3.9 && git push origin main v3.9
 ```
 
+To change the notes of a release already published (for example to add a notice), edit its
+file here, merge it into `main` and run *Actions* > *Release notes* > *Run workflow* with the tag:
+`.github/workflows/release-notes.yml` copies the file onto the release description and keeps
+the tag, the title and the files of the release.
+
 A tag with a hyphen (`v3.9-rc1`) is published as a pre-release. The full history of changes is
 also in the Changelog section of the main README.
