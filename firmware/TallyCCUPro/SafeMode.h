@@ -125,8 +125,9 @@ public:
   static const char* getResetReasonString();   // short, for JSON and logs
   static const __FlashStringHelper* getSafeModeReasonString();
 
-  // Minimal diagnostics page for when safemode.html cannot be served
-  // (BOOT-13): HTML body only, the caller sends the HTTP headers
+  // Built-in Safe Mode page for when safemode.html cannot be read (BOOT-13):
+  // state, diagnostics and the exit button. HTML only, the caller sends
+  // the HTTP headers; only served in Safe Mode.
   static void printFallbackPage(Print& out);
 
 private:

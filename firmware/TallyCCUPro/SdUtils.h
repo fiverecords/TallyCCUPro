@@ -102,10 +102,13 @@ class SdUtils {
     // 503 busy when no transfer slot is free; the caller then closes.
     // A body cut (budget, stalled reader, read error) ends with a FIN when
     // the reader is still reading (Content-Length tells it), else at once.
-    // In every case do not write another response.
+    // In every case do not write another response, except with unreadable:
+    // if not NULL, a file that cannot be read (missing, SD not available or
+    // failing before anything was sent) is not answered and *unreadable is
+    // set, so the caller answers instead (built-in Safe Mode page, BOOT-13).
     // True if the transfer was started.
     static bool serveFile(EthernetClient &client, const char* filename, bool acceptsGzip,
-                          bool attachment = false);
+                          bool attachment = false, bool* unreadable = NULL);
 
     // Moves every transfer on (at most SD_XFER_PASS_MS). Uses _sdBuffer:
     // only from the top of WebServer::processRequests(), never inside a

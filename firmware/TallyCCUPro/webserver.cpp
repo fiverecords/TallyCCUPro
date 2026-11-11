@@ -1253,6 +1253,23 @@ void WebServer::serveSdFile(EthernetClient &client, PGM_P filename, bool gzip) {
   SdUtils::serveFile(client, _tempBuffer, gzip);
 }
 
+// safemode.html, or the built-in page when it cannot be read: no SD card,
+// card failing or the file missing (BOOT-13). A busy 503 stays (retry).
+void WebServer::serveSafeModePage(EthernetClient &client, bool gzip) {
+  strcpy_P(_tempBuffer, kSafemodeHtml);
+  bool unreadable;
+  if (SdUtils::serveFile(client, _tempBuffer, gzip, false, &unreadable) || !unreadable) return;
+
+  Serial.println(F("safemode.html not readable: built-in page"));
+  RESPONSE(out, client);
+  out.print(F("HTTP/1.1 200 OK\r\n"
+              "Content-Type: text/html; charset=UTF-8\r\n"
+              "Cache-Control: no-store\r\n"
+              "Connection: close\r\n\r\n"));
+  SafeMode::printFallbackPage(out);
+  out.flush();
+}
+
 // ============================================================
 // PROCESS GET - MAIN FUNCTIONALITY
 // ============================================================
@@ -1285,7 +1302,7 @@ void WebServer::processGETRequest(char* reqLine, EthernetClient &client, const R
 
   // In safe mode, redirect main pages to diagnostic page
   if (SafeMode::isActive() && (mainPage || strcmp_P(path, PSTR("/ccu")) == 0)) {
-    serveSdFile(client, kSafemodeHtml, req.gzip);
+    serveSafeModePage(client, req.gzip);
     return;
   }
 

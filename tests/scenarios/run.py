@@ -12,7 +12,7 @@ lack of root/iptables counts as a failure). Configuration through the environmen
 
 Each scenario prints a JSON result; the checks below turn it into PASS/FAIL. Every scenario
 except 'j' and 'boot' (Safe Mode and reset causes, which reset on purpose) fails on any emulated
-watchdog reset.
+watchdog reset; 'sm' counts its intentional restarts itself.
 """
 import argparse, json, os, shutil, signal, subprocess, sys, time
 
@@ -263,6 +263,7 @@ SCENARIOS = {
     'coopgz': ('s_coop.py', ['gz'], False, False, 300, c_fails),
     'coop2': ('s_coop2.py', [], False, True, 200, c_fails),
     'upl': ('s_upl.py', [], False, False, 150, c_fails),
+    'sm': ('s_sm.py', [], False, True, 200, c_fails),
 }
 
 

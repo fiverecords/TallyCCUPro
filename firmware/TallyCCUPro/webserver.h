@@ -210,6 +210,7 @@ class WebServer {
     static void listPresetsAsJSON(EthernetClient &client);
     static void send404(EthernetClient &client);
     static void serveSdFile(EthernetClient &client, PGM_P filename, bool gzip);
+    static void serveSafeModePage(EthernetClient &client, bool gzip);
     static void sendJSONPresetValues(EthernetClient &client, int cameraId, int presetId);
     static void sendJSONResponse(EthernetClient &client, int httpCode, bool success, const __FlashStringHelper* message, int paramCount = -1);
     static void sendJSONResponse(EthernetClient &client, int httpCode, bool success, const char* message, int paramCount = -1);

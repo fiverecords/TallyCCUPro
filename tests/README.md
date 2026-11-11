@@ -70,14 +70,14 @@ decoder) are covered end to end by the scenarios and the Companion runs instead.
 tests/emulator/build.sh                   # -> tests/out/emu/bin/emu (see emulator/README.md)
 sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0    # or run as root
 python3 tests/scenarios/run.py --list
-python3 tests/scenarios/run.py --fast     # csrf misc k fh i d g boot coop coop2
+python3 tests/scenarios/run.py --fast     # csrf misc k fh i d g boot coop coop2 sm
 sudo -E python3 tests/scenarios/run.py --all            # + slow clients, network cuts, Safe Mode
 python3 tests/scenarios/run.py misc csrf
 ```
 
 Each scenario starts its own emulator, fake vMix and clients, prints a JSON result and is
 checked by `run.py` (results and logs in `tests/out/scenarios/`). Any emulated watchdog reset
-fails a scenario, except in `j` (Safe Mode) and `boot` (reset causes), which reset on purpose. The scenarios marked
+fails a scenario, except in `j` (Safe Mode) and `boot` (reset causes), which reset on purpose; `sm` restarts into and out of Safe Mode on purpose and checks the exact number of resets itself. The scenarios marked
 `root` cut connections with iptables. Addresses: `T_IP` (firmware, default 127.0.80.1),
 `T_VMIX` (fake vMix, 127.0.80.11) and `T_PEER_PREFIX` (other clients, 127.0.81.x), so several
 runs can share a machine; `EMU_BIN` selects the binary.
@@ -96,6 +96,7 @@ runs can share a machine; `EMU_BIN` selects the binary.
 | `e`, `e2` (root) | vMix half-open or unreachable: tally off, reconnect, HTTP and 8098 stay responsive |
 | `j` | Safe Mode: shield absent, automatic recovery, anti-loop strikes |
 | `boot` | reset causes (power-up, restart, reset pin, watchdog in operation or during boot): only hangs in the 20 s boot window count, Safe Mode after 3, a power cycle boots normally |
+| `sm` | built-in Safe Mode page: `/` and `/ccu` answer it when `safemode.html` cannot be read (file missing, SD failing), the SD page again once it is back, its exit request restarts in normal mode; outside Safe Mode a failing SD still gives 503 |
 | `coop`, `coopgz` | background transfers: Companion-style PTZ stop and API under 100/150 ms during a 2 KB/s page download, byte-exact parallel downloads, a third page waits for a slot (or `503` after 10 s with the sockets short), stalled and slow readers cut with FIN, delete during a transfer, SSE tally events |
 | `coop2` | transfers during a slow upload: not cut, byte exact; replacing the file being sent cuts that transfer; SSE events keep flowing |
 | `upl` | tally latency around the end of slow uploads |
