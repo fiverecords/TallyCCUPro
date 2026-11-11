@@ -302,7 +302,7 @@ The system enters Safe Mode automatically after **3 consecutive boot failures**.
 
 Alternatively, use the serial command `normalboot` to exit Safe Mode.
 
-**Without the SD card (newer than v3.8.1)**: if the card is missing or cannot be read, or `safemode.html` is not on it, `http://YOUR_ARDUINO_IP/` shows a small built-in page instead, with the reason, the last reset, the firmware version and a **Restart in normal mode** button. v3.8.1 and older answer `404` or `503` there; `normalboot` on the serial console works in every version.
+**Without the SD card (v3.8.2+)**: if the card is missing or cannot be read, or `safemode.html` is not on it, `http://YOUR_ARDUINO_IP/` shows a small built-in page instead, with the reason, the last reset, the firmware version and a **Restart in normal mode** button. v3.8.1 and older answer `404` or `503` there; `normalboot` on the serial console works in every version.
 
 **Automatic recovery (v3.8+)**: in Safe Mode the firmware checks the SDI shield on I2C every 5 s. When the shield has answered for 30 s in a row (for example, the 12 V supply came back), the board restarts in normal mode by itself. If that normal boot fails again, the next automatic attempt waits 5 minutes, and after 2 failed attempts automatic recovery stays off until Safe Mode is left by hand or a normal boot completes again (for example after a power cycle). Note that the check only shows that the shield is powered: problems caused by the SDI input (no signal yet, 4K, Level A) are not detected beforehand.
 
@@ -626,13 +626,15 @@ Started by hand (*Actions*, *CI*, *Run workflow*), it can also run every scenari
 
 ## Changelog
 
-### Unreleased
+### v3.8.2 (Latest)
+Fixes after v3.8.1. Compatible with the current Bitfocus Companion module (v3.1.0) without any change to the module.
+
 - **Changed**: The old `TallyCCU_Configurator.exe` in `tools/` is gone (a V3.6-era build: it restarted the Arduino on connect and Get Config did not fill the fields). Use the `.exe` of the latest release, or build the current one by hand with the new *Configurator exe* workflow (no release needed)
 - **Fixed**: Serial configurator: since v3.8 it connects without restarting the board, and the first command after connecting (often Get Config) could be lost: opening the USB port can deliver a garbage byte to the Arduino. The configurator now sends a newline before each command (this also fixes it with the v3.8 and v3.8.1 firmware), and the firmware ignores control and non-ASCII bytes on the serial console
 - **Improved**: The web page retries a request that TallyCCU refuses at once. With nearly every network socket in use (vMix, Companion, two pages with the real-time sync, a page reloading), the next request could be refused for a moment: Reset to Defaults then stopped halfway and left the rest of the values unknown, and Load or Save preset failed. Error messages now stay on screen for 8 s
 - **Fixed**: Safe Mode page without the SD card: when the card is missing or cannot be read, or `safemode.html` is not on it, `/` shows a built-in page with the reason, the last reset, the firmware version and the **Restart in normal mode** button, instead of `404` or `503`. v3.8 announced it, but the page was never served
 
-### v3.8.1 (Latest)
+### v3.8.1
 Hotfix for v3.8. Same behaviour on the cameras, tally and Companion as v3.8 (apart from the version number, the firmware compiles to the same machine code).
 
 - **Fixed**: v3.8 did not compile with the official Blackmagic `BMDSDIControl` library (`no matching function for call to ... writeCommandInt8(..., const int8_t [2])`). The library takes list values (for example color correction) as non-const arrays; the stub used by CI accepted const ones, so CI did not see it. The CI stub now copies the official library's declarations, so this kind of mismatch fails CI
