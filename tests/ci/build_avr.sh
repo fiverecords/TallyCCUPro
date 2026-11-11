@@ -8,7 +8,8 @@
 #
 # Needs avr-gcc/avr-g++ 7.3 (Debian/Ubuntu: gcc-avr avr-libc binutils-avr). Libraries come from
 # tests/.cache/libs (tests/emulator/fetch_libs.sh) or ETHERNET_DIR, SDFAT_DIR, AVR_CORE_DIR.
-# The image is NOT flashable: the stub does not drive the shield.
+# BMD_DIR=<folder of the real BMDSDIControl library> builds against it instead of the stub.
+# With the stub the image is NOT flashable: the stub does not drive the shield.
 # shellcheck disable=SC2086  # flag lists are split on purpose
 set -euo pipefail
 
@@ -20,7 +21,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --src) SRC=$2; shift 2 ;;
     --out) OUT=$2; shift 2 ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -32,12 +33,12 @@ fi
 ETH=${ETHERNET_DIR:-$LIBS/Ethernet}/src
 SDF=${SDFAT_DIR:-$LIBS/SdFat}/src
 CORE=${AVR_CORE_DIR:-$LIBS/ArduinoCore-avr}
-STUB=$TESTS/stubs/BMDSDIControl/src
+BMD=${BMD_DIR:-$TESTS/stubs/BMDSDIControl/src}
 
 rm -rf "$OUT"; mkdir -p "$OUT/core" "$OUT/lib" "$OUT/sketch" "$OUT/src"
 MCU="-mmcu=atmega2560 -DF_CPU=16000000L -DARDUINO=10607 -DARDUINO_AVR_MEGA2560 -DARDUINO_ARCH_AVR"
 INC="-I$CORE/cores/arduino -I$CORE/variants/mega -I$CORE/libraries/SPI/src -I$CORE/libraries/Wire/src \
- -I$CORE/libraries/Wire/src/utility -I$CORE/libraries/EEPROM/src -I$ETH -I$SDF -I$STUB -I$OUT/src"
+ -I$CORE/libraries/Wire/src/utility -I$CORE/libraries/EEPROM/src -I$ETH -I$SDF -I$BMD -I$OUT/src"
 # platform.txt of arduino:avr 1.8.6
 CXXF="-c -g -Os -std=gnu++11 -fpermissive -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -Wno-error=narrowing -flto"
 CF="-c -g -Os -std=gnu11 -ffunction-sections -fdata-sections -flto -fno-fat-lto-objects"
@@ -53,7 +54,7 @@ for f in "$CORE"/cores/arduino/*.S; do o=$OUT/core/$(basename "$f").o; avr-gcc -
 while IFS= read -r f; do
   o=$OUT/lib/$(printf %s "$f" | md5sum | cut -c1-8)_$(basename "$f").o
   avr-g++ $CXXF $MCU $INC -w "$f" -o "$o"; objs+=("$o")
-done < <(ls "$CORE"/libraries/SPI/src/*.cpp "$CORE"/libraries/Wire/src/*.cpp; find "$ETH" "$SDF" -name '*.cpp' | sort)
+done < <(ls "$CORE"/libraries/SPI/src/*.cpp "$CORE"/libraries/Wire/src/*.cpp; find "$ETH" "$SDF" -name '*.cpp' | sort; find "$BMD" -maxdepth 1 -name '*.cpp' | sort)
 for f in "$CORE"/libraries/Wire/src/utility/*.c; do o=$OUT/lib/$(basename "$f").o; avr-gcc $CF $MCU $INC -w "$f" -o "$o"; objs+=("$o"); done
 
 : > "$OUT/warnings.txt"

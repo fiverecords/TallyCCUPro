@@ -66,6 +66,7 @@ def c_misc(r):
     o = []
     for p in ('/favicon.ico', '/adir', '/nothere.js'):
         expect(o, r['nresp ' + p] == 1, '%s: %d responses' % (p, r['nresp ' + p]))
+    expect(o, r['listed'] == ['foo.txt', 'foo.txt.gz'], 'listFiles shows system pages or their .gz: %s' % r['listed'])
     expect(o, r['gz_served_before'] == 1, 'foo.txt.gz not served before the upload')
     expect(o, '"success":true' in r['upload'], 'upload: %r' % r['upload'])
     expect(o, r['after_upload_served'] == 'UPLOADED-PLAIN', 'stale .gz after upload: %r' % r['after_upload_served'])

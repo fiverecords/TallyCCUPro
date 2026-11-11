@@ -1,6 +1,9 @@
 /* BMDSDIControl.h - HOST shim of the Blackmagic 3G-SDI Shield library.
- * Same API shape as the compile stub (tests/stubs/BMDSDIControl): array
- * overloads are template<int N> on the array length. Every call is logged
+ * Array writes have the official signatures, template<unsigned N> on a
+ * NON-const T (&)[N], so const arrays fail here as with the real library.
+ * Beyond the official API (see tests/stubs/BMDSDIControl), setCameraTally()
+ * returns bool and getOverride() exists, to drive the firmware paths for
+ * libraries that report tally failures and shield resets. Every call is logged
  * as a JSON line to EMU_BMD_LOG ("what reaches the camera").
  * Arrays: all N elements are logged ("n"); elements past the parameter's
  * subCount may be uninitialised stack memory in the firmware. Fixed16 values
@@ -60,22 +63,19 @@ class BMD_SDICameraControl_I2C : public BMD_SDIControl_I2C_Base {
   void writeCommandUTF8(byte c, byte g, byte p, byte op, const char *s) const {
     char b[200]; snprintf(b, sizeof b, "[\"%s\"]", s ? s : ""); emu_bmd_log("writeCommandUTF8", c, g, p, op, b, 1);
   }
-  template <int N> void writeCommandBool(byte c, byte g, byte p, byte op, const bool (&v)[N]) const {
-    long long t[N]; for (int i = 0; i < N; i++) t[i] = v[i] ? 1 : 0; la("writeCommandBool", c, g, p, op, t, N);
+  template <unsigned N> void writeCommandInt8(byte c, byte g, byte p, byte op, int8_t (&v)[N]) const {
+    long long t[N]; for (unsigned i = 0; i < N; i++) t[i] = v[i]; la("writeCommandInt8", c, g, p, op, t, N);
   }
-  template <int N> void writeCommandInt8(byte c, byte g, byte p, byte op, const int8_t (&v)[N]) const {
-    long long t[N]; for (int i = 0; i < N; i++) t[i] = v[i]; la("writeCommandInt8", c, g, p, op, t, N);
+  template <unsigned N> void writeCommandInt16(byte c, byte g, byte p, byte op, int16_t (&v)[N]) const {
+    long long t[N]; for (unsigned i = 0; i < N; i++) t[i] = v[i]; la("writeCommandInt16", c, g, p, op, t, N);
   }
-  template <int N> void writeCommandInt16(byte c, byte g, byte p, byte op, const int16_t (&v)[N]) const {
-    long long t[N]; for (int i = 0; i < N; i++) t[i] = v[i]; la("writeCommandInt16", c, g, p, op, t, N);
+  template <unsigned N> void writeCommandInt32(byte c, byte g, byte p, byte op, int32_t (&v)[N]) const {
+    long long t[N]; for (unsigned i = 0; i < N; i++) t[i] = v[i]; la("writeCommandInt32", c, g, p, op, t, N);
   }
-  template <int N> void writeCommandInt32(byte c, byte g, byte p, byte op, const int32_t (&v)[N]) const {
-    long long t[N]; for (int i = 0; i < N; i++) t[i] = v[i]; la("writeCommandInt32", c, g, p, op, t, N);
+  template <unsigned N> void writeCommandInt64(byte c, byte g, byte p, byte op, int64_t (&v)[N]) const {
+    long long t[N]; for (unsigned i = 0; i < N; i++) t[i] = v[i]; la("writeCommandInt64", c, g, p, op, t, N);
   }
-  template <int N> void writeCommandInt64(byte c, byte g, byte p, byte op, const int64_t (&v)[N]) const {
-    long long t[N]; for (int i = 0; i < N; i++) t[i] = v[i]; la("writeCommandInt64", c, g, p, op, t, N);
-  }
-  template <int N> void writeCommandFixed16(byte c, byte g, byte p, byte op, const float (&v)[N]) const {
+  template <unsigned N> void writeCommandFixed16(byte c, byte g, byte p, byte op, float (&v)[N]) const {
     char b[600]; emu_bmd_fmt_f(b, sizeof b, v, N, true); emu_bmd_log("writeCommandFixed16", c, g, p, op, b, N);
   }
  private:

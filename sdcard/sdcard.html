@@ -1069,7 +1069,9 @@ async function loadFiles() {
   }
     
   const files = (data && Array.isArray(data.files)) ? data.files : [];
-  allFiles = files.filter(f => f && typeof f.name === 'string')
+  // System pages and their .gz are hidden here too: firmware before 3.8
+  // only hid the exact .html names
+  allFiles = files.filter(f => f && typeof f.name === 'string' && !isProtected(f.name))
                   .sort((a, b) => a.name.localeCompare(b.name));
   if (allFiles.length === 0) {
     setPlaceholder(fileList, 'empty-state', '📭', 'No files on SD card');

@@ -1,15 +1,19 @@
-"""Contract checks: HTTP-12 double response, stale .gz after upload/delete, slot clear, vmixConnect=0 with tally on."""
+"""Contract checks: HTTP-12 double response, stale .gz after upload/delete, slot clear, vmixConnect=0 with tally on,
+system pages and their .gz hidden from listFiles."""
 import sys, json, time, os, gzip; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import *
 def prep(sd):
     open(os.path.join(sd, 'foo.txt'), 'w').write('NEW-PLAIN')
     open(os.path.join(sd, 'foo.txt.gz'), 'wb').write(gzip.compress(b'OLD-GZ'))
     os.makedirs(os.path.join(sd, 'adir'))
+    for f in ('index.html.gz', 'tally.html.gz', 'SDCARD.HTML.GZ', 'safemode.html.gz'):
+        open(os.path.join(sd, f), 'wb').write(gzip.compress(b'<html></html>'))
 res = {}
 vm = FakeVmix(); emu = Emu('misc', prep=prep)
 assert emu.wait_http(); time.sleep(1.5)
 for p in ('/favicon.ico', '/adir', '/nothere.js'):
     r = http(p); res['nresp ' + p] = r['raw'].count(b'HTTP/1.1 ')
+res['listed'] = sorted(f['name'] for f in json.loads(http('/?listFiles')['body'])['files'])
 r = http('/foo.txt', headers={'Accept-Encoding': 'gzip'}); res['gz_served_before'] = r['raw'].count(b'Content-Encoding: gzip')
 # upload a new foo.txt through /upload (multipart)
 B = '----b0undary'

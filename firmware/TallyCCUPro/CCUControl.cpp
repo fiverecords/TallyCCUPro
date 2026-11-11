@@ -236,22 +236,24 @@ const char* valueText(const BMDParamDef &d, const Parsed &p, const char *value, 
 }
 
 // Array writes of the library are templates on the array length: all N
-// elements go on the wire, so lists use arrays of exactly subCount (CCU-08)
-template <int N> inline void sdiWrite(uint8_t c, const BMDParamDef &d, const int8_t (&a)[N]) {
+// elements go on the wire, so lists use arrays of exactly subCount (CCU-08).
+// The library takes the arrays by non-const reference (T (&)[N]): a const
+// array does not compile with the official Blackmagic library.
+template <unsigned N> inline void sdiWrite(uint8_t c, const BMDParamDef &d, int8_t (&a)[N]) {
   sdi.writeCommandInt8(c, d.groupId, d.paramId, 0, a);
 }
-template <int N> inline void sdiWrite(uint8_t c, const BMDParamDef &d, const int16_t (&a)[N]) {
+template <unsigned N> inline void sdiWrite(uint8_t c, const BMDParamDef &d, int16_t (&a)[N]) {
   sdi.writeCommandInt16(c, d.groupId, d.paramId, 0, a);
 }
-template <int N> inline void sdiWrite(uint8_t c, const BMDParamDef &d, const int32_t (&a)[N]) {
+template <unsigned N> inline void sdiWrite(uint8_t c, const BMDParamDef &d, int32_t (&a)[N]) {
   sdi.writeCommandInt32(c, d.groupId, d.paramId, 0, a);
 }
-template <int N> inline void sdiWrite(uint8_t c, const BMDParamDef &d, const float (&a)[N]) {
+template <unsigned N> inline void sdiWrite(uint8_t c, const BMDParamDef &d, float (&a)[N]) {
   sdi.writeCommandFixed16(c, d.groupId, d.paramId, 0, a);
 }
 
 // Values are already in range: the int16_t cast keeps UINT16's bit pattern
-template <typename T, int N, typename S>
+template <typename T, unsigned N, typename S>
 void writeArray(uint8_t c, const BMDParamDef &d, const S *v) {
   T a[N];
   for (uint8_t k = 0; k < N; k++) a[k] = (T)v[k];
