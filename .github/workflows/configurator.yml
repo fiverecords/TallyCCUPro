@@ -1,0 +1,45 @@
+name: Configurator exe
+
+# Builds TallyCCU_Configurator.exe from tools/ of the chosen branch, the same way as the
+# release workflow (tools/TallyCCU_Configurator.spec, pinned PyInstaller), without making a
+# release. Run it by hand (Actions > Configurator exe > Run workflow); the .exe and its
+# SHA-256 are attached to the run as the artifact "TallyCCU_Configurator" (kept 30 days;
+# downloading it needs a GitHub login). Releases still carry their own .exe.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exe:
+    name: TallyCCU_Configurator.exe (PyInstaller)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned build tools
+        run: python -m pip install -r tools/requirements-build.txt
+      - name: Build from tools/TallyCCU_Configurator.spec
+        env:
+          PYTHONHASHSEED: '0'
+        run: python -m PyInstaller --clean --noconfirm tools/TallyCCU_Configurator.spec
+      - name: Check the executable
+        shell: bash
+        run: |
+          f=dist/TallyCCU_Configurator.exe
+          test -f "$f" && [ "$(stat -c %s "$f")" -gt 1000000 ]
+          cd dist
+          sha256sum TallyCCU_Configurator.exe > SHA256SUMS.txt
+          echo "commit $GITHUB_SHA" >> SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: actions/upload-artifact@v5
+        with:
+          name: TallyCCU_Configurator
+          path: |
+            dist/TallyCCU_Configurator.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
